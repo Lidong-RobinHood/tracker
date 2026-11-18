@@ -47,7 +47,7 @@ export function pickExercise({ title = 'Add exercise', exMap }) {
         el('div', { class: 'li-main' },
           el('div', { class: 'li-title' }, e.name),
           el('div', { class: 'li-sub' }, musclesLine(e))))),
-      items.length ? null : el('p', { class: 'muted small wk-pad' }, 'No match. Create it above.'),
+      ...(items.length ? [] : [el('p', { class: 'muted small wk-pad' }, 'No match. Create it above.')]),
     );
   }
   render();
