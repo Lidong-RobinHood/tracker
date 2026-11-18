@@ -1,7 +1,7 @@
 // Service worker: network-first with cache fallback for same-origin GETs.
 // Never touches cross-origin requests (APIs such as Open Food Facts go straight to the network).
 // Bump CACHE_VERSION on release (old caches are deleted on activate). Keep APP_VERSION in src/version.js in step.
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE = `tracker-${CACHE_VERSION}`;
 
 // Small shell so the app opens offline after the first visit. Everything else is cached as it is fetched.
