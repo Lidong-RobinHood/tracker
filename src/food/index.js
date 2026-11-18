@@ -4,6 +4,7 @@ import { isValidDate, today } from '../core/dates.js';
 import { isMeal, mealForTime } from '../core/food-diary.js';
 import { mountDiary } from './diary-view.js';
 import { mountAdd } from './add-view.js';
+import { mountPhotoSettings } from './photo-settings-view.js';
 
 /** food/add/:date/:meal with validation (bad links fall back to today / a meal for the time of day). */
 function mountAddChecked(container, params, ctx) {
@@ -22,4 +23,5 @@ export const routes = [
   { path: 'diary', title: 'Diary', mount: mountDiary },
   { path: 'diary/:date', title: 'Diary', mount: (c, p, ctx) => (isValidDate(p.date) ? mountDiary(c, p, ctx) : mountBadDate(c, p)) },
   { path: 'food/add/:date/:meal', title: 'Add food', tab: 'diary', mount: mountAddChecked },
+  { path: 'food/photo-settings', title: 'Meal photos', tab: 'settings', mount: mountPhotoSettings },
 ];

@@ -5,6 +5,7 @@ import {
 import { today, addDays, isValidDate } from '../core/dates.js';
 import { scale } from '../core/nutrition.js';
 import { MEALS, mealLabel, groupByMeal, totals, progress, copyEntries, isQuickAdd } from '../core/food-diary.js';
+import { targetPercents, shareOfDay, fmtPercent } from '../core/food-percent.js';
 import { dayEntries, putEntry, putEntries, removeEntry, removeEntries, getTargets, updateFoodFromEntry, getFood } from './store.js';
 import { openFoodEditor } from './food-editor.js';
 import { openSaveAsMeal } from './meals.js';
@@ -12,6 +13,9 @@ import { ensureCss, mealSelect, dateInput, macroText } from './widgets.js';
 
 const LABEL = { kcal: 'Calories', protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
 const uuid = () => crypto.randomUUID();
+// Quick add = no food behind it AND stored as amount 100 (per100 = the totals). Photo items that were not
+// remembered also have no food but keep their real amount, so they stay editable by amount.
+const isQuick = (e) => isQuickAdd(e) && e.amount === 100;
 
 /** Route: diary, diary/:date */
 export async function mountDiary(container, params) {
@@ -46,25 +50,33 @@ export async function mountDiary(container, params) {
     entries = await dayEntries(date);
     renderSummary();
     const byMeal = groupByMeal(entries);
-    mealsWrap.replaceChildren(...MEALS.map((m) => mealCard(m, byMeal[m.id])));
+    const dayKcal = totals(entries).kcal;
+    mealsWrap.replaceChildren(...MEALS.map((m) => mealCard(m, byMeal[m.id], dayKcal)));
   }
 
   function renderSummary() {
     const t = totals(entries);
     const p = progress(t, targets);
+    const pct = targetPercents(t, targets);
     const kcal = p[0];
     replaceChildren(summary,
       el('div', { class: 'kcal-line' },
-        el('div', null, el('div', { class: 'kcal-big num' }, fmtNum(kcal.consumed, 0)), el('div', { class: 'small muted' }, `of ${fmtNum(kcal.target, 0)} kcal`)),
+        el('div', null, el('div', { class: 'kcal-big num' }, fmtNum(kcal.consumed, 0)), el('div', { class: 'small muted' }, `of ${fmtNum(kcal.target, 0)} kcal`, pctEl(pct.kcal, ' · '))),
         el('div', { class: 'kcal-remaining' },
           el('div', { class: ['kcal-big num', kcal.remaining < 0 ? 'text-warning' : null] }, fmtNum(Math.abs(kcal.remaining ?? 0), 0)),
           el('div', { class: 'small muted' }, kcal.remaining < 0 ? 'kcal over' : 'kcal left'))),
       bar(kcal, 'kcal'),
       el('div', { class: 'macro-bars' }, p.slice(1).map((x) => el('div', { class: 'macro-bar' },
-        el('div', { class: 'small macro-label' }, LABEL[x.key]),
+        el('div', { class: 'small macro-label' }, el('span', null, LABEL[x.key]), pctEl(pct[x.key])),
         el('div', { class: 'num macro-amounts' }, `${fmtNum(x.consumed, 0)}`, el('span', { class: 'muted small' }, ` / ${fmtNum(x.target, 0)} g`)),
         bar(x, x.key),
         el('div', { class: ['small num', x.remaining < 0 ? 'text-warning' : 'muted'] }, x.target === null ? '' : x.remaining < 0 ? `${fmtNum(-x.remaining, 0)} g over` : `${fmtNum(x.remaining, 0)} g left`)))));
+  }
+
+  /** '62 %' (warning colour and bold when over target); nothing if there is no target. */
+  function pctEl(p, prefix = '') {
+    if (!p || p.pct === null) return null;
+    return el('span', { class: ['num pct', p.over ? 'text-warning pct-over' : null], title: p.over ? 'Over target' : 'Of daily target' }, `${prefix}${fmtPercent(p.pct)}`);
   }
 
   function bar(x, key) {
@@ -75,14 +87,16 @@ export async function mountDiary(container, params) {
     }, el('div', { class: 'bar-fill', style: { width: `${pct}%` } }));
   }
 
-  function mealCard(m, list) {
+  function mealCard(m, list, dayKcal) {
     const t = totals(list);
+    const share = list.length ? shareOfDay(t.kcal, dayKcal) : null;
     return el('section', { class: 'card card-flush meal-card', 'aria-label': m.label },
       el('div', { class: 'meal-head' },
         el('div', { class: 'grow' },
           el('h2', { class: 'meal-title' }, m.label),
           list.length ? el('div', { class: 'small muted num' }, macroText(t)) : null),
-        el('div', { class: 'num meal-kcal' }, list.length ? `${fmtNum(t.kcal, 0)} kcal` : ''),
+        el('div', { class: 'num meal-kcal' }, list.length ? `${fmtNum(t.kcal, 0)} kcal` : '',
+          share === null ? null : el('div', { class: 'small muted meal-share', 'aria-label': `${share} percent of the day's calories`, title: 'Share of the day’s calories' }, fmtPercent(share))),
         list.length ? el('button', { type: 'button', class: 'btn btn-icon btn-ghost', 'aria-label': `${m.label} options`, onClick: () => mealMenu(m, list) }, '⋯') : null),
       list.length ? el('div', { class: 'list' }, list.map(entryRow)) : null,
       el('a', { class: 'list-item add-row', href: href(`food/add/${date}/${m.id}`) }, el('span', { class: 'add-plus', 'aria-hidden': 'true' }, '+'), `Add to ${m.label}`));
@@ -93,14 +107,14 @@ export async function mountDiary(container, params) {
     return el('button', { type: 'button', class: 'list-item entry-row', onClick: () => editEntry(e) },
       el('div', { class: 'li-main' },
         el('div', { class: 'li-title' }, e.name),
-        el('div', { class: 'li-sub' }, isQuickAdd(e) ? `Quick add · ${macroText(v)}` : [fmtAmount(e.amount, e.basis), e.brand].filter(Boolean).join(' · '))),
+        el('div', { class: 'li-sub' }, isQuick(e) ? `Quick add · ${macroText(v)}` : [fmtAmount(e.amount, e.basis), e.brand].filter(Boolean).join(' · '))),
       el('div', { class: 'li-trail num' }, `${fmtNum(v.kcal, 0)}`, el('span', { class: 'small muted' }, ' kcal')));
   }
 
   // ---------------------------------------------------------------- entry sheet
   function editEntry(entry) {
     let draft = { ...entry, per100: { ...entry.per100 } };
-    const quick = isQuickAdd(entry);
+    const quick = isQuick(entry);
     const amount = numberInput({ value: entry.amount, min: 0.1, max: 10000, decimals: 1, ariaLabel: 'Amount', onInput: update });
     const values = el('div', { class: 'portion-values card' });
     const nameEl = el('div', { class: 'portion-name' }, entry.name);

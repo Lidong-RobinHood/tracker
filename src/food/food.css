@@ -91,3 +91,60 @@
 .meal-amount { width: 7.5em; flex: none; }
 .meal-total { font-weight: 600; }
 .plain-list { margin: 0; padding-left: 1.2em; }
+
+/* ---------------------------------------------------------------- target percentages */
+.macro-label { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; }
+.pct { font-weight: 500; white-space: nowrap; }
+.macro-label .pct { color: var(--text-muted); font-weight: 600; }
+.pct-over, .macro-label .pct-over { color: var(--warning); font-weight: 700; }
+.meal-kcal { text-align: right; line-height: 1.2; }
+.meal-share { font-weight: 400; }
+
+/* ---------------------------------------------------------------- photo tab */
+.visually-hidden-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden; }
+.photo-preview {
+  width: 100%; aspect-ratio: 4 / 3; border-radius: var(--radius); overflow: hidden;
+  background: var(--surface-2); display: flex; align-items: center; justify-content: center;
+}
+.photo-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-preview.is-small { aspect-ratio: 16 / 9; }
+.photo-preview.is-busy img { opacity: .6; }
+.photo-hint { min-height: 64px; resize: vertical; }
+.photo-model-line { gap: var(--s2); align-items: center; flex-wrap: wrap; }
+.photo-actions { flex-wrap: wrap; gap: var(--s2); }
+.photo-error { border-color: var(--danger); }
+.progress-indeterminate { height: 4px; border-radius: 999px; background: var(--surface-2); overflow: hidden; position: relative; }
+.progress-indeterminate::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 35%; border-radius: inherit; background: var(--accent);
+  animation: photo-progress 1.2s ease-in-out infinite;
+}
+@keyframes photo-progress { from { left: -35%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .progress-indeterminate::after { animation: none; left: 0; width: 100%; opacity: .5; } }
+.photo-thumb { width: 56px; height: 42px; object-fit: cover; border-radius: var(--radius-sm); flex: none; }
+.photo-item { gap: var(--s2); }
+.photo-item.has-warning { border-color: var(--warning); }
+.photo-item-head { display: flex; align-items: flex-start; gap: var(--s1); }
+.photo-item-head .li-main { flex: 1 1 auto; min-width: 0; }
+.photo-item-head .li-title { overflow-wrap: anywhere; font-weight: 600; }
+.photo-item-head .edit-values { flex: none; }
+.photo-item-amount { display: grid; grid-template-columns: 8.5em minmax(0, 1fr); gap: var(--s3); align-items: center; }
+.photo-item-kcal { font-weight: 700; }
+.photo-warnings { margin: 0; padding-left: 1.2em; color: var(--warning); }
+.photo-warnings:empty { display: none; }
+.photo-add-item { align-self: flex-start; }
+.photo-totals { display: flex; flex-direction: column; gap: 2px; padding: var(--s3); }
+.photo-total-kcal { font-size: var(--fs-lg); font-weight: 700; }
+.badge-conf-high { background: var(--surface-2); color: var(--success); }
+.badge-conf-medium { background: var(--warning-soft); color: var(--warning); }
+.badge-conf-low { background: var(--danger-soft); color: var(--danger); }
+
+/* ---------------------------------------------------------------- photo settings */
+.key-mask { font-size: var(--fs-lg); font-weight: 600; letter-spacing: .05em; }
+.photo-key-actions { flex-wrap: wrap; gap: var(--s2); }
+.model-row { gap: var(--s3); cursor: pointer; align-items: center; }
+.model-row input[type=radio] { width: 20px; height: 20px; flex: none; accent-color: var(--accent); }
+.model-id { font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.model-default { margin-left: var(--s2); }
+.photo-note .plain-list li + li { margin-top: var(--s1); }
+.photo-item-head .li-sub { white-space: normal; overflow: visible; text-overflow: clip; }
+.model-row .li-sub { white-space: normal; overflow: visible; text-overflow: clip; }

@@ -1,4 +1,4 @@
-// Add-food screen: tabs Search · Scan · Recent · Meals · Quick add. Every food path ends in the portion sheet.
+// Add-food screen: tabs Search · Scan · Photo · Recent · Meals · Quick add. Every food path ends in the portion sheet.
 import { el, pageHeader, numberInput, field, toast, emptyState, fmtNum, fmtDay, fmtAmount, back } from '../ui/index.js';
 import { isComplete, missingFields, macroKcal, emptyPer100 } from '../core/nutrition.js';
 import { checkDigitOk } from '../core/barcode.js';
@@ -11,10 +11,12 @@ import { createScanner } from './scanner.js';
 import { openPortion, editAndSaveFood } from './portion.js';
 import { openLogMeal, openEditMeal, mealKcal } from './meals.js';
 import { foodRow, segmented, ensureCss, per100Text } from './widgets.js';
+import { buildPhotoPanel } from './photo-tab.js';
 
 const TABS = [
   { value: 'search', label: 'Search' },
   { value: 'scan', label: 'Scan' },
+  { value: 'photo', label: 'Photo' },
   { value: 'recent', label: 'Recent' },
   { value: 'meals', label: 'Meals' },
   { value: 'quick', label: 'Quick add' },
@@ -352,7 +354,8 @@ export async function mountAdd(container, params, ctx) {
     return { el: wrap, show: () => requestAnimationFrame(() => kcal.focus()) };
   }
 
-  const builders = { search: buildSearch, scan: buildScan, recent: buildRecent, meals: buildMeals, quick: buildQuick };
+  const buildPhoto = () => buildPhotoPanel({ date, meal, cleanups, onFinished: finished });
+  const builders = { search: buildSearch, scan: buildScan, photo: buildPhoto, recent: buildRecent, meals: buildMeals, quick: buildQuick };
   const want = ctx.query.tab || lastTab();
   show(TABS.some((t) => t.value === want) ? want : 'search');
 

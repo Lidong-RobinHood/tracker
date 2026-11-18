@@ -94,3 +94,31 @@ export async function updateFoodFromEntry(entry) {
   if (!f) return null;
   return saveFood({ ...f, name: entry.name, brand: entry.brand, basis: entry.basis, per100: copyPer100(entry.per100) }, { userEdited: true });
 }
+
+/**
+ * Log reviewed photo items to one meal in one transaction.
+ * Items with `remember: true` are stored in the library as `source: 'custom'` foods (and the entry links to them);
+ * the others become diary snapshots only (foodId null), so the library is not filled with AI guesses.
+ * @param {Array<{name: string, amount: number, basis: 'g'|'ml', per100: object, remember?: boolean}>} items
+ * @param {{date: string, meal: string}} where
+ * @returns {Promise<object[]>} the diary entries
+ */
+export async function logPhotoItems(items, { date, meal }) {
+  const now = Date.now();
+  return db.transaction(['foods', 'diary'], 'readwrite', async (t) => {
+    const entries = [];
+    items.forEach((it, i) => {
+      const at = now + i; // keeps the review order in the diary
+      let food = { id: null, name: it.name, brand: null, basis: it.basis, per100: it.per100 };
+      if (it.remember) {
+        const id = uuid();
+        food = touchFood(toFoodRecord({ source: 'custom', name: it.name, brand: null, basis: it.basis, per100: it.per100, servings: [] }, { id, now: at }), it.amount, at);
+        t.put('foods', food);
+      }
+      const entry = makeEntry({ id: uuid(), date, meal, food, amount: it.amount, now: at });
+      t.put('diary', entry);
+      entries.push(entry);
+    });
+    return entries;
+  });
+}
