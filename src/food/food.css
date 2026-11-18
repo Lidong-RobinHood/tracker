@@ -165,3 +165,8 @@
 .photo-log-option { gap: var(--s2); }
 .photo-log-option > .field-label { font-weight: 600; }
 .photo-review-foot { align-items: center; gap: var(--s2); flex-wrap: wrap; }
+
+/* ---------------------------------------------------------------- photo settings: providers */
+.photo-model-picker { width: 100%; min-width: 0; }
+.photo-active-provider { min-width: 0; overflow-wrap: anywhere; }
+.photo-note a { color: var(--accent); }

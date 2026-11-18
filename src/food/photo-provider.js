@@ -1,88 +1,131 @@
-// Meal-photo providers. Interface:
-//   analyseMealPhoto(imageBlob, { apiKey, model, hint, signal, provider? })
+// Meal-photo network layer for every provider. Interface:
+//   analyseMealPhoto(imageBlob, { provider, apiKey, model, hint, signal, baseUrl?, useSchema? })
 //     → { ok: true, items, note, dropped, model } | { ok: false, kind, message, retry, detail? }
-//   testApiKey({ apiKey, model, signal, provider? }) → { ok: true } | { ok: false, kind, message }
+//   testApiKey({ provider, apiKey, model, baseUrl?, signal }) → { ok: true, checkedModel } | error
+//   loadModels({ provider, apiKey, baseUrl?, signal }) → { ok: true, models: [{id, label}] } | error
 // Exactly one HTTP request per call: never retries on its own (each request may be billed).
-import {
-  buildPhotoRequest, buildTestRequest, classifyHttpError, extractAnswerText, parsePhotoAnswer, photoError,
-} from '../core/meal-photo.js';
+// The key goes only into the provider's auth header – never into a URL, a log line or an error text.
+import { parsePhotoAnswer, photoError, redactSecrets } from '../core/meal-photo.js';
+import { getAdapter, authHeader, networkError, DEFAULT_PROVIDER } from '../core/photo-providers.js';
 import { blobToBase64 } from './photo-image.js';
 
-function failure(err, signal) {
+const FETCH_OPTS = { credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store', mode: 'cors' };
+
+function failure(err, signal, provider, ctx) {
   if ((signal && signal.aborted) || (err && err.name === 'AbortError')) return photoError('cancelled');
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return photoError('offline');
-  return photoError('network');
+  return networkError(provider, ctx);
 }
 
-async function errorBody(res) {
+async function jsonOrNull(res) {
   try { return await res.json(); } catch { return null; }
 }
 
-const anthropic = {
-  id: 'anthropic',
-  label: 'Anthropic (Claude)',
-  async analyse(imageBlob, { apiKey, model, hint, signal }) {
-    if (!apiKey) return photoError('no_key');
-    const req = buildPhotoRequest({ model, hint, mediaType: imageBlob.type || 'image/jpeg', imageBase64: await blobToBase64(imageBlob) });
-    let res;
-    try {
-      res = await fetch(req.url, {
-        method: 'POST',
-        headers: { ...req.headers, 'x-api-key': apiKey },
-        body: JSON.stringify(req.body),
-        signal,
-        credentials: 'omit',
-        referrerPolicy: 'no-referrer',
-        cache: 'no-store',
-      });
-    } catch (err) {
-      return failure(err, signal);
-    }
-    if (!res.ok) return classifyHttpError(res.status, await errorBody(res));
-    let data;
-    try { data = await res.json(); } catch (err) {
-      if (signal && signal.aborted) return photoError('cancelled');
-      return photoError('unusable');
-    }
-    const text = extractAnswerText(data);
+/** Remove the key from anything that came back from the provider. */
+function scrub(r, apiKey) {
+  if (r && r.detail) return { ...r, detail: redactSecrets(r.detail, apiKey) };
+  return r;
+}
+
+/**
+ * One request. Returns { ok: true, data } or an error result.
+ * @param {string} provider @param {{url: string, headers: object, body?: object}} req
+ */
+async function call(provider, req, { apiKey, signal, ctx }) {
+  const a = getAdapter(provider);
+  let res;
+  try {
+    res = await fetch(req.url, {
+      method: req.body ? 'POST' : 'GET',
+      headers: { ...req.headers, ...authHeader(provider, apiKey) },
+      ...(req.body ? { body: JSON.stringify(req.body) } : {}),
+      signal,
+      ...FETCH_OPTS,
+    });
+  } catch (err) {
+    return failure(err, signal, provider, ctx);
+  }
+  if (!res.ok) return scrub(a.classifyError(res.status, await jsonOrNull(res), ctx), apiKey);
+  const data = await jsonOrNull(res);
+  if (data === null) return photoError(signal && signal.aborted ? 'cancelled' : 'unusable', '', { provider: a.name });
+  return { ok: true, data };
+}
+
+const ctxOf = (o) => ({ baseUrl: o.baseUrl || '' });
+
+/** Analyse a (downscaled) meal photo with the chosen provider. Never throws. */
+export async function analyseMealPhoto(imageBlob, opts = {}) {
+  const provider = opts.provider || DEFAULT_PROVIDER;
+  const a = getAdapter(provider);
+  const { apiKey, signal } = opts;
+  if (!apiKey) return photoError('no_key');
+  let imageBase64;
+  try {
+    imageBase64 = await blobToBase64(imageBlob);
+  } catch (err) {
+    if (signal && signal.aborted) return photoError('cancelled');
+    return { ...photoError('unusable'), message: 'The photo could not be prepared for upload. Try another photo.' };
+  }
+  let req;
+  try {
+    req = a.buildAnalyse({ model: opts.model, hint: opts.hint, mediaType: imageBlob.type || 'image/jpeg', imageBase64, baseUrl: opts.baseUrl, useSchema: opts.useSchema });
+  } catch (err) {
+    return photoError('bad_request', '', { message: `${err.message || 'The provider settings are incomplete.'} Fix it in Photo settings.` });
+  }
+  try {
+    const r = await call(provider, req, { apiKey, signal, ctx: ctxOf(opts) });
+    if (!r.ok) return r;
+    const text = scrub(a.parseAnswer(r.data, ctxOf(opts)), apiKey);
     if (!text.ok) return text;
     const parsed = parsePhotoAnswer(text.text);
     return parsed.ok ? { ...parsed, model: text.model } : parsed;
-  },
-  async test({ apiKey, model, signal }) {
-    if (!apiKey) return photoError('no_key');
-    const req = buildTestRequest(model);
-    let res;
-    try {
-      res = await fetch(req.url, { headers: { ...req.headers, 'x-api-key': apiKey }, signal, credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store' });
-    } catch (err) {
-      return failure(err, signal);
-    }
-    if (!res.ok) return classifyHttpError(res.status, await errorBody(res));
-    return { ok: true };
-  },
-};
-
-export const PROVIDERS = Object.freeze({ anthropic });
-export const DEFAULT_PROVIDER = 'anthropic';
-
-/** Analyse a (downscaled) meal photo with the chosen provider. Never throws. */
-export async function analyseMealPhoto(imageBlob, { provider = DEFAULT_PROVIDER, ...opts } = {}) {
-  const p = PROVIDERS[provider] || PROVIDERS[DEFAULT_PROVIDER];
-  try {
-    return await p.analyse(imageBlob, opts);
   } catch (err) {
-    if (opts.signal && opts.signal.aborted) return photoError('cancelled');
-    return { ...photoError('unusable'), message: 'The photo could not be prepared for upload. Try another photo.' };
+    if (signal && signal.aborted) return photoError('cancelled');
+    return photoError('unusable', '', { provider: a.name });
   }
 }
 
-/** Cheap/free check that a key works. Never throws. */
-export async function testApiKey({ provider = DEFAULT_PROVIDER, ...opts } = {}) {
-  const p = PROVIDERS[provider] || PROVIDERS[DEFAULT_PROVIDER];
+/** Build a request; an invalid custom base URL becomes a settings error instead of a throw. */
+function build(fn) {
+  try { return { ok: true, req: fn() }; } catch (err) {
+    return photoError('bad_request', '', { message: `${err.message || 'The provider settings are incomplete.'} Fix it in Photo settings.` });
+  }
+}
+
+function customNotFound(r, opts) {
+  if (opts.provider === 'custom' && r.kind === 'model') {
+    return { ...r, message: 'The service has no model list at this base URL (404). Check the base URL; you can still type a model id.' };
+  }
+  return r;
+}
+
+/** Free check that a key works (model lookup or model list – no tokens are used). Never throws. */
+export async function testApiKey(opts = {}) {
+  const provider = opts.provider || DEFAULT_PROVIDER;
+  if (!opts.apiKey) return photoError('no_key');
+  const b = build(() => getAdapter(provider).buildTest({ model: opts.model, baseUrl: opts.baseUrl }));
+  if (!b.ok) return b;
   try {
-    return await p.test(opts);
+    const r = await call(provider, b.req, { apiKey: opts.apiKey, signal: opts.signal, ctx: ctxOf(opts) });
+    if (!r.ok) return customNotFound(r, { provider });
+    return { ok: true, checkedModel: provider === 'anthropic' || provider === 'gemini' };
   } catch (err) {
-    return failure(err, opts.signal);
+    return failure(err, opts.signal, provider, ctxOf(opts));
+  }
+}
+
+/** List the provider's models (filtered to image-capable ones where the API says so). Never throws. */
+export async function loadModels(opts = {}) {
+  const provider = opts.provider || DEFAULT_PROVIDER;
+  const a = getAdapter(provider);
+  if (!opts.apiKey) return photoError('no_key');
+  const b = build(() => a.buildModels({ baseUrl: opts.baseUrl }));
+  if (!b.ok) return b;
+  try {
+    const r = await call(provider, b.req, { apiKey: opts.apiKey, signal: opts.signal, ctx: ctxOf(opts) });
+    if (!r.ok) return customNotFound(r, { provider });
+    return { ok: true, models: a.parseModels(r.data) };
+  } catch (err) {
+    return failure(err, opts.signal, provider, ctxOf(opts));
   }
 }

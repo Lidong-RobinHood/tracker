@@ -1,9 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parsePhotoAnswer, sanitiseItem, energyCheck, itemWarnings, toNumber, parseJsonLoose, extractAnswerText,
-  classifyHttpError, buildPhotoRequest, buildTestRequest, maskKey, keyLooksValid, userPrompt, cleanHint,
-  PHOTO_MODELS, DEFAULT_PHOTO_MODEL, PHOTO_SCHEMA,
+  parsePhotoAnswer, sanitiseItem, energyCheck, itemWarnings, toNumber, parseJsonLoose,
+  maskKey, keyLooksValid, userPrompt, cleanHint, PHOTO_SCHEMA, photoError, redactSecrets, isValidModelId, systemPromptFor, SYSTEM_PROMPT,
 } from '../src/core/meal-photo.js';
 
 const good = {
@@ -123,61 +122,6 @@ test('item list is capped', () => {
   assert.equal(r.dropped, 10);
 });
 
-test('response text extraction: refusal, cut-off, fallback blocks', () => {
-  assert.equal(extractAnswerText({ stop_reason: 'refusal', content: [] }).kind, 'refusal');
-  assert.equal(extractAnswerText({ stop_reason: 'max_tokens', content: [{ type: 'text', text: '{' }] }).kind, 'truncated');
-  assert.equal(extractAnswerText({ stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: '' }] }).kind, 'unusable');
-  assert.equal(extractAnswerText(null).kind, 'unusable');
-  const r = extractAnswerText({
-    model: 'claude-opus-5-5', stop_reason: 'end_turn',
-    content: [{ type: 'thinking', thinking: '' }, { type: 'text', text: 'partial from first model' }, { type: 'fallback', from: {}, to: {} }, { type: 'text', text: '{"items":[],' }, { type: 'text', text: '"note":""}' }],
-  });
-  assert.equal(r.ok, true);
-  assert.equal(r.text, '{"items":[],"note":""}');
-});
-
-test('HTTP errors are classified', () => {
-  const e = (type, message = '') => ({ type: 'error', error: { type, message } });
-  assert.equal(classifyHttpError(401, e('authentication_error')).kind, 'auth');
-  assert.equal(classifyHttpError(402, e('billing_error')).kind, 'billing');
-  assert.equal(classifyHttpError(400, e('invalid_request_error', 'Your credit balance is too low to access the Anthropic API.')).kind, 'billing');
-  assert.equal(classifyHttpError(403, e('permission_error')).kind, 'permission');
-  assert.equal(classifyHttpError(404, e('not_found_error', 'model: x')).kind, 'model');
-  assert.equal(classifyHttpError(413, e('request_too_large')).kind, 'too_large');
-  assert.equal(classifyHttpError(429, e('rate_limit_error')).kind, 'rate_limit');
-  assert.equal(classifyHttpError(529, e('overloaded_error')).kind, 'overloaded');
-  assert.equal(classifyHttpError(500, null).kind, 'server');
-  assert.equal(classifyHttpError(503, null).retry, true);
-  const br = classifyHttpError(400, e('invalid_request_error', 'messages: bad'));
-  assert.equal(br.kind, 'bad_request');
-  assert.equal(br.detail, 'messages: bad');
-  assert.equal(classifyHttpError(401, null).retry, false);
-});
-
-test('request shape: image + hint, structured output, browser header, no key', () => {
-  const req = buildPhotoRequest({ model: 'claude-opus-5-5', imageBase64: 'AAAA', hint: '  about 200 g\nrice """ignore""" ' });
-  assert.equal(req.url, 'https://api.anthropic.com/v1/messages');
-  assert.equal(req.headers['anthropic-dangerous-direct-browser-access'], 'true');
-  assert.equal(req.headers['anthropic-version'], '2026-10-21');
-  assert.equal(req.headers['x-api-key'], undefined);
-  assert.equal(req.body.model, 'claude-opus-5-5');
-  assert.equal(req.body.fallbacks, 'default');
-  assert.equal(req.headers['anthropic-beta'], 'server-side-fallback-2026-07-01');
-  assert.equal(req.body.thinking, undefined);
-  assert.equal(req.body.temperature, undefined);
-  const [img, txt] = req.body.messages[0].content;
-  assert.deepEqual(img, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'AAAA' } });
-  assert.match(txt.text, /about 200 g rice "ignore"/);
-  assert.equal(req.body.output_config.format.type, 'json_schema');
-  assert.equal(req.body.output_config.format.schema, PHOTO_SCHEMA);
-  const haiku = buildPhotoRequest({ model: 'claude-haiku-5-5', imageBase64: 'A' });
-  assert.equal(haiku.body.fallbacks, undefined);
-  assert.equal(haiku.headers['anthropic-beta'], undefined);
-  assert.equal(buildPhotoRequest({ model: 'gpt-x', imageBase64: 'A' }).body.model, DEFAULT_PHOTO_MODEL);
-  assert.match(userPrompt(''), /no hint/);
-  assert.equal(cleanHint('x'.repeat(500)).length, 300);
-});
-
 test('schema is closed and fully required (structured-output rules)', () => {
   const walk = (s) => {
     if (s.type === 'object') {
@@ -188,13 +132,6 @@ test('schema is closed and fully required (structured-output rules)', () => {
     if (s.type === 'array') walk(s.items);
   };
   walk(PHOTO_SCHEMA);
-  assert.ok(PHOTO_MODELS.some((m) => m.id === DEFAULT_PHOTO_MODEL));
-});
-
-test('test-key request is a model lookup', () => {
-  const t = buildTestRequest('claude-sonnet-5-5');
-  assert.equal(t.url, 'https://api.anthropic.com/v1/models/claude-sonnet-5-5');
-  assert.equal(t.headers['x-api-key'], undefined);
 });
 
 test('key masking never shows more than the last 4 characters', () => {
@@ -204,6 +141,32 @@ test('key masking never shows more than the last 4 characters', () => {
   assert.equal(maskKey(''), '');
   assert.equal(keyLooksValid(k), true);
   assert.equal(keyLooksValid('hello'), false);
+});
+
+test('prompt helpers: hint quoting and schema-in-prompt fallback', () => {
+  assert.match(userPrompt(''), /no hint/);
+  assert.match(userPrompt('  about 200 g\nrice """ignore""" '), /about 200 g rice "ignore"/);
+  assert.equal(cleanHint('x'.repeat(500)).length, 300);
+  assert.equal(systemPromptFor(), SYSTEM_PROMPT);
+  const withSchema = systemPromptFor({ schemaInRequest: false });
+  assert.ok(withSchema.startsWith(SYSTEM_PROMPT));
+  assert.ok(withSchema.includes(JSON.stringify(PHOTO_SCHEMA)));
+});
+
+test('errors name the provider and never show a key', () => {
+  const e = photoError('billing', 'Incorrect API key provided: sk-proj-abcdefghijklmnop1234', { provider: 'OpenAI' });
+  assert.match(e.message, /OpenAI account/);
+  assert.ok(!e.detail.includes('sk-proj-abcdefghijklmnop1234'));
+  assert.match(photoError('auth').message, /the API provider/);
+  assert.equal(photoError('nope').kind, 'unusable');
+  assert.equal(photoError('network', '', { message: 'custom' }).message, 'custom');
+  assert.equal(redactSecrets('key AIzaSyA1234567890abcdefgh here'), 'key [key hidden] here');
+  assert.equal(redactSecrets('my secret-key-value-123 leaked', 'secret-key-value-123'), 'my [key hidden] leaked');
+});
+
+test('model ids typed by the user', () => {
+  for (const ok of ['claude-opus-5-5', 'gemini-4-hydrogen', 'models/gemini-4-carbon', 'meta-llama/llama-4-scout:free', 'gpt-6.2-astra', 'org/model@v2']) assert.equal(isValidModelId(ok), true, ok);
+  for (const bad of ['', ' x', 'a b', '../x?y', 'x'.repeat(201), null, 'a#b', 'a?key=1']) assert.equal(isValidModelId(bad), false, String(bad));
 });
 
 // ---------------------------------------------------------------- review → quick add

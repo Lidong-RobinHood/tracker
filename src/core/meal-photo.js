@@ -1,27 +1,13 @@
-// Meal-photo analysis: models, prompt, request shape, response/error handling and the
+// Meal-photo analysis, shared by every provider: prompt, output schema, error kinds, and the
 // validation + sanitising of the model's answer. Pure (no DOM, no fetch, no storage) so it is testable.
-// The provider (src/food/photo-provider.js) does the network call; the key never passes through here.
+// Provider-specific request building / response parsing / error mapping lives in src/core/photo-*.js;
+// src/food/photo-provider.js does the network call. The API key never passes through this file.
 import { NUTRIENTS, REQUIRED_NUTRIENTS, macroKcal, sumEntries } from './nutrition.js';
 import { parseDecimal, round } from './numbers.js';
 
-// ---------------------------------------------------------------------------------- models
-// Prices: Anthropic first-party list prices per million input/output tokens (as of Nov 2026).
-// `fallback`: send the server-side refusal fallback (not offered for Haiku 5.5).
-export const PHOTO_MODELS = Object.freeze([
-  { id: 'claude-fable-5-2', label: 'Claude Fable 5.2', note: 'most capable · $8 / $40 per M tokens', fallback: true },
-  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', note: 'very capable · $4 / $20 per M tokens', fallback: true },
-  { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', note: 'faster, cheaper · $2 / $10 per M tokens', fallback: true },
-  { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', note: 'fastest, cheapest · $0.10 / $0.50 per M tokens', fallback: false },
-]);
-export const DEFAULT_PHOTO_MODEL = PHOTO_MODELS[0].id;
-export const isPhotoModel = (id) => PHOTO_MODELS.some((m) => m.id === id);
-
-export const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-export const ANTHROPIC_MODELS_URL = 'https://api.anthropic.com/v1/models';
-export const ANTHROPIC_VERSION = '2026-10-21';
-export const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
 export const MAX_ITEMS = 30;
 export const HINT_MAX = 300;
+export const MAX_OUTPUT_TOKENS = 16000;
 
 // ---------------------------------------------------------------------------------- schema
 const nullableNumber = { anyOf: [{ type: 'number' }, { type: 'null' }] };
@@ -98,67 +84,40 @@ export function userPrompt(hint) {
     : 'Estimate the food in this photo. The user gave no hint.';
 }
 
+/**
+ * System prompt for a request. Where the provider receives PHOTO_SCHEMA through its structured-output
+ * mechanism the prompt is used as is; otherwise (custom endpoints without schema support) the schema is
+ * appended as text so the model still knows the exact answer format.
+ * @param {{schemaInRequest?: boolean}} [o]
+ */
+export function systemPromptFor({ schemaInRequest = true } = {}) {
+  if (schemaInRequest) return SYSTEM_PROMPT;
+  return `${SYSTEM_PROMPT}\n\nThe JSON schema of the answer (reply with one JSON object only, no other text):\n${JSON.stringify(PHOTO_SCHEMA)}`;
+}
+
 /** Trim, collapse whitespace, cap the length, drop characters that could close our quoting. */
 export function cleanHint(hint) {
   return String(hint ?? '').replace(/"""/g, '"').replace(/\s+/g, ' ').trim().slice(0, HINT_MAX);
 }
 
-// ---------------------------------------------------------------------------------- request
-/**
- * Request for the Anthropic Messages API (without the key; the provider adds `x-api-key`).
- * @param {{model: string, imageBase64: string, mediaType?: string, hint?: string}} a
- * @returns {{url: string, headers: Record<string, string>, body: object}}
- */
-export function buildPhotoRequest({ model, imageBase64, mediaType = 'image/jpeg', hint = '' }) {
-  const m = PHOTO_MODELS.find((x) => x.id === model) || PHOTO_MODELS[0];
-  const headers = {
-    'content-type': 'application/json',
-    'anthropic-version': ANTHROPIC_VERSION,
-    'anthropic-dangerous-direct-browser-access': 'true',
-  };
-  const body = {
-    model: m.id,
-    max_tokens: 16000,
-    system: SYSTEM_PROMPT,
-    messages: [{
-      role: 'user',
-      content: [
-        { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
-        { type: 'text', text: userPrompt(hint) },
-      ],
-    }],
-    output_config: { effort: 'medium', format: { type: 'json_schema', schema: PHOTO_SCHEMA } },
-  };
-  if (m.fallback) {
-    headers['anthropic-beta'] = FALLBACK_BETA;
-    body.fallbacks = 'default';
-  }
-  return { url: ANTHROPIC_URL, headers, body };
-}
-
-/** Free request used by "Test key": retrieve the chosen model (validates key + model access, no tokens billed). */
-export function buildTestRequest(model) {
-  return {
-    url: `${ANTHROPIC_MODELS_URL}/${encodeURIComponent(isPhotoModel(model) ? model : DEFAULT_PHOTO_MODEL)}`,
-    headers: { 'anthropic-version': ANTHROPIC_VERSION, 'anthropic-dangerous-direct-browser-access': 'true' },
-  };
-}
-
 // ---------------------------------------------------------------------------------- errors
-/** Error kinds the UI distinguishes. `retry`: a manual "Try again" makes sense. */
+/**
+ * Error kinds the UI distinguishes. `retry`: a manual "Try again" makes sense.
+ * `{p}` is replaced by the provider's name (e.g. "Google Gemini" or the custom service's host).
+ */
 export const ERROR_TEXT = {
-  auth: { retry: false, message: 'The API key was rejected (401). Check it or paste a new one in Photo settings.' },
-  billing: { retry: false, message: 'Your Anthropic account has no credit or billing is not set up. Add credit in the Anthropic Console, then try again.' },
-  permission: { retry: false, message: 'This API key is not allowed to use this model or feature (403). Check the key’s workspace and permissions in the Anthropic Console.' },
-  model: { retry: false, message: 'The selected model is not available to your account. Choose another model in Photo settings.' },
+  auth: { retry: false, message: 'The API key was rejected by {p}. Check it or paste a new one in Photo settings.' },
+  billing: { retry: false, message: 'Your {p} account has no credit left, has used up its quota, or billing is not set up. Check billing and limits with {p}, then try again.' },
+  permission: { retry: false, message: 'This API key is not allowed to use this model or feature (403). Check the key’s project and permissions with {p}.' },
+  model: { retry: false, message: 'The selected model is not available to your account at {p}. Choose another model in Photo settings.' },
   too_large: { retry: false, message: 'The photo is too large for the API. Try a different photo.' },
   rate_limit: { retry: true, message: 'Too many requests right now (rate limit). Wait a minute, then try again.' },
   overloaded: { retry: true, message: 'The model is overloaded at the moment. Try again in a little while.' },
-  server: { retry: true, message: 'The API had a problem on its side. Try again in a little while.' },
-  bad_request: { retry: false, message: 'The API rejected the request.' },
-  network: { retry: true, message: 'Could not reach the API. Check your connection and try again.' },
+  server: { retry: true, message: '{p} had a problem on its side. Try again in a little while.' },
+  bad_request: { retry: false, message: '{p} rejected the request.' },
+  network: { retry: true, message: 'Could not reach {p}. Check your connection and try again.' },
   offline: { retry: true, message: 'You are offline. Connect to the internet and try again.' },
-  refusal: { retry: false, message: 'The model declined to analyse this photo. Try another photo, or add the food manually.' },
+  refusal: { retry: false, message: 'The model declined to analyse this photo, or {p}’s content filter blocked it. Try another photo, or add the food manually.' },
   truncated: { retry: true, message: 'The answer was cut off before it was complete. Try again, or add the food manually.' },
   unusable: { retry: true, message: 'The answer could not be used (it was not in the expected format). Try again, or add the food manually.' },
   empty: { retry: false, message: 'No food was recognised in this photo.' },
@@ -166,46 +125,46 @@ export const ERROR_TEXT = {
   no_key: { retry: false, message: 'No API key is set.' },
 };
 
-/** @returns {{ok: false, kind: string, message: string, retry: boolean, detail?: string}} */
-export function photoError(kind, detail) {
-  const e = ERROR_TEXT[kind] || ERROR_TEXT.unusable;
-  return { ok: false, kind: ERROR_TEXT[kind] ? kind : 'unusable', message: e.message, retry: e.retry, ...(detail ? { detail: String(detail).slice(0, 300) } : {}) };
+/**
+ * @param {string} kind @param {string} [detail] provider's own error text (redacted, shortened)
+ * @param {{provider?: string, message?: string}} [opts] provider name for `{p}`; `message` overrides the default text
+ * @returns {{ok: false, kind: string, message: string, retry: boolean, detail?: string}}
+ */
+export function photoError(kind, detail, opts = {}) {
+  const k = ERROR_TEXT[kind] ? kind : 'unusable';
+  const e = ERROR_TEXT[k];
+  const message = (opts.message || e.message).replace(/\{p\}/g, opts.provider || 'the API provider');
+  const d = detail ? redactSecrets(String(detail)).slice(0, 300) : '';
+  return { ok: false, kind: k, message, retry: e.retry, ...(d ? { detail: d } : {}) };
 }
 
 /**
- * Classify an HTTP error response.
- * @param {number} status @param {any} body parsed error JSON ({type:'error', error:{type, message}}) or null
+ * Hide anything that looks like an API key in text we show (provider error messages sometimes echo a key).
+ * @param {string} text @param {string} [key] the user's key, removed wherever it appears
  */
-export function classifyHttpError(status, body) {
-  const type = body && body.error && typeof body.error.type === 'string' ? body.error.type : '';
-  const msg = body && body.error && typeof body.error.message === 'string' ? body.error.message : '';
-  if (status === 401 || type === 'authentication_error') return photoError('auth');
-  if (status === 402 || type === 'billing_error' || /credit balance|billing|purchase credits/i.test(msg)) return photoError('billing', msg);
-  if (status === 403 || type === 'permission_error') return photoError('permission', msg);
-  if (status === 404 || type === 'not_found_error') return photoError('model', msg);
-  if (status === 413 || type === 'request_too_large') return photoError('too_large');
-  if (status === 429 || type === 'rate_limit_error') return photoError('rate_limit');
-  if (status === 529 || type === 'overloaded_error') return photoError('overloaded');
-  if (status >= 500) return photoError('server', msg);
-  return photoError('bad_request', msg || `HTTP ${status}`);
+export function redactSecrets(text, key) {
+  let t = String(text ?? '');
+  if (key && key.length >= 6) t = t.split(key).join('[key hidden]');
+  return t
+    .replace(/\bsk-[A-Za-z0-9_*.-]{6,}/g, '[key hidden]')
+    .replace(/\bAIza[0-9A-Za-z_-]{10,}/g, '[key hidden]')
+    .replace(/\b(?:Bearer|key=)\s*[A-Za-z0-9_.*-]{12,}/gi, '[key hidden]');
 }
 
-/**
- * Pull the answer text out of a Messages API response, or an error for refusals / cut-off answers.
- * With server-side fallbacks, only text after the last `fallback` block belongs to the final answer.
- * @param {any} res parsed response JSON
- * @returns {{ok: true, text: string, model: string|null} | ReturnType<typeof photoError>}
- */
-export function extractAnswerText(res) {
-  if (!res || typeof res !== 'object' || !Array.isArray(res.content)) return photoError('unusable');
-  if (res.stop_reason === 'refusal') return photoError('refusal');
-  if (res.stop_reason === 'max_tokens') return photoError('truncated');
-  let blocks = res.content;
-  const lastFallback = blocks.map((b) => b && b.type).lastIndexOf('fallback');
-  if (lastFallback >= 0) blocks = blocks.slice(lastFallback + 1);
-  const text = blocks.filter((b) => b && b.type === 'text' && typeof b.text === 'string').map((b) => b.text).join('');
-  if (!text.trim()) return photoError('unusable');
-  return { ok: true, text, model: typeof res.model === 'string' ? res.model : null };
+/** The error message text out of the common provider error shapes ({error:{message}}, {message}, {detail}). */
+export function errorMessageOf(body) {
+  if (!body || typeof body !== 'object') return '';
+  const e = body.error;
+  if (e && typeof e === 'object' && typeof e.message === 'string') return e.message;
+  if (typeof e === 'string') return e;
+  if (typeof body.message === 'string') return body.message;
+  if (typeof body.detail === 'string') return body.detail;
+  return '';
+}
+
+/** Model ids typed by the user: letters, digits and . _ : / @ + - (e.g. "meta-llama/llama-4-scout:free"). */
+export function isValidModelId(id) {
+  return typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/.test(id);
 }
 
 // ---------------------------------------------------------------------------------- parsing

@@ -3,9 +3,10 @@
 // The manual Quick add form below stays usable; while an estimate is shown it is hidden (never cleared).
 import { el, numberInput, toast, fmtNum, fmtAmount, href, emptyState, replaceChildren, confirmDialog } from '../ui/index.js';
 import { scale, sumEntries, isComplete } from '../core/nutrition.js';
-import { itemWarnings, HINT_MAX, PHOTO_MODELS, setPortionValue, photoMealName, photoMealTotals, ENTRY_NAME_MAX } from '../core/meal-photo.js';
+import { itemWarnings, HINT_MAX, setPortionValue, photoMealName, photoMealTotals, ENTRY_NAME_MAX } from '../core/meal-photo.js';
+import { getAdapter } from '../core/photo-providers.js';
 import { mealLabel, quickAddEntry } from '../core/food-diary.js';
-import { getApiKey, getPhotoModel } from './photo-key.js';
+import { activePhotoConfig } from './photo-key.js';
 import { analyseMealPhoto } from './photo-provider.js';
 import { prepareImage } from './photo-image.js';
 import { openFoodEditor } from './food-editor.js';
@@ -57,13 +58,22 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
 
   const scanTitle = () => el('h2', { class: 'section-title photo-scan-title' }, 'Scan meal photo');
 
+  const SETUP_TEXT = { key: 'No API key is set for it yet.', model: 'No model is chosen for it yet.', baseUrl: 'Its base URL is not set yet.' };
   function renderNoKey() {
     setEstimateMode(false);
+    const cfg = activePhotoConfig();
+    const a = getAdapter(cfg.provider);
     replaceChildren(wrap, el('div', { class: 'card stack photo-scan-card' },
       scanTitle(),
       el('p', { class: 'small' }, 'Fill in this meal from a photo: an AI model estimates the foods, portions, calories and macros, and you can change every number before anything is added.'),
-      el('p', { class: 'small muted' }, 'It uses your own Anthropic API key (each analysis is billed to your account). No key is set yet.'),
-      settingsLink('Set up API key')));
+      el('p', { class: 'small muted' }, `It uses your own API key from a provider you choose (Anthropic, Google Gemini, OpenAI or an OpenAI-compatible service); usage is billed by that provider. Selected: ${a.label}. ${SETUP_TEXT[cfg.missing] || ''}`),
+      settingsLink('Set up provider and key')));
+  }
+
+  /** "Anthropic (Claude) · claude-opus-5-5" for the active provider. */
+  function activeLine(cfg) {
+    const a = getAdapter(cfg.provider);
+    return `${a.label} · ${cfg.model || 'no model'}`;
   }
 
   function renderCapture(msg) {
@@ -71,15 +81,17 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
     const pickRow = el('div', { class: 'grid-2' },
       el('button', { type: 'button', class: ['btn', photo ? null : 'btn-primary'], onClick: () => camIn.click() }, photo ? 'Retake photo' : '📷 Take photo'),
       el('button', { type: 'button', class: 'btn', onClick: () => libIn.click() }, 'Choose photo'));
+    const cfg = activePhotoConfig();
     if (!photo) {
       replaceChildren(wrap, el('div', { class: 'card stack photo-scan-card' },
         scanTitle(),
         el('p', { class: 'small muted' }, 'Estimate calories and macros from a photo, then adjust them before adding. Or type the values below.'),
         msg || null,
-        pickRow, camIn, libIn));
+        pickRow, camIn, libIn,
+        el('p', { class: 'small muted row-between photo-model-line' },
+          el('span', { class: 'photo-active-provider' }, activeLine(cfg)), settingsLink('Settings'))));
       return;
     }
-    const model = PHOTO_MODELS.find((m) => m.id === getPhotoModel());
     replaceChildren(wrap, el('div', { class: 'card stack photo-scan-card' },
       el('div', { class: 'row-between' }, scanTitle(),
         el('button', { type: 'button', class: 'btn btn-sm btn-ghost', onClick: () => { dropPhoto(); renderCapture(); } }, 'Remove photo')),
@@ -90,7 +102,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
       msg || null,
       el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: analyse }, 'Analyse'),
       el('p', { class: 'small muted row-between photo-model-line' },
-        el('span', null, `Model: ${model ? model.label : getPhotoModel()} · billed to your account`), settingsLink('Settings'))));
+        el('span', { class: 'photo-active-provider' }, `${activeLine(cfg)} · billed by the provider`), settingsLink('Settings'))));
   }
 
   async function choose(file) {
@@ -109,13 +121,14 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
   // ------------------------------------------------------------ analysis
   async function analyse() {
     if (!photo || ctrl) return;
-    const apiKey = getApiKey();
-    if (!apiKey) { renderNoKey(); return; }
+    const cfg = activePhotoConfig();
+    if (cfg.missing) { renderNoKey(); return; }
     const c = ctrl = new AbortController();
     const started = Date.now();
-    const model = getPhotoModel();
+    const { model } = cfg;
+    const providerName = getAdapter(cfg.provider).name;
     const status = el('p', { class: 'muted', role: 'status' });
-    const tick = () => { status.textContent = `Analysing with ${model}… ${Math.round((Date.now() - started) / 1000)} s`; };
+    const tick = () => { status.textContent = `Analysing with ${providerName} · ${model}… ${Math.round((Date.now() - started) / 1000)} s`; };
     tick();
     timer = setInterval(tick, 1000);
     replaceChildren(wrap, el('div', { class: 'card stack photo-scan-card' },
@@ -125,13 +138,13 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
       status,
       el('p', { class: 'small muted' }, 'This usually takes 10–60 seconds. Cancelling stops waiting; a request already received by the API may still be billed.'),
       el('button', { type: 'button', class: 'btn btn-block', onClick: () => c.abort() }, 'Cancel')));
-    const r = await analyseMealPhoto(photo.blob, { apiKey, model, hint: hint.value, signal: c.signal });
+    const r = await analyseMealPhoto(photo.blob, { provider: cfg.provider, apiKey: cfg.apiKey, model, baseUrl: cfg.baseUrl, useSchema: cfg.useSchema, hint: hint.value, signal: c.signal });
     clearInterval(timer);
     if (ctrl !== c) return;
     ctrl = null;
     if (!wrap.isConnected && c.signal.aborted) return; // view gone
     if (r.ok) {
-      usedModel = r.model || model;
+      usedModel = `${providerName} · ${r.model || model}`;
       lastNote = r.note;
       rows = r.items.map((it) => ({ ...it, remember: false }));
       nameTouched = false;
@@ -146,7 +159,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
     const actions = [];
     if (r.retry && r.kind !== 'cancelled') actions.push(el('button', { type: 'button', class: 'btn btn-primary', onClick: analyse }, 'Try again'));
     if (r.kind === 'cancelled') actions.push(el('button', { type: 'button', class: 'btn btn-primary', onClick: analyse }, 'Analyse again'));
-    if (['auth', 'billing', 'permission', 'model', 'no_key'].includes(r.kind)) actions.push(settingsLink());
+    if (['auth', 'billing', 'permission', 'model', 'no_key', 'bad_request', 'network'].includes(r.kind)) actions.push(settingsLink());
     actions.push(el('button', { type: 'button', class: 'btn btn-ghost', onClick: () => { rows = []; lastNote = ''; nameTouched = false; renderReview(); addManual(); } }, 'Add items manually'));
     actions.push(el('button', { type: 'button', class: 'btn btn-ghost', onClick: () => renderCapture() }, 'Back to photo'));
     const isInfo = r.kind === 'cancelled' || r.kind === 'empty';
@@ -303,7 +316,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
   function reset() {
     rows = []; lastNote = ''; usedModel = ''; nameTouched = false;
     dropPhoto(); hint.value = '';
-    if (getApiKey()) renderCapture(); else renderNoKey();
+    if (!activePhotoConfig().missing) renderCapture(); else renderNoKey();
   }
 
   function readyRows() { return rows.filter((r) => typeof r.amount === 'number' && r.amount > 0 && isComplete(r)); }
@@ -382,7 +395,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
     el: wrap,
     show() {
       if (ctrl || rows.length || wrap.childElementCount) return; // keep the current state
-      if (!getApiKey()) renderNoKey();
+      if (activePhotoConfig().missing) renderNoKey();
       else renderCapture();
     },
   };
