@@ -1,0 +1,97 @@
+// Portions and serving sizes. Pure, no DOM.
+import { parseDecimal, round } from './numbers.js';
+
+/** Label of the serving chip for a whole pack (never used as the default amount). */
+export const PACK_LABEL = 'Whole pack';
+
+/** Units we understand in serving/quantity text, converted to g or ml. */
+const UNITS = {
+  g: ['g', 1], gr: ['g', 1], gram: ['g', 1], grams: ['g', 1], gramm: ['g', 1], kg: ['g', 1000], mg: ['g', 0.001],
+  ml: ['ml', 1], cl: ['ml', 10], dl: ['ml', 100], l: ['ml', 1000], lt: ['ml', 1000], liter: ['ml', 1000], litre: ['ml', 1000],
+  oz: ['g', 28.3495],
+};
+const NUM = String.raw`(\d+(?:[.,]\d+)?)`;
+const UNIT_RE = new RegExp(String.raw`${NUM}\s*(kg|mg|gr|grams?|gramm|g|ml|cl|dl|l|lt|lit(?:er|re)|oz)\b`, 'gi');
+
+/**
+ * Find a metric amount in free text like "30 g", "1 slice (30 g)", "250ml", "1 cup (240 mL)", "0,5 l".
+ * A value in parentheses wins (it is usually the metric equivalent of a household measure).
+ * @param {string|null|undefined} text
+ * @returns {{amount: number, unit: 'g'|'ml'} | null}
+ */
+export function parseAmountText(text) {
+  const s = String(text ?? '');
+  if (!s.trim()) return null;
+  const matches = [...s.matchAll(UNIT_RE)];
+  if (!matches.length) return null;
+  const inParens = matches.find((m) => {
+    const before = s.slice(0, m.index);
+    return before.lastIndexOf('(') > before.lastIndexOf(')');
+  });
+  const m = inParens || matches[0];
+  const n = parseDecimal(m[1]);
+  const def = UNITS[m[2].toLowerCase()];
+  if (n === null || !def || n <= 0) return null;
+  return { amount: round(n * def[1], 1), unit: /** @type {'g'|'ml'} */ (def[0]) };
+}
+
+/**
+ * Turn an Open Food Facts style serving text into a serving chip, e.g.
+ * "1 portion (15 g)" -> {label: '1 portion', amount: 15}; "30 g" -> {label: 'Serving', amount: 30}.
+ * @param {string|null|undefined} text
+ * @param {number|null} [quantity] numeric serving quantity if the source gives one (g/ml)
+ * @returns {{label: string, amount: number} | null}
+ */
+export function servingFromText(text, quantity = null) {
+  const parsed = parseAmountText(text);
+  const amount = parsed ? parsed.amount : (Number.isFinite(quantity) && quantity > 0 ? round(quantity, 1) : null);
+  if (amount === null) return null;
+  let label = String(text ?? '').replace(/\([^)]*\)/g, '').replace(UNIT_RE, '').replace(/\s+/g, ' ').trim();
+  label = label.replace(/^[\s,.:;-]+|[\s,.:;-]+$/g, '');
+  if (!label || /^\d+([.,]\d+)?$/.test(label)) label = 'Serving';
+  if (label.length > 28) label = `${label.slice(0, 27).trim()}…`;
+  return { label, amount };
+}
+
+/**
+ * Remove duplicates (same amount) and nonsense from a serving list. Keeps order.
+ * @param {Array<{label: string, amount: number}>} servings
+ */
+export function cleanServings(servings) {
+  const out = [];
+  const seen = new Set();
+  for (const s of servings || []) {
+    if (!s || !Number.isFinite(s.amount) || s.amount <= 0) continue;
+    const key = round(s.amount, 1);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ label: String(s.label || 'Serving').trim() || 'Serving', amount: key });
+  }
+  return out;
+}
+
+/**
+ * Default amount on the portion screen: last logged amount, else first serving (not the whole pack), else 100.
+ * @param {{lastAmount?: number|null, servings?: Array<{amount: number}>}} food
+ */
+export function defaultAmount(food) {
+  if (food && Number.isFinite(food.lastAmount) && food.lastAmount > 0) return food.lastAmount;
+  const s = food && food.servings && food.servings.find((x) => Number.isFinite(x.amount) && x.amount > 0 && x.label !== PACK_LABEL);
+  if (s) return s.amount;
+  return 100;
+}
+
+/**
+ * Multiply an amount for the ×½ / ×2 chips, rounded sensibly (whole numbers above 10).
+ * @param {number} amount @param {number} factor
+ */
+export function multiplyAmount(amount, factor) {
+  const n = amount * factor;
+  return n >= 10 ? Math.round(n) : round(n, 1);
+}
+
+/** 'g' or 'ml' from a pack quantity such as "1 l", "330 ml", "500 g". Defaults to 'g'. */
+export function basisFromQuantity(text) {
+  const p = parseAmountText(text);
+  return p ? p.unit : 'g';
+}

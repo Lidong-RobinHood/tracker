@@ -1,0 +1,93 @@
+/* Food feature styles. Uses the shared tokens from app.css; light + dark come from there. */
+
+/* ---------------------------------------------------------------- diary header */
+.date-picker { position: relative; overflow: hidden; }
+.date-picker .icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.date-picker-input {
+  position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0;
+  opacity: 0; padding: 0; border: 0; cursor: pointer;
+}
+.today-link { align-self: flex-start; }
+
+/* ---------------------------------------------------------------- day summary */
+.day-summary { display: flex; flex-direction: column; gap: var(--s3); }
+.kcal-line { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--s3); }
+.kcal-remaining { text-align: right; }
+.kcal-big { font-size: 28px; font-weight: 700; line-height: 1.1; }
+.macro-bars { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); }
+.macro-bar { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.macro-label { font-weight: 600; }
+.macro-amounts { font-weight: 600; white-space: nowrap; }
+.bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.bar-kcal { height: 10px; }
+.bar-fill { height: 100%; border-radius: inherit; background: var(--accent); transition: width .2s ease-out; }
+.bar-protein .bar-fill { background: var(--success); }
+.bar-carbs .bar-fill { background: var(--dropset); }
+.bar-fat .bar-fill { background: var(--warning); }
+.bar.is-over .bar-fill { background: var(--danger); }
+
+/* ---------------------------------------------------------------- meal cards */
+.meal-head { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s2) var(--s2) var(--s4); min-height: 52px; }
+.meal-title { font-size: var(--fs-lg); font-weight: 600; }
+.meal-kcal { font-weight: 600; white-space: nowrap; }
+.meal-card .list { border-top: 1px solid var(--border); }
+.entry-row .li-trail { font-weight: 500; }
+.add-row { color: var(--accent); font-weight: 500; border-top: 1px solid var(--border); }
+.add-plus {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700;
+}
+.menu-list .list-item { padding: var(--s2) 0; }
+
+/* ---------------------------------------------------------------- add screen */
+.add-tabs { position: sticky; top: 52px; z-index: 4; box-shadow: 0 0 0 var(--s2) var(--bg); }
+.add-tabs > button { min-height: var(--tap); }
+.add-body { display: flex; flex-direction: column; gap: var(--s3); }
+.food-row .li-sub .badge { vertical-align: 1px; }
+.food-row .li-trail { max-width: 42%; white-space: nowrap; }
+.search-note { padding: 0 var(--s1); }
+.badge-edited { background: var(--accent-soft); color: var(--accent); }
+.badge-src-off { background: var(--warning-soft); color: var(--warning); }
+.badge-src-usda { background: var(--surface-2); color: var(--success); }
+.badge-src-custom { background: var(--dropset-soft); color: var(--dropset); }
+
+.scan-box {
+  position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: var(--radius);
+  background: #000; overflow: hidden;
+}
+.scan-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-guide { position: absolute; left: 12%; right: 12%; top: 50%; height: 2px; background: rgb(255 80 80 / .8); box-shadow: 0 0 6px rgb(255 80 80 / .8); display: none; }
+.scan-box.is-on .scan-guide { display: block; }
+.barcode-form .input { flex: 1 1 auto; min-width: 0; }
+
+.meal-row { padding-right: var(--s2) !important; }
+.meal-open { background: none; border: 0; text-align: left; padding: 0; min-height: var(--tap); cursor: pointer; display: flex; flex-direction: column; justify-content: center; }
+
+/* ---------------------------------------------------------------- portion sheet */
+.portion-head { display: flex; flex-direction: column; gap: 2px; }
+.portion-name { font-size: var(--fs-lg); font-weight: 600; overflow-wrap: anywhere; }
+.portion-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.portion-amount-row { display: flex; flex-direction: column; gap: var(--s1); }
+.portion-amount { font-size: 24px; font-weight: 600; min-height: 52px; }
+.portion-values { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3); background: var(--surface-2); border: 0; box-shadow: none; }
+.portion-kcal { font-size: var(--fs); color: var(--text-muted); }
+.portion-kcal .big { font-size: 30px; font-weight: 700; color: var(--text); }
+.macro-cell { min-width: 0; }
+.macro-val { font-weight: 600; }
+.edit-values { align-self: flex-start; color: var(--accent); }
+.portion-sheet .overlay-footer .btn { flex: 1; }
+
+/* ---------------------------------------------------------------- editor */
+.editor-note { padding: var(--s2) var(--s3); border-radius: var(--radius-sm); background: var(--warning-soft); color: var(--text); font-size: var(--fs-sm); }
+.serving-row { display: grid; grid-template-columns: minmax(0, 1fr) 7.5em var(--tap); gap: var(--s2); align-items: center; }
+.check-row { min-height: var(--tap); gap: var(--s3); cursor: pointer; }
+.food-editor .grid-2 { align-items: start; }
+/* .tabs scrolls horizontally; inside a flex column (sheet body) it must not shrink to nothing. */
+.overlay-body > .tabs, .add-body .tabs { flex: none; }
+
+/* ---------------------------------------------------------------- saved meals */
+.meal-item-row { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) 0; border-top: 1px solid var(--border); }
+.list > .meal-item-row:first-child { border-top: 0; }
+.meal-amount { width: 7.5em; flex: none; }
+.meal-total { font-weight: 600; }
+.plain-list { margin: 0; padding-left: 1.2em; }

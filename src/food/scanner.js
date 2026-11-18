@@ -1,0 +1,157 @@
+// Camera barcode scanner, ported from the phone-tested spike (spike/app.js).
+// Native BarcodeDetector if it supports all four retail formats, else the vendored ZXing ponyfill
+// (classic script that sets window.BarcodeDetectionAPI + wasm), loaded lazily on first use.
+import { normaliseScan } from '../core/barcode.js';
+
+const FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e'];
+const CONFIRM_HITS = 2;          // same code must be read in 2 frames before we accept it
+const CONFIRM_WINDOW_MS = 2500;
+const PONYFILL_URL = new URL('../../vendor/barcode-detector/ponyfill.js', import.meta.url).href;
+const WASM_URL = new URL('../../vendor/barcode-detector/zxing_reader.wasm', import.meta.url).href;
+const ZX_OVERRIDES = { locateFile: (path, prefix) => (path.endsWith('.wasm') ? WASM_URL : prefix + path) };
+
+/** @type {Promise<{kind: 'native'|'zxing'|'none', detector?: any, note?: string}> | null} */
+let decoderPromise = null;
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('could not load the barcode decoder script'));
+    document.head.append(s);
+  });
+}
+
+async function setupZxing(note) {
+  if (!window.BarcodeDetectionAPI) await loadScript(PONYFILL_URL);
+  const api = window.BarcodeDetectionAPI;
+  if (!api || !api.BarcodeDetector) throw new Error('fallback library failed to load');
+  // Load the wasm now (it is only fetched once and cached by the browser/service worker).
+  await api.prepareZXingModule({ overrides: ZX_OVERRIDES, fireImmediately: true });
+  return { kind: 'zxing', detector: new api.BarcodeDetector({ formats: FORMATS }), note };
+}
+
+/** Pick the decoder once per page load. `?decoder=zxing` in the hash query forces the fallback. */
+export function getDecoder(force) {
+  if (!decoderPromise) {
+    decoderPromise = (async () => {
+      if (force === 'zxing') return setupZxing('forced');
+      if (!('BarcodeDetector' in window)) return setupZxing('no native BarcodeDetector');
+      try {
+        const fmts = await window.BarcodeDetector.getSupportedFormats();
+        const missing = FORMATS.filter((f) => !fmts.includes(f));
+        if (missing.length) return setupZxing(`native lacks ${missing.join(',')}`);
+        return { kind: 'native', detector: new window.BarcodeDetector({ formats: FORMATS }) };
+      } catch (e) {
+        return setupZxing(`native failed: ${e && e.message || e}`);
+      }
+    })();
+    decoderPromise.catch(() => { decoderPromise = null; });
+  }
+  return decoderPromise;
+}
+
+export function cameraErrorText(e) {
+  const n = e && e.name;
+  if (n === 'NotAllowedError' || n === 'PermissionDeniedError') return 'Camera permission denied. Allow camera access for this site in the browser settings (iPhone: Settings › Safari › Camera, or the "aA" menu; Android: lock icon in the address bar › Permissions), then try again. You can also type the barcode below.';
+  if (n === 'NotFoundError' || n === 'DevicesNotFoundError' || n === 'OverconstrainedError') return 'No suitable camera found on this device. Type the barcode below.';
+  if (n === 'NotReadableError' || n === 'TrackStartError') return 'The camera is in use by another app or could not be started. Close other camera apps and retry.';
+  if (n === 'SecurityError') return 'Camera blocked for security reasons (the page must be opened over https).';
+  return `Could not start the camera: ${n ? `${n} – ` : ''}${e && e.message || e}`;
+}
+
+/**
+ * @param {{video: HTMLVideoElement, onStatus: (msg: string, isError?: boolean) => void,
+ *          onCode: (code: string, info: {format: string, note: string, decoder: string}) => void,
+ *          onState?: (running: boolean) => void, force?: string}} opts
+ */
+export function createScanner({ video, onStatus, onCode, onState = () => {}, force }) {
+  const st = { stream: null, scanning: false, timer: null, busy: false, candidate: null, errors: 0, decoder: null, destroyed: false, starting: false };
+
+  function stop() {
+    st.scanning = false;
+    clearTimeout(st.timer);
+    st.timer = null;
+    if (st.stream) st.stream.getTracks().forEach((t) => t.stop());
+    st.stream = null;
+    video.srcObject = null;
+    onState(false);
+  }
+
+  async function start() {
+    if (st.stream || st.starting || st.destroyed) return;
+    if (!window.isSecureContext) { onStatus('The camera only works over https:// (or localhost). Type the barcode below.', true); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { onStatus('This browser does not provide camera access. Type the barcode below.', true); return; }
+    st.starting = true;
+    onStatus('Starting camera…');
+    try {
+      // Choose/load the decoder in parallel with the permission prompt.
+      const decP = getDecoder(force).then((d) => d, (e) => ({ kind: 'none', note: e && e.message || String(e) }));
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      if (st.destroyed) { stream.getTracks().forEach((t) => t.stop()); return; }
+      st.stream = stream;
+      video.srcObject = stream;
+      onState(true);
+      await video.play().catch(() => { /* muted + playsinline normally suffices */ });
+      const dec = await decP;
+      if (!st.stream) return;
+      if (dec.kind === 'none') { stop(); onStatus(`Barcode decoder failed to load (${dec.note}). Type the barcode below.`, true); return; }
+      st.decoder = dec;
+      st.scanning = true; st.candidate = null; st.errors = 0;
+      onStatus('Point the camera at a barcode.');
+      tick();
+    } catch (e) {
+      stop();
+      onStatus(cameraErrorText(e), true);
+    } finally {
+      st.starting = false;
+    }
+  }
+
+  function tick() {
+    if (!st.scanning) return;
+    const delay = st.decoder.kind === 'zxing' ? 100 : 80;
+    if (st.busy || video.readyState < 2 || !video.videoWidth) { st.timer = setTimeout(tick, delay); return; }
+    st.busy = true;
+    st.decoder.detector.detect(video).then((codes) => {
+      st.busy = false;
+      if (!st.scanning) return;
+      for (const c of codes) {
+        const n = normaliseScan(c.rawValue, c.format);
+        if (n && candidate(n, c.format)) return; // accepted -> loop stopped
+      }
+      st.timer = setTimeout(tick, delay);
+    }, (e) => {
+      st.busy = false;
+      if (!st.scanning) return;
+      if (++st.errors >= 5) { stop(); onStatus(`The decoder keeps failing (${e && e.message || e}). Type the barcode below.`, true); return; }
+      st.timer = setTimeout(tick, 300);
+    });
+  }
+
+  function candidate(n, format) {
+    const now = Date.now();
+    let c = st.candidate;
+    if (!c || c.code !== n.code || now - c.first > CONFIRM_WINDOW_MS) { c = st.candidate = { code: n.code, hits: 1, first: now }; } else c.hits++;
+    if (c.hits < CONFIRM_HITS) return false;
+    stop();
+    if (navigator.vibrate) { try { navigator.vibrate(80); } catch { /* ignore */ } }
+    onCode(n.code, { format, note: n.note, decoder: st.decoder.kind });
+    return true;
+  }
+
+  const onHidden = () => { if (document.hidden && st.stream) { stop(); onStatus('Camera stopped while the app was in the background. Tap “Scan” to resume.'); } };
+  document.addEventListener('visibilitychange', onHidden);
+
+  return {
+    start,
+    stop,
+    get running() { return Boolean(st.stream); },
+    destroy() { st.destroyed = true; stop(); document.removeEventListener('visibilitychange', onHidden); },
+  };
+}
