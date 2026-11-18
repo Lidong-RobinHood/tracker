@@ -21,6 +21,7 @@
 //     the surrounding ±14 days, with extra uncertainty (missingIntakeSdKcal).
 //   - Today's intake is never used.
 import { addDays, daysBetween, weekStart, isValidDate } from './dates.js';
+import { splitMacrosFor } from './macro-split.js';
 
 export const KCAL_PER_KG = 7700;
 
@@ -406,9 +407,16 @@ export function buildCheckIn({ today, weights, intake, goal, profile = null, tar
   const basisKind = estimate.status === 'ok' ? 'data' : estimate.formula ? 'formula' : null;
   const tdee = basisKind === 'data' ? estimate.tdee : basisKind === 'formula' ? estimate.formula.kcal : null;
   const previousKcal = targets && targets.source === 'adaptive' ? targets.kcal : null;
-  const proposal = tdee !== null && weightKg !== null
+  let proposal = tdee !== null && weightKg !== null
     ? weeklyTarget({ tdee, rateKgPerWeek: rate, weightKg, sex: profile && profile.sex, previousKcal, config: cfg })
     : null;
+  // Percent mode: the macro split is the user's explicit choice, so only the calories adapt and
+  // the grams follow the stored percentages (macro-split.js).
+  const split = proposal ? splitMacrosFor(targets, proposal.kcal) : null;
+  if (split) {
+    const { protein, carbs, fat } = proposal;
+    proposal = { ...proposal, ...split, split: 'percent', byWeight: { protein, carbs, fat } };
+  }
   return {
     weekStart: thisWeek, reviewFrom, reviewTo,
     avgIntake, daysLogged: validWeek.length, incompleteDays: week.length - validWeek.length,
@@ -422,7 +430,11 @@ export function buildCheckIn({ today, weights, intake, goal, profile = null, tar
  * @returns {{targets: object|null, history: object}} targets is null for 'kept' (nothing changes)
  */
 export function checkInRecords(checkIn, decision, currentTargets, now) {
-  const p = checkIn.proposal;
+  let p = checkIn.proposal;
+  // Follow the split stored at answer time (it may differ from when the check-in was built).
+  const split = p ? splitMacrosFor(currentTargets, p.kcal) : null;
+  if (split) p = { ...p, ...split };
+  else if (p && p.byWeight) p = { ...p, ...p.byWeight };   // built in percent mode, now grams
   const accepted = decision === 'accepted' && p;
   return {
     targets: accepted ? { ...currentTargets, kcal: p.kcal, protein: p.protein, carbs: p.carbs, fat: p.fat, source: 'adaptive' } : null,

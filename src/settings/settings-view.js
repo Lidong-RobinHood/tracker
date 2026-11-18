@@ -2,6 +2,7 @@
 import { el, pageHeader, field, numberInput, toast, confirmDialog, fmtNum, fmtBytes } from '../ui/index.js';
 import * as db from '../db/db.js';
 import { macroKcal } from '../core/nutrition.js';
+import { MACROS, SPLIT_PRESETS, targetMode, validateSplit, macroGrams, gramsFromPct, pctFromGrams, pctOfKcal, carbsRest } from '../core/macro-split.js';
 import { today } from '../core/dates.js';
 import { APP_VERSION } from '../version.js';
 import { ACTIVITY_LEVELS, GOAL_RATE_MIN, GOAL_RATE_MAX, ADAPTIVE_DEFAULTS } from '../core/adaptive.js';
@@ -15,11 +16,13 @@ const STORE_LABELS = {
 export async function mountSettings(container) {
   const [targets, volume, goal, profile, adaptive] = await Promise.all([db.getSetting('targets'), db.getSetting('volume'),
     db.getSetting('goal'), db.getSetting('profile'), db.getSetting('adaptive')]);
+  const goalEl = goalSection(targets, goal, profile, adaptive || {});
   container.append(
     pageHeader({ title: 'Settings' }),
-    targetsSection(targets),
-    goalSection(targets, goal, profile, adaptive || {}),
+    targetsSection(targets, (t) => goalEl.updateSplitNote(t)),
+    goalEl,
     volumeSection(volume),
+    linksSection(),
     dataSection(),
     storageSection(),
     aboutSection(),
@@ -32,39 +35,158 @@ function section(title, ...children) {
 
 // ---------------------------------------------------------------- targets
 
-function targetsSection(targets) {
-  const inputs = {
-    kcal: numberInput({ value: targets.kcal, min: 0, max: 20000, decimals: 0, ariaLabel: 'Calories target' }),
-    protein: numberInput({ value: targets.protein, min: 0, max: 1000, decimals: 0, ariaLabel: 'Protein target' }),
-    carbs: numberInput({ value: targets.carbs, min: 0, max: 2000, decimals: 0, ariaLabel: 'Carbohydrates target' }),
-    fat: numberInput({ value: targets.fat, min: 0, max: 1000, decimals: 0, ariaLabel: 'Fat target' }),
-  };
-  const hint = el('p', { class: 'field-hint' });
-  const updateHint = () => {
-    const m = { protein: inputs.protein.getNumber(), carbs: inputs.carbs.getNumber(), fat: inputs.fat.getNumber() };
-    hint.textContent = `Macros add up to ${fmtNum(macroKcal(m), 0)} kcal.`;
-  };
-  for (const k of ['protein', 'carbs', 'fat']) inputs[k].addEventListener('input', updateHint);
-  updateHint();
+const MACRO_LABEL = { protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
 
-  const save = async () => {
-    const v = {};
-    for (const [k, input] of Object.entries(inputs)) {
-      v[k] = input.getNumber();
-      if (v[k] === null) { input.focus(); toast(`Enter a valid ${k} target.`, { type: 'error' }); return; }
+/** Targets as grams (always stored) or as a percentage split of calories (mode 'percent', see core/macro-split.js). */
+function targetsSection(targets, onSaved) {
+  let mode = targetMode(targets);
+  const kcalInput = numberInput({ value: targets.kcal, min: 0, max: 20000, decimals: 0, ariaLabel: 'Calories target' });
+  const grams = {
+    protein: numberInput({ value: targets.protein, min: 0, max: 1000, decimals: 0, ariaLabel: 'Protein target in grams' }),
+    carbs: numberInput({ value: targets.carbs, min: 0, max: 2000, decimals: 0, ariaLabel: 'Carbohydrates target in grams' }),
+    fat: numberInput({ value: targets.fat, min: 0, max: 1000, decimals: 0, ariaLabel: 'Fat target in grams' }),
+  };
+  const storedPct = mode === 'percent' && targets.pct ? targets.pct : {};
+  const pct = Object.fromEntries(MACROS.map((k) => [k, numberInput({ value: storedPct[k] ?? null, min: 0, max: 100, decimals: 1,
+    ariaLabel: `${MACRO_LABEL[k]} share of calories in percent` })]));
+  // Percent fields: whole numbers or one decimal only.
+  const readPct = (k) => {
+    const n = pct[k].getNumber();
+    return n !== null && Math.abs(n * 10 - Math.round(n * 10)) < 1e-9 ? n : null;
+  };
+  const pctValues = () => Object.fromEntries(MACROS.map((k) => [k, readPct(k)]));
+  const gramValues = () => Object.fromEntries(MACROS.map((k) => [k, grams[k].getNumber()]));
+
+  const gramHints = Object.fromEntries(MACROS.map((k) => [k, el('div', { class: 'field-hint num', 'aria-live': 'polite' })]));
+  const pctHints = Object.fromEntries(MACROS.map((k) => [k, el('div', { class: 'field-hint num', 'aria-live': 'polite' })]));
+  const withHint = (label, control, unit, hint) => {
+    const f = field(label, control, { unit });
+    f.append(hint);
+    return f;
+  };
+  const macrosHint = el('p', { class: 'field-hint' });
+  const sumLine = el('p', { class: 'small num', 'aria-live': 'polite' });
+  const restBtn = el('button', { class: 'btn btn-sm', type: 'button' }, 'Set carbs to the rest');
+  const presetChips = SPLIT_PRESETS.map((p) => el('button', { class: 'chip', type: 'button', 'aria-pressed': 'false',
+    'aria-label': `${p.pct.protein} % protein, ${p.pct.carbs} % carbs, ${p.pct.fat} % fat`,
+    onClick: () => { for (const k of MACROS) pct[k].setNumber(p.pct[k]); update(); } }, p.label));
+  const saveBtn = el('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save targets');
+
+  const gramsPanel = el('div', { class: 'stack' },
+    el('div', { class: 'grid-3' },
+      MACROS.map((k) => withHint(MACRO_LABEL[k], grams[k], 'g', gramHints[k]))),
+    macrosHint);
+  const pctPanel = el('div', { class: 'stack' },
+    el('div', { class: 'chips', role: 'group', 'aria-label': 'Preset splits' }, presetChips),
+    el('div', { class: 'grid-3' },
+      MACROS.map((k) => withHint(MACRO_LABEL[k], pct[k], '%', pctHints[k]))),
+    el('div', { class: 'row-between' }, sumLine, restBtn),
+    el('p', { class: 'field-hint' }, 'Protein and carbs 4 kcal/g, fat 9 kcal/g. Grams are rounded to whole numbers.'));
+
+  const tabBtn = (m, label) => el('button', { type: 'button', role: 'tab', dataset: { mode: m }, onClick: () => switchMode(m) }, label);
+  const tabs = el('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Enter macros as' }, tabBtn('grams', 'Grams'), tabBtn('percent', 'Percent'));
+
+  function update() {
+    const kcal = kcalInput.getNumber();
+    for (const b of tabs.children) b.setAttribute('aria-selected', String(b.dataset.mode === mode));
+    gramsPanel.hidden = mode !== 'grams';
+    pctPanel.hidden = mode !== 'percent';
+    if (mode === 'grams') {
+      const g = gramValues();
+      for (const k of MACROS) {
+        const share = pctOfKcal(kcal, g[k], k);
+        gramHints[k].textContent = share === null ? ' ' : `${fmtNum(share, 0)} % of kcal`;
+      }
+      macrosHint.textContent = `Macros add up to ${fmtNum(macroKcal(g), 0)} kcal.`;
+      saveBtn.disabled = false;
+      return;
     }
-    await db.setSetting('targets', { ...targets, ...v, source: 'manual' });
-    toast('Targets saved', { type: 'success' });
-  };
+    const p = pctValues();
+    for (const k of MACROS) {
+      if (pct[k].value.trim() && p[k] === null) pct[k].setAttribute('aria-invalid', 'true');
+      const g = macroGrams(kcal, p[k], k);
+      pctHints[k].textContent = g === null ? '= – g' : `= ${fmtNum(Math.round(g), 0)} g`;
+    }
+    const v = validateSplit(p);
+    const allValid = MACROS.every((k) => p[k] !== null);
+    sumLine.className = `small num ${v.ok ? 'text-success' : 'text-warning'}`;
+    const badInput = MACROS.some((k) => pct[k].value.trim() && p[k] === null);
+    sumLine.textContent = badInput ? 'Use 0–100 with at most one decimal.'
+      : !allValid ? `Total ${fmtNum(v.sum)} % (enter all three)`
+      : v.ok ? `Total ${fmtNum(v.sum)} % ✓`
+        : v.diff < 0 ? `Total ${fmtNum(v.sum)} % · ${fmtNum(-v.diff)} % left to assign`
+          : `Total ${fmtNum(v.sum)} % · ${fmtNum(v.diff)} % too much`;
+    const rest = carbsRest(p);
+    restBtn.disabled = rest === null || (v.ok && p.carbs === rest);
+    restBtn.textContent = rest === null ? 'Set carbs to the rest' : `Set carbs to the rest (${fmtNum(rest)} %)`;
+    for (const [i, preset] of SPLIT_PRESETS.entries()) {
+      presetChips[i].setAttribute('aria-pressed', String(MACROS.every((k) => p[k] === preset.pct[k])));
+    }
+    saveBtn.disabled = !(v.ok && allValid && kcal !== null);
+  }
 
+  // Remembers what the last switch produced, so switching back without edits restores the exact values.
+  let memo = mode === 'percent' ? { kcal: targets.kcal, grams: gramValues(), pct: pctValues() } : null;
+  const same = (a, b) => !!a && !!b && MACROS.every((k) => a[k] === b[k]);
+
+  function switchMode(next) {
+    if (next === mode) return;
+    const kcal = kcalInput.getNumber();
+    if (next === 'percent') {
+      const g = gramValues();
+      let p = memo && memo.kcal === kcal && same(memo.grams, g) ? memo.pct : null;
+      if (!p) p = pctFromGrams(g, 0);
+      if (p) for (const k of MACROS) pct[k].setNumber(p[k]);
+      memo = { kcal, grams: g, pct: pctValues() };
+    } else {
+      const p = pctValues();
+      let g = memo && memo.kcal === kcal && same(memo.pct, p) ? memo.grams : null;
+      if (!g && validateSplit(p).ok && kcal !== null) g = gramsFromPct(kcal, p);
+      if (g) for (const k of MACROS) grams[k].setNumber(g[k]);
+      memo = { kcal, grams: gramValues(), pct: p };
+    }
+    mode = next;
+    update();
+  }
+
+  kcalInput.addEventListener('input', update);
+  for (const k of MACROS) { grams[k].addEventListener('input', update); pct[k].addEventListener('input', update); }
+  restBtn.addEventListener('click', () => {
+    const rest = carbsRest(pctValues());
+    if (rest !== null) { pct.carbs.setNumber(rest); update(); }
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    const kcal = kcalInput.getNumber();
+    if (kcal === null) { kcalInput.focus(); toast('Enter a valid calories target.', { type: 'error' }); return; }
+    const current = await db.getSetting('targets');
+    let next;
+    if (mode === 'grams') {
+      const g = gramValues();
+      for (const k of MACROS) {
+        if (g[k] === null) { grams[k].focus(); toast(`Enter a valid ${k} target.`, { type: 'error' }); return; }
+      }
+      const { pct: _drop, ...rest } = current;
+      next = { ...rest, kcal, ...g, source: 'manual', mode: 'grams' };
+    } else {
+      const p = pctValues();
+      if (!validateSplit(p).ok) { toast('The three percentages must add up to 100.', { type: 'error' }); return; }
+      next = { ...current, kcal, ...gramsFromPct(kcal, p), source: 'manual', mode: 'percent', pct: p };
+    }
+    await db.setSetting('targets', next);
+    memo = { kcal, grams: { protein: next.protein, carbs: next.carbs, fat: next.fat }, pct: next.pct || pctValues() };
+    if (mode === 'percent') for (const k of MACROS) grams[k].setNumber(next[k]);
+    toast(mode === 'percent' ? `Targets saved: ${next.protein} g protein, ${next.carbs} g carbs, ${next.fat} g fat` : 'Targets saved', { type: 'success' });
+    if (onSaved) onSaved(next);
+  });
+
+  update();
   return section('Daily targets',
-    el('div', { class: 'grid-2' },
-      field('Calories', inputs.kcal, { unit: 'kcal' }),
-      field('Protein', inputs.protein, { unit: 'g' }),
-      field('Carbs', inputs.carbs, { unit: 'g' }),
-      field('Fat', inputs.fat, { unit: 'g' })),
-    hint,
-    el('button', { class: 'btn btn-primary btn-block', type: 'button', onClick: save }, 'Save targets'));
+    tabs,
+    field('Calories', kcalInput, { unit: 'kcal' }),
+    gramsPanel,
+    pctPanel,
+    saveBtn);
 }
 
 // ---------------------------------------------------------------- goal, profile, adaptive options (trends)
@@ -102,7 +224,15 @@ function goalSection(targets, goal, profile, adaptive) {
     toast('Goal and profile saved', { type: 'success' });
   };
 
-  return section('Goal & adaptive targets',
+  const splitNote = el('p', { class: 'field-hint text-warning' });
+  const updateSplitNote = (t) => {
+    splitNote.hidden = targetMode(t) !== 'percent' || !t.pct;
+    if (!splitNote.hidden) {
+      splitNote.textContent = `Your daily targets use a percentage split (${fmtNum(t.pct.protein)} / ${fmtNum(t.pct.carbs)} / ${fmtNum(t.pct.fat)} %). `
+        + 'An accepted check-in changes only the calories; the grams follow your split and the per-kg values above are not used.';
+    }
+  };
+  const sec = section('Goal & adaptive targets',
     field('Targets', mode, { hint: 'Adaptive: each Monday the Trends tab proposes new targets from your weight and food; nothing changes until you accept.' }),
     field('Goal rate', rate, { unit: 'kg/wk', hint: `Negative = lose. −0.5 = lose half a kilo a week, 0 = maintain, +0.25 = gain a quarter kilo. Range ${GOAL_RATE_MIN} to +${GOAL_RATE_MAX}.` }),
     el('h3', { class: 'field-label' }, 'Profile (for the formula estimate before enough data)'),
@@ -117,7 +247,11 @@ function goalSection(targets, goal, profile, adaptive) {
       field('Fat min.', fat, { unit: 'g/kg' }),
       field('Floor', floor, { unit: 'kcal' })),
     el('p', { class: 'field-hint' }, 'Per kg of trend weight; carbs fill the rest. Floor: lowest calorie target ever proposed (empty = 1200 female, 1500 male, 1350 otherwise).'),
+    splitNote,
     el('button', { class: 'btn btn-primary btn-block', type: 'button', onClick: save }, 'Save goal & profile'));
+  sec.updateSplitNote = updateSplitNote;
+  updateSplitNote(targets);
+  return sec;
 }
 
 // ---------------------------------------------------------------- volume
@@ -237,6 +371,18 @@ function storageSection() {
   });
   refresh();
   return section('Storage', status, btn);
+}
+
+// ---------------------------------------------------------------- links to feature settings
+
+function linksSection() {
+  const link = (href, title, sub) => el('a', { class: 'list-item', href },
+    el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, title), el('div', { class: 'li-sub' }, sub)),
+    el('span', { class: 'li-chevron' }, '\u203a'));
+  return section('More',
+    el('div', { class: 'list' },
+      link('#/workout/targets', 'Weekly set targets', 'Sets per muscle per week'),
+      link('#/food/photo-settings', 'Meal photo (AI)', 'Your API key and model')));
 }
 
 // ---------------------------------------------------------------- about
