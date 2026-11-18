@@ -4,6 +4,7 @@ import * as db from '../db/db.js';
 import { macroKcal } from '../core/nutrition.js';
 import { today } from '../core/dates.js';
 import { APP_VERSION } from '../version.js';
+import { ACTIVITY_LEVELS, GOAL_RATE_MIN, GOAL_RATE_MAX, ADAPTIVE_DEFAULTS } from '../core/adaptive.js';
 
 const STORE_LABELS = {
   foods: 'Foods', diary: 'Diary entries', meals: 'Saved meals', exercises: 'Exercises', routines: 'Routines',
@@ -12,10 +13,12 @@ const STORE_LABELS = {
 
 /** @param {HTMLElement} container */
 export async function mountSettings(container) {
-  const [targets, volume] = await Promise.all([db.getSetting('targets'), db.getSetting('volume')]);
+  const [targets, volume, goal, profile, adaptive] = await Promise.all([db.getSetting('targets'), db.getSetting('volume'),
+    db.getSetting('goal'), db.getSetting('profile'), db.getSetting('adaptive')]);
   container.append(
     pageHeader({ title: 'Settings' }),
     targetsSection(targets),
+    goalSection(targets, goal, profile, adaptive || {}),
     volumeSection(volume),
     dataSection(),
     storageSection(),
@@ -62,6 +65,59 @@ function targetsSection(targets) {
       field('Fat', inputs.fat, { unit: 'g' })),
     hint,
     el('button', { class: 'btn btn-primary btn-block', type: 'button', onClick: save }, 'Save targets'));
+}
+
+// ---------------------------------------------------------------- goal, profile, adaptive options (trends)
+
+function goalSection(targets, goal, profile, adaptive) {
+  const select = (value, options, ariaLabel) => el('select', { class: 'select', 'aria-label': ariaLabel },
+    options.map(([v, label]) => el('option', { value: v, selected: v === (value ?? '') }, label)));
+  const mode = select(targets.source === 'adaptive' ? 'adaptive' : 'manual',
+    [['manual', 'Manual (as set above)'], ['adaptive', 'Adaptive (weekly check-in)']], 'How targets are set');
+  const rate = numberInput({ value: goal.rateKgPerWeek ?? 0, min: GOAL_RATE_MIN, max: GOAL_RATE_MAX, decimals: 2, ariaLabel: 'Goal rate' });
+  const sex = select(profile.sex, [['', 'Not set'], ['female', 'Female'], ['male', 'Male'], ['other', 'Other / prefer not to say']], 'Sex');
+  const birthYear = numberInput({ value: profile.birthYear, integer: true, min: 1900, max: new Date().getFullYear() - 10, ariaLabel: 'Birth year' });
+  const height = numberInput({ value: profile.heightCm, min: 100, max: 250, decimals: 1, ariaLabel: 'Height' });
+  const activity = select(profile.activity, [['', 'Not set'], ...ACTIVITY_LEVELS.map((a) => [a.id, `${a.label} – ${a.hint}`])], 'Activity level');
+  const protein = numberInput({ value: adaptive.proteinPerKg ?? ADAPTIVE_DEFAULTS.proteinPerKg, min: 0.8, max: 3.5, decimals: 2, ariaLabel: 'Protein per kg' });
+  const fat = numberInput({ value: adaptive.fatPerKg ?? ADAPTIVE_DEFAULTS.fatPerKg, min: 0.3, max: 2, decimals: 2, ariaLabel: 'Fat per kg' });
+  const floor = numberInput({ value: adaptive.kcalFloor ?? null, integer: true, min: 800, max: 4000, placeholder: 'by sex', ariaLabel: 'Calorie floor' });
+
+  const save = async () => {
+    const r = rate.getNumber();
+    if (r === null) { rate.focus(); toast(`Enter a goal from ${GOAL_RATE_MIN} to +${GOAL_RATE_MAX} kg a week.`, { type: 'error' }); return; }
+    const checks = [[birthYear, 'birth year'], [height, 'height'], [protein, 'protein per kg'], [fat, 'fat per kg'], [floor, 'calorie floor']];
+    for (const [input, name] of checks) {
+      if (input.value.trim() && input.getNumber() === null) { input.focus(); toast(`Enter a valid ${name} (or leave it empty).`, { type: 'error' }); return; }
+    }
+    if (protein.getNumber() === null) { protein.focus(); toast('Enter protein per kg.', { type: 'error' }); return; }
+    if (fat.getNumber() === null) { fat.focus(); toast('Enter fat per kg.', { type: 'error' }); return; }
+    const current = await db.getSetting('targets');
+    await Promise.all([
+      db.setSetting('goal', { ...goal, rateKgPerWeek: r }),
+      db.setSetting('profile', { ...profile, sex: sex.value || null, birthYear: birthYear.getNumber(), heightCm: height.getNumber(), activity: activity.value || null }),
+      db.setSetting('adaptive', { ...adaptive, proteinPerKg: protein.getNumber(), fatPerKg: fat.getNumber(), kcalFloor: floor.getNumber() }),
+      db.setSetting('targets', { ...current, source: mode.value }),
+    ]);
+    toast('Goal and profile saved', { type: 'success' });
+  };
+
+  return section('Goal & adaptive targets',
+    field('Targets', mode, { hint: 'Adaptive: each Monday the Trends tab proposes new targets from your weight and food; nothing changes until you accept.' }),
+    field('Goal rate', rate, { unit: 'kg/wk', hint: `Negative = lose. −0.5 = lose half a kilo a week, 0 = maintain, +0.25 = gain a quarter kilo. Range ${GOAL_RATE_MIN} to +${GOAL_RATE_MAX}.` }),
+    el('h3', { class: 'field-label' }, 'Profile (for the formula estimate before enough data)'),
+    el('div', { class: 'grid-2' },
+      field('Sex', sex),
+      field('Birth year', birthYear),
+      field('Height', height, { unit: 'cm' })),
+    field('Activity level', activity),
+    el('h3', { class: 'field-label' }, 'Adaptive macros'),
+    el('div', { class: 'grid-3' },
+      field('Protein', protein, { unit: 'g/kg' }),
+      field('Fat min.', fat, { unit: 'g/kg' }),
+      field('Floor', floor, { unit: 'kcal' })),
+    el('p', { class: 'field-hint' }, 'Per kg of trend weight; carbs fill the rest. Floor: lowest calorie target ever proposed (empty = 1200 female, 1500 male, 1350 otherwise).'),
+    el('button', { class: 'btn btn-primary btn-block', type: 'button', onClick: save }, 'Save goal & profile'));
 }
 
 // ---------------------------------------------------------------- volume

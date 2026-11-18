@@ -194,13 +194,63 @@ Dropset 5x 80    5 reps at 80 kg
 - **Routines:** create/edit/reorder; "save this workout as routine".
 - **History:** past sessions by date; per-exercise history.
 
-## 6. Adaptive targets (step 4, outline)
+## 6. Adaptive targets and Trends (step 4)
 
-- Trend weight: exponential moving average over daily weights, gap-tolerant.
-- Expenditure: `TDEE = mean intake − (Δtrend × 7700 kcal/kg) / days` over a rolling window,
-  only counting days with a complete diary; smoothed.
-- Weekly target: `TDEE + goal.rateKgPerWeek × 7700 / 7`, with a floor and a per-week change limit.
-- All in `src/core/adaptive.js`, tested against synthetic data with known true TDEE.
+All maths in `src/core/adaptive.js` (pure, one config object `ADAPTIVE_DEFAULTS`, overrides via
+`adaptiveConfig()`); tested in `tests/adaptive.test.js` against a seeded simulator
+(`tests/helpers/adaptive-sim.js`: true TDEE, intake noise, mass by energy balance at 7700 kcal/kg,
+scale noise sd 0.5 kg, missing/under-logged days, step changes, outliers).
+
+- **Trend weight** (display, macros): EMA over calendar days, α = 0.1/day; a gap of n days uses
+  `1 − (1 − α)^n`; between weigh-ins the last trend value holds.
+- **Weight change rate**: least-squares slope through raw weights of the last 28 days (kg/week).
+- **Intake days**: today never counts. A logged day below 0.5 × the median logged day (±28 days)
+  is *incomplete* and treated as not logged.
+- **Expenditure (TDEE)**: 2-state Kalman filter over days, state = (true mass, TDEE):
+  `mass[d+1] = mass[d] + (intake[d] − TDEE) / 7700`, `weight[d] = mass[d] + noise (sd 0.5 kg)`,
+  TDEE a random walk (sd 18 kcal/day), mass process noise 0.02 kg/day. This is the recursive form
+  of `TDEE = mean intake − weight slope × 7700` over an exponentially fading window: smooth by
+  construction, gap-tolerant, uses each day's intake exactly. Missing/incomplete days are imputed
+  with the mean valid intake of ±14 days (extra uncertainty 400 kcal). Weigh-ins whose innovation
+  exceeds 2 sd are clipped (Huber) so a water spike cannot drag it. Runs over the last 120 days.
+  Standard error = √P(TDEE): ≤ 100 high, ≤ 175 medium, else low confidence.
+- **Sufficiency** (else `status: 'insufficient'`, `tdee: null`, `missing: [reasons]`): in the last
+  28 days ≥ 8 weigh-ins and ≥ 10 complete logged days; ≥ 14 days since the later of first weigh-in
+  and first logged day; a weigh-in within the last 7 days.
+- **Formula fallback**: Mifflin-St Jeor (`10·kg + 6.25·cm − 5·age + 5 | −161 | −78 other`) × activity
+  factor (1.2 / 1.375 / 1.55 / 1.725 / 1.9), trend weight; reported separately as `formula`, labelled
+  "not based on your data"; `null` if the profile is incomplete.
+- **Weekly target**: `kcal = TDEE + goal.rateKgPerWeek × 7700 / 7`, rounded to 10; clamped to the
+  previous adaptive target ± 150 kcal (only when `targets.source === 'adaptive'`); never below the
+  floor (`adaptive.kcalFloor`, else 1500 male / 1200 female / 1350 other). Protein = 2.0 g/kg trend
+  weight, fat = 0.8 g/kg (lowered only if kcal cannot fit it), carbs = the rest.
+- **Weekly check-in** (`buildCheckIn`): available from Monday for the week starting that Monday,
+  reviews the previous Mon–Sun week (average complete intake, trend change, TDEE as of Monday) and
+  proposes kcal/protein/carbs/fat; uses the formula estimate (labelled) while data are insufficient.
+  Targets change only on **Accept**: one transaction writes `settings.targets` (`source:'adaptive'`)
+  and `targetHistory`. **Keep current** changes no targets; it writes a `targetHistory` record with
+  `decision:'kept'` so the check-in counts as done (it can still be accepted later that week).
+
+### Settings keys added
+`profile.activity` (`sedentary|light|moderate|active|extra`), `profile.sex` may be `'other'`;
+`adaptive { proteinPerKg: 2.0, fatPerKg: 0.8, kcalFloor: null }`; goal range −1 … +0.5 kg/week.
+`targetHistory` records: `{ weekStart, trendKg, tdee, kcalTarget, daysLogged, decision:
+'accepted'|'kept', basis: 'data'|'formula'|null, proposal:{kcal,protein,carbs,fat}|null, createdAt }`.
+
+### Screens (`src/trends/`)
+- `#/trends` dashboard: check-in banner when due; Today (eaten/target/left, protein → diary);
+  This week (average complete intake vs target, days logged, finished workouts, sets per muscle from
+  `weeklyComparison`); Weight trend (+ sparkline); Expenditure & target; Intake history.
+- `#/trends/weight`: today's weight (`,` or `.`), add a past day, chart (dots = weigh-ins, line =
+  trend, 1 M / 3 M / All, tap for values), list with edit/delete (+ undo).
+- `#/trends/expenditure`: estimate with confidence and data basis or what is missing + formula
+  estimate; goal; weekly check-in (current vs proposed, Accept / Keep current); target history.
+- `#/trends/intake`: daily kcal bars (4 Mon–Sun weeks, today lighter), target line, weekly averages.
+
+### Known limits
+Accuracy depends on honest, complete logging: days that are skipped *because* they were big are
+imputed as average days and bias TDEE low. A logged-but-not-eaten 5000 kcal typo shifts the
+estimate by ~90 kcal for a few weeks. Real TDEE changes take ~5 weeks to be tracked (by design).
 
 ## 7. Out of scope for now
 Meal-photo logging (needs a paid/keyed AI service — to be proposed separately), accounts,
