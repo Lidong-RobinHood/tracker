@@ -196,3 +196,28 @@
 .wk-tg-name { font-weight: 600; }
 .wk-tg-pct { font-weight: 600; }
 .wk-tg-in { width: 84px; flex: none; text-align: right; }
+
+/* ---------------------------------------------------------------- tutorial (exercise detail) */
+/* Fixed 16:9 box: nothing shifts while the lazy thumbnail loads or if it fails. */
+.wk-thumb {
+  position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; overflow: hidden;
+  border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text-muted);
+}
+.wk-thumb-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.wk-thumb-img[hidden], .wk-thumb-fallback[hidden], .wk-thumb-badge[hidden] { display: none; }
+.wk-thumb-fallback {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s1);
+}
+.wk-thumb-play { font-size: 28px; line-height: 1; }
+.wk-thumb-badge {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 56px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .65); color: #fff; font-size: 18px; pointer-events: none;
+}
+.wk-tut-text { gap: 2px; min-width: 0; }
+.wk-tut-title { font-weight: 600; overflow-wrap: anywhere; }
+.wk-tut-host { overflow-wrap: anywhere; }
+.wk-tut-note {
+  margin: var(--s1) 0 0; padding: var(--s2) var(--s3); border-radius: var(--radius-sm);
+  background: var(--warning-soft); color: var(--text);
+}

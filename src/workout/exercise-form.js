@@ -2,6 +2,7 @@
 import { el, field, numberInput } from '../ui/index.js';
 import { MUSCLES } from '../core/muscles.js';
 import { DEFAULT_INCREMENT } from '../data/exercises.js';
+import { parseVideoUrl } from '../core/exercise-video.js';
 
 export const EQUIPMENT = [
   ['barbell', 'Barbell'], ['dumbbell', 'Dumbbell'], ['machine', 'Machine'],
@@ -10,7 +11,7 @@ export const EQUIPMENT = [
 
 /**
  * @param {object} [initial] exercise or partial ({ name })
- * @param {{compact?: boolean}} [opts] compact: hide notes (picker)
+ * @param {{compact?: boolean}} [opts] compact: hide notes and tutorial link (picker)
  * @returns {{node: HTMLElement, read: () => {ok: true, value: object}|{ok: false, error: string}, focusName: () => void}}
  */
 export function exerciseForm(initial = {}, { compact = false } = {}) {
@@ -29,6 +30,12 @@ export function exerciseForm(initial = {}, { compact = false } = {}) {
     if (!incrementEdited) increment.setNumber(DEFAULT_INCREMENT[equipment.value] ?? 2.5);
   });
   const notes = el('textarea', { class: 'textarea', rows: '2', value: initial.notes || '' });
+  const videoUrl = el('input', {
+    class: 'input', type: 'url', inputmode: 'url', value: initial.videoUrl || '', autocomplete: 'off',
+    autocapitalize: 'off', spellcheck: 'false', maxlength: '2000', placeholder: 'https://youtu.be/…',
+  });
+  const videoField = field('Tutorial link', videoUrl, { hint: 'YouTube video or any https link. Leave empty to use the default tutorial.' });
+  videoUrl.addEventListener('input', () => { videoField.classList.remove('is-missing'); videoUrl.removeAttribute('aria-invalid'); });
 
   const primaryChips = el('div', { class: 'chips' });
   const secondaryChips = el('div', { class: 'chips' });
@@ -55,7 +62,8 @@ export function exerciseForm(initial = {}, { compact = false } = {}) {
     el('div', { class: 'grid-2' },
       field('Equipment', equipment),
       field('Increment', increment, { unit: 'kg', hint: '0 = no suggestions' })),
-    compact ? null : field('Notes', notes));
+    compact ? null : field('Notes', notes),
+    compact ? null : videoField);
 
   return {
     node,
@@ -67,10 +75,13 @@ export function exerciseForm(initial = {}, { compact = false } = {}) {
       if (!primary.size) { primaryField.classList.add('is-missing'); return { ok: false, error: 'Pick at least one primary muscle.' }; }
       const inc = increment.getNumber();
       if (inc === null) { increment.focus(); return { ok: false, error: 'Enter an increment from 0 to 50 kg.' }; }
+      const video = parseVideoUrl(compact ? initial.videoUrl : videoUrl.value);
+      videoField.classList.toggle('is-missing', !video.ok);
+      if (!video.ok) { videoUrl.setAttribute('aria-invalid', 'true'); videoUrl.focus(); return { ok: false, error: `Tutorial link: ${video.error}` }; }
       const order = (s) => MUSCLES.map((m) => m.id).filter((id) => s.has(id));
       return {
         ok: true,
-        value: { name: n, primary: order(primary), secondary: order(secondary), equipment: equipment.value, increment: inc, notes: notes.value.trim() },
+        value: { name: n, primary: order(primary), secondary: order(secondary), equipment: equipment.value, increment: inc, notes: notes.value.trim(), videoUrl: video.value },
       };
     },
   };

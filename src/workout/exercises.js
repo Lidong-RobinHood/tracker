@@ -13,6 +13,7 @@ import { pctBadge, fmtLoad, fmtLoadNum, recordBadges } from './progress-ui.js';
 import { ensureCss, loadExercises, loadWorkouts, musclesLine, newExercise, shortDate, findByName } from './data.js';
 import { exerciseForm, EQUIPMENT } from './exercise-form.js';
 import { matches } from './picker.js';
+import { tutorialSection } from './tutorial.js';
 
 // Filter state survives navigating into a detail and back.
 const state = { query: '', muscle: null, archived: false };
@@ -99,6 +100,9 @@ export async function mountExerciseDetail(container, { id }) {
     Object.assign(ex, r.value, { updatedAt: Date.now() });
     await db.put('exercises', ex);
     title.textContent = ex.name;
+    const fresh = tutorialSection(ex);
+    tutorial.replaceWith(fresh);
+    tutorial = fresh;
     toast('Saved', { type: 'success' });
   };
   const toggleArchive = async () => {
@@ -125,8 +129,10 @@ export async function mountExerciseDetail(container, { id }) {
   const archiveBtn = el('button', { type: 'button', class: 'btn btn-block', onClick: toggleArchive }, ex.archived ? 'Unarchive' : 'Archive');
 
   const progress = progressSections(ex, workouts);
+  let tutorial = tutorialSection(ex);
 
   container.append(header,
+    tutorial,
     ...progress,
     el('section', { class: 'section' },
       el('h2', { class: 'section-title' }, 'Details'),

@@ -17,6 +17,7 @@ import {
   ensureCss, loadExercises, loadWorkouts, createSaver, exName, shortDate, newRoutine, nextRoutineOrder,
 } from './data.js';
 import { pickExercise } from './picker.js';
+import { tutorialMenuItem } from './tutorial.js';
 import { liveComparison, compareSession } from '../core/workout-progress.js';
 import { pctBadge, pctWords, basisValue, comparisonBlock } from './progress-ui.js';
 
@@ -291,6 +292,7 @@ export async function mountSession(container, { id }) {
     const item = (label, fn, cls) => el('button', { type: 'button', class: ['list-item', cls], onClick: () => { s.close(); fn(); } },
       el('div', { class: 'li-main' }, label));
     s.body.append(el('div', { class: 'list' },
+      tutorialMenuItem(exMap.get(entry.exerciseId) || { id: entry.exerciseId, name: exName(exMap, entry.exerciseId) }, () => s.close()),
       item('Edit target', () => editTarget(entry)),
       item('Add note', () => { const c = cards.get(entry); const t = c && c.querySelector('.wk-note'); if (t) { t.hidden = false; t.focus(); } }),
       i > 0 ? item('Move up', () => move(i, -1)) : null,

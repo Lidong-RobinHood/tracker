@@ -158,6 +158,7 @@ export function newExercise(v) {
     isCustom: true,
     archived: false,
     notes: v.notes || '',
+    videoUrl: v.videoUrl || '',
     createdAt: now,
     updatedAt: now,
   };
