@@ -1,4 +1,4 @@
-// Workout home: resume banner, start, this week's sets per muscle, links. Route: workout
+// Workout home: resume banner, start, muscle recovery, this week's sets per muscle, links. Route: workout
 import * as db from '../db/db.js';
 import { el, pageHeader, fmtTime, fmtNum, href } from '../ui/index.js';
 import { today } from '../core/dates.js';
@@ -9,12 +9,13 @@ import { MUSCLES } from '../core/muscles.js';
 import { routineProgress } from '../core/workout-progress.js';
 import { loadTargets } from './targets.js';
 import { pctBadge, pctWords } from './progress-ui.js';
+import { recoverySection, loadRecoverySetting } from './recovery.js';
 import { ensureCss, loadExercises, loadWorkouts, loadRoutines, findUnfinished, startWorkout, shortDate } from './data.js';
 
 export async function mountHome(container) {
   ensureCss();
-  const [workouts, exMap, routines, weights, targets] = await Promise.all([
-    loadWorkouts(), loadExercises(), loadRoutines(), db.getSetting('volume'), loadTargets(),
+  const [workouts, exMap, routines, weights, targets, recovery] = await Promise.all([
+    loadWorkouts(), loadExercises(), loadRoutines(), db.getSetting('volume'), loadTargets(), loadRecoverySetting(),
   ]);
   const open = findUnfinished(workouts);
 
@@ -46,6 +47,9 @@ export async function mountHome(container) {
       routines.length ? null : el('a', { class: 'list-item', href: href('workout/routines') },
         el('div', { class: 'li-main' }, el('div', { class: 'li-title wk-link' }, 'Create a routine'),
           el('div', { class: 'li-sub' }, 'e.g. Bench Press 3 x 6')))))));
+
+  // Muscle recovery (general estimate; uses only the last 14 days of the already loaded workouts)
+  container.append(recoverySection(workouts, exMap, weights, recovery));
 
   // Weekly volume (with optional targets: sets done / target and % reached)
   const cmp = weeklyComparison(workouts, exMap, weights, today());

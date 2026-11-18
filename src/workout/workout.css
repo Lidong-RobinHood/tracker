@@ -221,3 +221,57 @@
   margin: var(--s1) 0 0; padding: var(--s2) var(--s3); border-radius: var(--radius-sm);
   background: var(--warning-soft); color: var(--text);
 }
+
+/* ---------------------------------------------------------------- muscle recovery */
+.wk-rc-card { padding: var(--s1) var(--s3) var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
+.wk-rc-list { display: flex; flex-direction: column; }
+.wk-rc-row {
+  display: flex; flex-direction: column; gap: 6px; width: 100%; min-height: var(--tap);
+  padding: var(--s2) var(--s1); border: 0; border-top: 1px solid var(--border); border-radius: 0;
+  background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+  touch-action: manipulation;
+}
+.wk-rc-list > :first-child, .wk-rc-list > :first-child > .wk-rc-row { border-top: 0; }
+.wk-rc-row:active { background: var(--surface-2); }
+.wk-rc-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); min-width: 0; }
+.wk-rc-static { padding: 0 var(--s1); }
+.wk-rc-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-rc-status { flex: none; font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
+.wk-rc-status.is-recovering { color: var(--warning); }
+.wk-rc-status.is-likely-ready { color: var(--accent); }
+.wk-rc-status.is-fresh { color: var(--success); }
+.wk-rc-bar { position: relative; display: block; height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; }
+.wk-rc-band {
+  position: absolute; top: 0; bottom: 0; right: 0;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-muted) 30%, transparent) 0 3px, transparent 3px 6px);
+}
+.wk-rc-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; opacity: .85; }
+.wk-rc-fill.is-recovering { background: var(--warning); }
+.wk-rc-fill.is-likely-ready { background: var(--accent); }
+.wk-rc-fill.is-fresh { background: var(--success); }
+.wk-rc-min { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); }
+.wk-rc-sub { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px var(--s2); }
+.wk-rc-words { min-width: 0; }
+.wk-rc-last { white-space: nowrap; }
+.wk-rc-more { display: inline-flex; align-items: center; min-height: var(--tap); padding: 0 var(--s1); color: var(--accent); font-size: var(--fs-sm); font-weight: 600; text-decoration: none; }
+.wk-rc-rested, .wk-rc-empty { margin: 0; padding: var(--s2) var(--s1) 0; border-top: 1px solid var(--border); }
+.wk-rc-empty { border-top: 0; }
+.wk-rc-caption { margin: 0; padding: 0 var(--s1); }
+.wk-rc-detail { display: flex; flex-direction: column; gap: var(--s1); padding-bottom: var(--s2); border-top: 1px solid var(--border); }
+.wk-rc-detail:first-child { border-top: 0; }
+.wk-rc-detail > .wk-rc-head { padding-top: var(--s2); }
+.wk-rc-detail > .small.muted { padding: 0 var(--s1); }
+.wk-rc-why { padding: 0 var(--s1); }
+.wk-rc-sessions { list-style: none; margin: 0; padding: 0; }
+.wk-rc-slink {
+  display: flex; align-items: center; gap: var(--s2); min-height: var(--tap); padding: 0 var(--s1);
+  color: inherit; text-decoration: none; border-radius: var(--radius-sm);
+}
+.wk-rc-slink:active { background: var(--surface-2); }
+.wk-rc-sname { flex: 1 1 auto; min-width: 0; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-rc-tabs > button { min-height: var(--tap); }
+.wk-rc-assume p { margin: 0; }
+.wk-rc-table { display: flex; flex-direction: column; }
+.wk-rc-trow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s2); padding: 6px 0; border-top: 1px solid var(--border); font-size: var(--fs-sm); }
+.wk-rc-trow.is-head { border-top: 0; font-weight: 600; color: var(--text-muted); }
+.wk-rc-tabs > [aria-checked="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); font-weight: 600; }

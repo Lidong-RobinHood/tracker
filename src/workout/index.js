@@ -6,6 +6,7 @@ import { mountRoutines, mountRoutineEdit } from './routines.js';
 import { mountHistory, mountHistoryDetail } from './history.js';
 import { mountRoutineProgress } from './routine-progress.js';
 import { mountTargets } from './targets.js';
+import { mountRecovery } from './recovery.js';
 
 /** @type {import('../types.js').Route[]} */
 export const routes = [
@@ -18,6 +19,7 @@ export const routes = [
   { path: 'workout/routines/:id', title: 'Routine', mount: mountRoutineEdit },
   { path: 'workout/routines/:id/progress', title: 'Routine progress', mount: mountRoutineProgress },
   { path: 'workout/targets', title: 'Weekly set targets', mount: mountTargets },
+  { path: 'workout/recovery', title: 'Muscle recovery', mount: mountRecovery },
   { path: 'workout/history', title: 'History', mount: mountHistory },
   { path: 'workout/history/:id', title: 'Workout', mount: mountHistoryDetail },
 ];
