@@ -1,27 +1,19 @@
-// Workout feature entry. PLACEHOLDER — the workout worker replaces this file (keep exporting `routes`).
-// Contract: see docs/CONTRACT.md.
-import { el, pageHeader } from '../ui/index.js';
+// Workout feature entry. Routes per docs/CONTRACT.md; views live in sibling modules.
+import { mountHome } from './home.js';
+import { mountSession } from './session.js';
+import { mountLibrary, mountNewExercise, mountExerciseDetail } from './exercises.js';
+import { mountRoutines, mountRoutineEdit } from './routines.js';
+import { mountHistory, mountHistoryDetail } from './history.js';
 
 /** @type {import('../types.js').Route[]} */
 export const routes = [
-  {
-    path: 'workout',
-    title: 'Workout',
-    mount(container) {
-      container.append(
-        pageHeader({ title: 'Workout' }),
-        el('div', { class: 'card' }, el('p', { class: 'muted' }, 'Workouts — coming soon.')),
-      );
-    },
-  },
-  {
-    path: 'workout/session/:id',
-    title: 'Workout',
-    mount(container, params) {
-      container.append(
-        pageHeader({ title: 'Session', back: 'workout' }),
-        el('div', { class: 'card' }, el('p', { class: 'muted' }, `Session ${params.id} — coming soon.`)),
-      );
-    },
-  },
+  { path: 'workout', title: 'Workout', mount: mountHome },
+  { path: 'workout/session/:id', title: 'Workout', mount: mountSession },
+  { path: 'workout/exercises', title: 'Exercises', mount: mountLibrary },
+  { path: 'workout/exercises/new', title: 'New exercise', mount: mountNewExercise },
+  { path: 'workout/exercises/:id', title: 'Exercise', mount: mountExerciseDetail },
+  { path: 'workout/routines', title: 'Routines', mount: mountRoutines },
+  { path: 'workout/routines/:id', title: 'Routine', mount: mountRoutineEdit },
+  { path: 'workout/history', title: 'History', mount: mountHistory },
+  { path: 'workout/history/:id', title: 'Workout', mount: mountHistoryDetail },
 ];
