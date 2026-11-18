@@ -11,7 +11,7 @@ SHA-256 of `zxing_reader.wasm`: `33c8c50be17d0bb05454b4fd3ffb5b5ab9a8e8d1c0ebeb2
 (matches `ZXING_WASM_SHA256` exported by the bundled JS).
 
 The IIFE build registers `window.BarcodeDetectionAPI` (`BarcodeDetector`, `prepareZXingModule`, ...).
-By default it would fetch the `.wasm` from jsDelivr; `app.js` overrides `locateFile` via
+By default it would fetch the `.wasm` from jsDelivr; `spike/app.js` overrides `locateFile` via
 `prepareZXingModule({ overrides: { locateFile } })` (documented in the zxing-wasm README,
 section "Configuring .wasm Serving") so the file is loaded from this folder via a relative URL.
 

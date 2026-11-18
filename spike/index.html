@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Barcode Spike</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Barcode → Open Food Facts spike</h1>
+
+  <section id="scanner" aria-label="Camera scanner">
+    <div id="videoWrap" hidden>
+      <video id="video" playsinline muted autoplay></video>
+      <div id="aim" aria-hidden="true"></div>
+    </div>
+    <p id="scanStatus" class="status">Camera is off.</p>
+    <div class="row">
+      <button id="btnStart" class="primary">Start scanning</button>
+      <button id="btnStop" hidden>Stop camera</button>
+      <button id="btnNext" class="primary" hidden>Scan next</button>
+    </div>
+    <p class="hint">Hold the barcode about 15–25 cm away, flat and well lit, filling the box.</p>
+  </section>
+
+  <section id="manual" aria-label="Manual entry">
+    <h2>Type a barcode</h2>
+    <form id="manualForm" class="row" autocomplete="off">
+      <input id="manualCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="14"
+             placeholder="e.g. 3017620422003" aria-label="Barcode digits">
+      <button type="submit">Look up</button>
+    </form>
+    <p id="manualMsg" class="status"></p>
+  </section>
+
+  <section id="result" aria-live="polite" hidden></section>
+
+  <section id="failSection" aria-label="Report a scan failure">
+    <h2>Barcode would not read?</h2>
+    <input id="failNote" type="text" placeholder="Optional note, e.g. product name" aria-label="Note for scan failure">
+    <button id="btnFail" class="warn">Scan failed — barcode would not read</button>
+    <p id="failMsg" class="status"></p>
+  </section>
+
+  <section id="log" aria-label="Test log">
+    <h2>Test log</h2>
+    <p id="summary" class="summary"></p>
+    <div class="row">
+      <button id="btnCopy">Copy results</button>
+      <button id="btnClear" class="warn">Clear log</button>
+    </div>
+    <p id="copyMsg" class="status"></p>
+    <textarea id="copyFallback" readonly hidden rows="10" aria-label="Results text to copy"></textarea>
+    <ul id="logList"></ul>
+  </section>
+
+  <p id="diag" class="diag"></p>
+</main>
+<script src="../vendor/barcode-detector/ponyfill.js"></script>
+<script src="lookup.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

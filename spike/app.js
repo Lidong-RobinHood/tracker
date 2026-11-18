@@ -1,5 +1,5 @@
 /* UI + camera + log. Depends on lookup.js (window.Spike) and, for the fallback,
-   vendor/barcode-detector/ponyfill.js (window.BarcodeDetectionAPI). */
+   ../vendor/barcode-detector/ponyfill.js (window.BarcodeDetectionAPI). */
 (function () {
   'use strict';
   var S = window.Spike;
@@ -42,7 +42,7 @@
   }
 
   // ---------- decoder selection ----------
-  var wasmUrl = new URL('vendor/barcode-detector/zxing_reader.wasm', document.baseURI).href;
+  var wasmUrl = new URL('../vendor/barcode-detector/zxing_reader.wasm', document.baseURI).href;
   var ZX_OVERRIDES = {
     locateFile: function (path, prefix) { return path.endsWith('.wasm') ? wasmUrl : prefix + path; }
   };

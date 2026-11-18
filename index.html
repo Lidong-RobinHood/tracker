@@ -4,63 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<title>Barcode Spike</title>
-<link rel="icon" href="data:,">
-<link rel="stylesheet" href="style.css">
+<meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
+<meta name="description" content="Personal food and workout tracker">
+<title>Tracker</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Tracker">
+<link rel="stylesheet" href="app.css">
+<script type="module" src="src/app.js"></script>
 </head>
 <body>
-<main>
-  <h1>Barcode → Open Food Facts spike</h1>
-
-  <section id="scanner" aria-label="Camera scanner">
-    <div id="videoWrap" hidden>
-      <video id="video" playsinline muted autoplay></video>
-      <div id="aim" aria-hidden="true"></div>
-    </div>
-    <p id="scanStatus" class="status">Camera is off.</p>
-    <div class="row">
-      <button id="btnStart" class="primary">Start scanning</button>
-      <button id="btnStop" hidden>Stop camera</button>
-      <button id="btnNext" class="primary" hidden>Scan next</button>
-    </div>
-    <p class="hint">Hold the barcode about 15–25 cm away, flat and well lit, filling the box.</p>
-  </section>
-
-  <section id="manual" aria-label="Manual entry">
-    <h2>Type a barcode</h2>
-    <form id="manualForm" class="row" autocomplete="off">
-      <input id="manualCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="14"
-             placeholder="e.g. 3017620422003" aria-label="Barcode digits">
-      <button type="submit">Look up</button>
-    </form>
-    <p id="manualMsg" class="status"></p>
-  </section>
-
-  <section id="result" aria-live="polite" hidden></section>
-
-  <section id="failSection" aria-label="Report a scan failure">
-    <h2>Barcode would not read?</h2>
-    <input id="failNote" type="text" placeholder="Optional note, e.g. product name" aria-label="Note for scan failure">
-    <button id="btnFail" class="warn">Scan failed — barcode would not read</button>
-    <p id="failMsg" class="status"></p>
-  </section>
-
-  <section id="log" aria-label="Test log">
-    <h2>Test log</h2>
-    <p id="summary" class="summary"></p>
-    <div class="row">
-      <button id="btnCopy">Copy results</button>
-      <button id="btnClear" class="warn">Clear log</button>
-    </div>
-    <p id="copyMsg" class="status"></p>
-    <textarea id="copyFallback" readonly hidden rows="10" aria-label="Results text to copy"></textarea>
-    <ul id="logList"></ul>
-  </section>
-
-  <p id="diag" class="diag"></p>
-</main>
-<script src="vendor/barcode-detector/ponyfill.js"></script>
-<script src="lookup.js"></script>
-<script src="app.js"></script>
+<main id="main" class="app-main"></main>
+<nav id="tabbar" class="tabbar" aria-label="Sections"></nav>
+<noscript><p class="empty">This app needs JavaScript.</p></noscript>
 </body>
 </html>
