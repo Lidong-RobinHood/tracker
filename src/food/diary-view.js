@@ -2,7 +2,7 @@
 import {
   el, pageHeader, openSheet, numberInput, toast, fmtNum, fmtDay, fmtDate, fmtAmount, navigate, href, field, replaceChildren,
 } from '../ui/index.js';
-import { today, addDays, isValidDate } from '../core/dates.js';
+import { today, addDays, isValidDate, weekStart } from '../core/dates.js';
 import { scale } from '../core/nutrition.js';
 import { MEALS, mealLabel, groupByMeal, totals, progress, copyEntries, isQuickAdd } from '../core/food-diary.js';
 import { targetPercents, shareOfDay, fmtPercent } from '../core/food-percent.js';
@@ -70,7 +70,9 @@ export async function mountDiary(container, params) {
         el('div', { class: 'small macro-label' }, el('span', null, LABEL[x.key]), pctEl(pct[x.key])),
         el('div', { class: 'num macro-amounts' }, `${fmtNum(x.consumed, 0)}`, el('span', { class: 'muted small' }, ` / ${fmtNum(x.target, 0)} g`)),
         bar(x, x.key),
-        el('div', { class: ['small num', x.remaining < 0 ? 'text-warning' : 'muted'] }, x.target === null ? '' : x.remaining < 0 ? `${fmtNum(-x.remaining, 0)} g over` : `${fmtNum(x.remaining, 0)} g left`)))));
+        el('div', { class: ['small num', x.remaining < 0 ? 'text-warning' : 'muted'] }, x.target === null ? '' : x.remaining < 0 ? `${fmtNum(-x.remaining, 0)} g over` : `${fmtNum(x.remaining, 0)} g left`)))),
+      // Weekly report for the Mon–Sun week of the day being viewed (route owned by trends).
+      el('a', { class: 'week-report-link', href: href(`trends/week/${weekStart(date)}`) }, 'Weekly report', el('span', { 'aria-hidden': 'true' }, ' ›')));
   }
 
   /** '62 %' (warning colour and bold when over target); nothing if there is no target. */

@@ -28,6 +28,7 @@ export async function mountDashboard(container) {
     weekCard(d, workouts, exMap, volume),
     weightCard(d),
     expenditureCard(d),
+    reportsCard(d),
     intakeCard(d),
   ].filter(Boolean));
 }
@@ -114,6 +115,19 @@ function expenditureCard(d) {
   }
   kids.push(el('div', { class: 'small muted' }, `Current target ${fmtNum(d.targets.kcal, 0)} kcal · ${d.targets.source === 'adaptive' ? 'adaptive' : 'set manually'}`));
   return linkCard(href('trends/expenditure'), 'Expenditure & target', kids);
+}
+
+function reportsCard(d) {
+  const ws = weekStart(d.today);
+  // Not a linkCard: it holds several links, which must not be nested inside one <a>.
+  return el('section', { class: 'card tr-card', 'aria-label': 'Weekly reports' },
+    el('a', { class: 'tr-card-head tr-head-link', href: href('trends/weeks') },
+      el('span', { class: 'tr-card-title' }, 'Weekly reports'), el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›')),
+    el('p', { class: 'small muted' }, 'Each Monday–Sunday week summed up: eating vs target, weight change and training, compared with the week before.'),
+    el('div', { class: 'grid-3 tr-report-links' },
+      el('a', { class: 'btn', href: href(`trends/week/${ws}`) }, 'This week'),
+      el('a', { class: 'btn', href: href(`trends/week/${addDays(ws, -7)}`) }, 'Last week'),
+      el('a', { class: 'btn', href: href('trends/weeks') }, 'All weeks')));
 }
 
 function intakeCard(d) {

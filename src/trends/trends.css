@@ -72,3 +72,48 @@
   .tr-bar-today { fill-opacity: .35; }
   .tr-dot { fill-opacity: .7; }
 }
+
+/* dashboard: weekly reports card */
+.tr-head-link { min-height: var(--tap); margin: calc(-1 * var(--s2)) 0; color: inherit; text-decoration: none; }
+.tr-report-links .btn { padding: 0 var(--s2); }
+
+/* weekly report (week-view.js) */
+.wr-card { gap: var(--s3); }
+.wr-title { margin: 0; font-size: var(--fs-lg); font-weight: 600; }
+.wr-sub { margin: var(--s2) 0 0; font-size: var(--fs-sm); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+.wr-strong { font-weight: 600; }
+.wr-table td, .wr-table th { padding: 6px 4px; }
+.wr-table th:first-child { padding-left: 0; }
+.wr-table td:last-child, .wr-table th:last-child { padding-right: 0; }
+.wr-badge { margin-left: var(--s2); vertical-align: middle; }
+.wr-badge-ok { background: var(--accent-soft); color: var(--accent); }
+.wr-notes { display: flex; flex-direction: column; gap: var(--s1); margin: 0; }
+.wr-notes p { margin: 0; }
+.wr-chart-tap { cursor: pointer; }
+.wr-days { margin: 0 calc(-1 * var(--s4)); border-top: 1px solid var(--border); }
+.wr-days .list-item { padding: 4px var(--s4); gap: var(--s2); }
+.wr-day-main { display: flex; align-items: center; flex-wrap: wrap; gap: 4px var(--s2); min-width: 0; }
+.wr-dow { font-weight: 600; min-width: 4.2em; }
+.wr-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.wr-tags .badge { font-size: 11px; }
+.wr-day-trail { text-align: right; line-height: 1.25; }
+.wr-day.is-future { opacity: .5; }
+.wr-split { gap: var(--s2); }
+.wr-split-row { display: grid; grid-template-columns: 3.6em 1fr auto; align-items: center; gap: var(--s2); }
+.wr-split-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--surface-2); }
+.wr-seg { display: block; height: 100%; }
+.wr-seg-p { background: var(--accent); }
+.wr-seg-c { background: var(--success); }
+.wr-seg-f { background: var(--warning); }
+.wr-split-txt { white-space: nowrap; }
+.wr-total { line-height: 1.5; }
+.wr-weighins { line-height: 1.5; }
+.wr-workouts { margin: 0 calc(-1 * var(--s4)); border-top: 1px solid var(--border); }
+.wr-workouts .list-item { padding: var(--s2) var(--s4); }
+.wr-records { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: var(--s1); }
+.wr-empty-actions { flex-wrap: wrap; justify-content: center; gap: var(--s2); }
+.wr-week .li-title { display: flex; align-items: center; }
+.wr-link { align-self: flex-start; min-height: var(--tap); padding-left: 0; color: var(--accent); }
+.wr-nav { display: flex; justify-content: space-between; align-items: center; gap: var(--s2); margin: calc(-1 * var(--s2)) 0; }
+.wr-nav-btn { padding: 0 var(--s2); font-size: var(--fs-sm); color: var(--accent); }
+.wr-nav-end { padding: 0 var(--s2); }
