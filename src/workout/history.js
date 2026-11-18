@@ -6,6 +6,8 @@ import { sessionStats, formatTarget, formatWeight, doneSets } from '../core/work
 import { workoutVolume } from '../core/volume.js';
 import { MUSCLES } from '../core/muscles.js';
 import { ensureCss, loadExercises, loadWorkouts, exName } from './data.js';
+import { compareSession } from '../core/workout-progress.js';
+import { comparisonBlock } from './progress-ui.js';
 
 export async function mountHistory(container) {
   ensureCss();
@@ -41,7 +43,7 @@ export async function mountHistory(container) {
 
 export async function mountHistoryDetail(container, { id }) {
   ensureCss();
-  const [w, exMap, weights] = await Promise.all([db.get('workouts', id), loadExercises(), db.getSetting('volume')]);
+  const [w, exMap, weights, workouts] = await Promise.all([db.get('workouts', id), loadExercises(), db.getSetting('volume'), loadWorkouts()]);
   if (!w) {
     container.append(pageHeader({ title: 'Workout', back: 'workout/history' }), emptyState('Workout not found.'));
     return;
@@ -72,6 +74,14 @@ export async function mountHistoryDetail(container, { id }) {
         }))
         : el('p', { class: 'muted small' }, 'No sets.'),
       e.note ? el('p', { class: 'small wk-hnote' }, e.note) : null));
+  }
+
+  if (w.finishedAt && st.setsDone) {
+    const cmp = compareSession(workouts, w);
+    container.append(el('section', { class: 'section' },
+      el('h2', { class: 'section-title' }, cmp.prevSession ? 'vs the previous time of this routine' : 'vs last time (each exercise)'),
+      el('div', { class: 'card' }, comparisonBlock(cmp, exMap)),
+      w.routineId ? el('a', { class: 'btn btn-block', href: href(`workout/routines/${encodeURIComponent(w.routineId)}/progress`) }, 'Routine progress') : null));
   }
 
   const vol = workoutVolume(w, exMap, weights);

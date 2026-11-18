@@ -64,7 +64,10 @@ export async function mountRoutineEdit(container, { id }, ctx) {
     (err) => toast(`Could not save: ${err && err.message}`, { type: 'error' }));
   const save = () => saver.save();
 
-  const header = pageHeader({ title: routine.name, subtitle: 'Saved automatically', back: 'workout/routines' });
+  const header = pageHeader({
+    title: routine.name, subtitle: 'Saved automatically', back: 'workout/routines',
+    actions: [el('a', { class: 'btn btn-sm', href: href(`workout/routines/${encodeURIComponent(routine.id)}/progress`) }, 'Progress')],
+  });
   const titleEl = header.querySelector('.page-title');
   const name = el('input', {
     class: 'input', type: 'text', value: routine.name, maxlength: '60', 'aria-label': 'Routine name',
@@ -131,6 +134,7 @@ export async function mountRoutineEdit(container, { id }, ctx) {
     el('div', { class: 'section' }, el('h2', { class: 'section-title' }, 'Exercises'), itemsEl),
     el('button', { type: 'button', class: 'btn btn-block', onClick: add }, '+ Add exercise'),
     el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: async () => { await saver.flush(); startWorkout(routine); } }, 'Start this routine'),
+    el('a', { class: 'btn btn-block', href: href(`workout/routines/${encodeURIComponent(routine.id)}/progress`) }, 'See progress'),
     el('button', { type: 'button', class: 'btn btn-ghost btn-block text-danger', onClick: del }, 'Delete routine'));
 
   if (ctx.query.new) { name.focus(); name.select(); }

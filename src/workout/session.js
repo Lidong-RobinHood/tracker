@@ -17,6 +17,8 @@ import {
   ensureCss, loadExercises, loadWorkouts, createSaver, exName, shortDate, newRoutine, nextRoutineOrder,
 } from './data.js';
 import { pickExercise } from './picker.js';
+import { liveComparison, compareSession } from '../core/workout-progress.js';
+import { pctBadge, pctWords, basisValue, comparisonBlock } from './progress-ui.js';
 
 export async function mountSession(container, { id }) {
   ensureCss();
@@ -99,6 +101,18 @@ export async function mountSession(container, { id }) {
 
     const lastLine = el('div', { class: 'wk-last small muted' },
       last ? `Last: ${formatSets(last.entry.sets)} · ${shortDate(last.workout.date)}` : 'No previous session');
+    // Live "vs last time": fixed-width slot (reserved even while empty) so the row never reflows.
+    const deltaEl = last ? el('div', { class: 'wk-delta small', 'aria-live': 'polite' }) : null;
+    const updateDelta = () => {
+      if (!deltaEl) return;
+      const c = liveComparison(entry, last.entry);
+      if (!c) { deltaEl.replaceChildren(); deltaEl.removeAttribute('aria-label'); deltaEl.title = ''; return; }
+      const what = c.basis === 'reps' ? 'reps' : 'volume';
+      deltaEl.replaceChildren(pctBadge(c.pct), el('span', { class: 'wk-delta-sub muted' }, `${what} vs last`));
+      const desc = `${what} ${pctWords(c.pct)} versus last time (${basisValue(c.basis, c.cur)} vs ${basisValue(c.basis, c.prev)}, first ${c.compared} set${c.compared === 1 ? '' : 's'})`;
+      deltaEl.setAttribute('aria-label', desc);
+      deltaEl.title = desc;
+    };
 
     let chip = null;
     if (suggestion) {
@@ -142,6 +156,7 @@ export async function mountSession(container, { id }) {
         onInput: (v) => {
           set.weight = v;
           touched.add(set);
+          if (set.done) updateDelta();
           if (freshFirst) {
             for (const j of fillDownTargets(entry.sets, i, (k) => !touched.has(entry.sets[k]))) {
               entry.sets[j].weight = v;
@@ -154,7 +169,7 @@ export async function mountSession(container, { id }) {
       wIn.addEventListener('focus', () => { freshFirst = i === firstNormal && !set.done && !touched.has(set); });
       const rIn = numberInput({
         value: set.reps, min: 0, max: 999, integer: true, placeholder: 'reps', ariaLabel: `Set ${number ?? 'drop'} reps`, class: 'wk-in',
-        onInput: (v) => { set.reps = v; touched.add(set); save(); },
+        onInput: (v) => { set.reps = v; touched.add(set); if (set.done) updateDelta(); save(); },
       });
       const doneBtn = el('button', {
         type: 'button', class: 'wk-done', 'aria-label': `Set ${number ?? 'drop'} done`, 'aria-pressed': set.done ? 'true' : 'false',
@@ -164,6 +179,7 @@ export async function mountSession(container, { id }) {
           touched.add(set);
           doneBtn.setAttribute('aria-pressed', set.done ? 'true' : 'false');
           row.classList.toggle('is-done', set.done);
+          updateDelta();
           save();
         },
       }, el('span', { 'aria-hidden': 'true' }, '✓'));
@@ -178,12 +194,13 @@ export async function mountSession(container, { id }) {
       return row;
     }
     renderRows();
+    updateDelta();
 
     const card = el('section', { class: ['card', 'wk-card'], 'aria-label': exName(exMap, entry.exerciseId) },
       el('div', { class: 'wk-card-head' },
         el('h2', { class: 'wk-ex-name' }, exName(exMap, entry.exerciseId)),
         el('button', { type: 'button', class: 'btn btn-icon btn-ghost', 'aria-label': 'Exercise menu', onClick: () => exerciseMenu(entry) }, '⋯')),
-      el('div', { class: 'wk-meta' }, targetBtn, lastLine),
+      el('div', { class: 'wk-meta' }, targetBtn, lastLine, deltaEl),
       chip,
       rowsEl,
       el('div', { class: 'wk-card-actions' },
@@ -390,6 +407,7 @@ export async function mountSession(container, { id }) {
   function showSummary() {
     const st = sessionStats(workout);
     const vol = workoutVolume(workout, exMap, volumeWeights);
+    const cmp = compareSession([...older, workout], workout);
     const rows = MUSCLES.filter((m) => vol[m.id]).map((m) =>
       el('div', { class: 'row-between' }, el('span', m.name), el('span', { class: 'num' }, fmtNum(vol[m.id], 2))));
     const m = openModal({
@@ -401,6 +419,9 @@ export async function mountSession(container, { id }) {
           stat(String(st.normalSets), 'Sets'),
           stat(String(st.exercises), 'Exercises')),
         st.dropsets ? el('p', { class: 'muted small' }, `+ ${st.dropsets} dropset${st.dropsets === 1 ? '' : 's'}`) : null,
+        st.setsDone ? el('div', { class: 'stack' },
+          el('div', { class: 'section-title' }, cmp.prevSession ? 'vs last time you did this routine' : 'vs last time (each exercise)'),
+          comparisonBlock(cmp, exMap)) : null,
         rows.length ? el('div', { class: 'stack wk-summary-muscles' }, el('div', { class: 'section-title' }, 'Sets per muscle'), ...rows) : null,
       ],
     });

@@ -91,3 +91,40 @@ export function weeklyComparison(workouts, exercises, weights, date) {
     .filter((r) => r.current || r.previous);
   return { weekStart: start, weekEnd: end, rows };
 }
+
+// ---------------------------------------------------------------- weekly set targets
+// Stored by the workout feature as setting 'volumeTargets': { [muscleId]: sets per week }.
+// Missing setting (undefined), unknown muscles, non-numbers, ≤ 0 and > 100 are dropped.
+
+/** Upper bound for a weekly set target per muscle. */
+export const MAX_WEEKLY_TARGET = 100;
+
+/**
+ * Clean a stored targets object.
+ * @param {any} value
+ * @returns {Record<string, number>} muscleId -> target (rounded to 1 decimal)
+ */
+export function sanitiseTargets(value) {
+  const out = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return out;
+  for (const m of MUSCLES) {
+    const v = value[m.id];
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    const r = round(v, 1);
+    if (r > 0 && r <= MAX_WEEKLY_TARGET) out[m.id] = r;
+  }
+  return out;
+}
+
+/**
+ * Progress towards a weekly target.
+ * pct = done / target × 100 rounded to a whole number (may exceed 100); fraction is capped at 1 for bars.
+ * @param {number} done weighted sets done
+ * @param {number|null|undefined} target
+ * @returns {{done: number, target: number, pct: number, fraction: number, reached: boolean}|null} null without a valid target
+ */
+export function targetProgress(done, target) {
+  if (typeof target !== 'number' || !Number.isFinite(target) || target <= 0) return null;
+  const d = typeof done === 'number' && Number.isFinite(done) && done > 0 ? done : 0;
+  return { done: d, target, pct: round((d / target) * 100, 0), fraction: Math.min(1, d / target), reached: d >= target };
+}
