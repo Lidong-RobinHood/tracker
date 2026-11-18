@@ -1,4 +1,5 @@
-// Add-food screen: tabs Search · Scan · Photo · Recent · Meals · Quick add. Every food path ends in the portion sheet.
+// Add-food screen: tabs Search · Scan · Recent · Meals · Quick add. Every food path ends in the portion sheet.
+// Quick add also holds "Scan meal photo" (AI estimate → review → log); old ?tab=photo links open it there.
 import { el, pageHeader, numberInput, field, toast, emptyState, fmtNum, fmtDay, fmtAmount, back } from '../ui/index.js';
 import { isComplete, missingFields, macroKcal, emptyPer100 } from '../core/nutrition.js';
 import { checkDigitOk } from '../core/barcode.js';
@@ -11,12 +12,11 @@ import { createScanner } from './scanner.js';
 import { openPortion, editAndSaveFood } from './portion.js';
 import { openLogMeal, openEditMeal, mealKcal } from './meals.js';
 import { foodRow, segmented, ensureCss, per100Text } from './widgets.js';
-import { buildPhotoPanel } from './photo-tab.js';
+import { buildPhotoScan } from './photo-tab.js';
 
 const TABS = [
   { value: 'search', label: 'Search' },
   { value: 'scan', label: 'Scan' },
-  { value: 'photo', label: 'Photo' },
   { value: 'recent', label: 'Recent' },
   { value: 'meals', label: 'Meals' },
   { value: 'quick', label: 'Quick add' },
@@ -345,18 +345,43 @@ export async function mountAdd(container, params, ctx) {
       toast(`Added ${fmtNum(k, 0)} kcal to ${mealLabel(meal)}`, { type: 'success' });
       finished();
     }
-    const wrap = el('div', { class: 'card stack' },
+    const manualCard = el('div', { class: 'card stack quick-manual' },
+      el('h2', { class: 'section-title' }, 'Enter by hand'),
       field('Name', name),
       kcalField,
       el('div', { class: 'grid-3' }, field('Protein', protein, { unit: 'g' }), field('Carbs', carbs, { unit: 'g' }), field('Fat', fat, { unit: 'g' })),
       hintEl,
       el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: add }, `Add to ${mealLabel(meal)}`));
-    return { el: wrap, show: () => requestAnimationFrame(() => kcal.focus()) };
+    // Photo estimate section above the manual form. It only hides the form while an estimate is shown;
+    // typed values stay in the fields.
+    const scan = buildPhotoScan({
+      date, meal, cleanups, onFinished: finished,
+      manual: {
+        hasValues: () => [name, kcal, protein, carbs, fat].some((i) => i.value.trim() !== ''),
+        name: () => name.value,
+        setHidden: (h) => { manualCard.hidden = h; },
+      },
+    });
+    const wrap = el('div', { class: 'stack quick-panel' }, scan.el, manualCard);
+    return {
+      el: wrap,
+      show() {
+        scan.show();
+        if (photoFirst) {
+          photoFirst = false;
+          requestAnimationFrame(() => scan.el.scrollIntoView({ block: 'start' }));
+        } else if (!manualCard.hidden) {
+          requestAnimationFrame(() => kcal.focus({ preventScroll: true }));
+        }
+      },
+    };
   }
 
-  const buildPhoto = () => buildPhotoPanel({ date, meal, cleanups, onFinished: finished });
-  const builders = { search: buildSearch, scan: buildScan, photo: buildPhoto, recent: buildRecent, meals: buildMeals, quick: buildQuick };
-  const want = ctx.query.tab || lastTab();
+  const builders = { search: buildSearch, scan: buildScan, recent: buildRecent, meals: buildMeals, quick: buildQuick };
+  let want = ctx.query.tab || lastTab();
+  // The former "Photo" tab now lives in Quick add: old links (and a remembered tab) open it there.
+  let photoFirst = want === 'photo';
+  if (want === 'photo') want = 'quick';
   show(TABS.some((t) => t.value === want) ? want : 'search');
 
   return () => {

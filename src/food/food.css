@@ -148,3 +148,20 @@
 .photo-note .plain-list li + li { margin-top: var(--s1); }
 .photo-item-head .li-sub { white-space: normal; overflow: visible; text-overflow: clip; }
 .model-row .li-sub { white-space: normal; overflow: visible; text-overflow: clip; }
+
+/* link from the day summary to the trends weekly report */
+.week-report-link { align-self: flex-end; display: inline-flex; align-items: center; min-height: var(--tap); margin: calc(-1 * var(--s2)) 0 calc(-1 * var(--s3)); padding: 0 var(--s1); font-size: var(--fs-sm); font-weight: 500; color: var(--accent); text-decoration: none; }
+
+/* ---------------------------------------------------------------- quick add: scan meal photo */
+.quick-panel { gap: var(--s4); }
+.photo-scan-card { gap: var(--s3); }
+.photo-scan-title { margin: 0; padding: 0; font-size: var(--fs-lg); text-transform: none; letter-spacing: 0; color: var(--text); }
+.photo-scan-card .grid-2 > .btn { min-width: 0; }
+.photo-values { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s2); }
+.photo-value { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.photo-value-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.photo-value .input { padding-left: var(--s2); padding-right: var(--s2); min-width: 0; }
+.photo-value .input:disabled { opacity: .5; }
+.photo-log-option { gap: var(--s2); }
+.photo-log-option > .field-label { font-weight: 600; }
+.photo-review-foot { align-items: center; gap: var(--s2); flex-wrap: wrap; }

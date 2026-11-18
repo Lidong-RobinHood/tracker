@@ -205,3 +205,55 @@ test('key masking never shows more than the last 4 characters', () => {
   assert.equal(keyLooksValid(k), true);
   assert.equal(keyLooksValid('hello'), false);
 });
+
+// ---------------------------------------------------------------- review → quick add
+import { setPortionValue, photoMealName, photoMealTotals, ENTRY_NAME_MAX } from '../src/core/meal-photo.js';
+import { scale } from '../src/core/nutrition.js';
+
+test('setPortionValue turns a portion value into per-100 and leaves the rest alone', () => {
+  const per100 = { kcal: 130, protein: 2.7, carbs: 28, fat: 0.3, sugars: 0.1, satFat: null, fibre: 0.4, salt: 0 };
+  const p = setPortionValue(per100, 250, 'protein', 10);
+  assert.equal(p.protein, 4);
+  assert.equal(p.kcal, 130);
+  assert.equal(per100.protein, 2.7, 'input not mutated');
+  // odd amounts round-trip to the typed value at display precision
+  const q = setPortionValue(per100, 333, 'kcal', 500);
+  assert.equal(Math.round(scale(q, 333).kcal), 500);
+  const r = setPortionValue(per100, 333, 'fat', 15);
+  assert.equal(Math.round(scale(r, 333).fat * 10) / 10, 15);
+  // cleared / invalid value → unknown; unusable amount → unchanged copy
+  assert.equal(setPortionValue(per100, 100, 'carbs', null).carbs, null);
+  assert.equal(setPortionValue(per100, 100, 'carbs', -1).carbs, null);
+  assert.deepEqual(setPortionValue(per100, null, 'carbs', 5), per100);
+  assert.deepEqual(setPortionValue(per100, 0, 'carbs', 5), per100);
+  assert.deepEqual(setPortionValue(per100, 100, 'nope', 5), per100);
+});
+
+test('photoMealName: main items by kcal, short names, hint and default fallbacks', () => {
+  const items = [
+    { name: 'Broccoli, steamed', amount: 80, per100: { kcal: 35, protein: 2.4, carbs: 4, fat: 0.4 } },
+    { name: 'Cooked white rice', amount: 200, per100: { kcal: 130, protein: 2.7, carbs: 28, fat: 0.3 } },
+    { name: 'Chicken thigh, grilled', amount: 120, per100: { kcal: 209, protein: 26, carbs: 0, fat: 10.9 } },
+  ];
+  assert.equal(photoMealName(items), 'Cooked white rice, chicken thigh, broccoli');
+  const five = [...items, { name: 'Olive oil dressing', amount: 10, per100: { kcal: 800, protein: 0, carbs: 0, fat: 90 } }, { name: 'Lemon (wedge)', amount: 5, per100: { kcal: 29, protein: 1, carbs: 6, fat: 0.3 } }];
+  assert.equal(photoMealName(five), 'Cooked white rice, chicken thigh, olive oil dressing + 2 more');
+  assert.equal(photoMealName([{ name: 'BBQ ribs', amount: 100, per100: { kcal: 300 } }, { name: 'Rice', amount: 1, per100: { kcal: 1 } }]), 'BBQ ribs, rice');
+  assert.equal(photoMealName([{ name: 'Rice', amount: 1, per100: { kcal: 1 } }, { name: 'BBQ sauce', amount: 0.5, per100: { kcal: 1 } }]), 'Rice, BBQ sauce');
+  assert.equal(photoMealName([{ name: 'Rice', amount: 100, per100: {} }, { name: 'rice', amount: null, per100: {} }]), 'Rice');
+  assert.equal(photoMealName([], '  pasta   with pesto '), 'pasta with pesto');
+  assert.equal(photoMealName([{ name: 'Unnamed item', amount: 10, per100: {} }], ''), 'Meal photo');
+  assert.equal(photoMealName(null), 'Meal photo');
+  const long = photoMealName([{ name: 'x'.repeat(200), amount: 1, per100: { kcal: 1 } }]);
+  assert.ok(long.length <= ENTRY_NAME_MAX && long.endsWith('…'));
+});
+
+test('photoMealTotals sums edited items, rounds like the review, skips items without amount', () => {
+  const items = [
+    { amount: 200, per100: { kcal: 130, protein: 2.7, carbs: 28, fat: 0.3 } },
+    { amount: 125, per100: { kcal: 209, protein: 26, carbs: 0, fat: 10.9 } },
+    { amount: null, per100: { kcal: 500, protein: 50, carbs: 50, fat: 50 } },
+  ];
+  assert.deepEqual(photoMealTotals(items), { kcal: 521, protein: 37.9, carbs: 56, fat: 14.2 });
+  assert.deepEqual(photoMealTotals([]), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
+});

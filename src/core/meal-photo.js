@@ -1,7 +1,7 @@
 // Meal-photo analysis: models, prompt, request shape, response/error handling and the
 // validation + sanitising of the model's answer. Pure (no DOM, no fetch, no storage) so it is testable.
 // The provider (src/food/photo-provider.js) does the network call; the key never passes through here.
-import { NUTRIENTS, REQUIRED_NUTRIENTS, macroKcal } from './nutrition.js';
+import { NUTRIENTS, REQUIRED_NUTRIENTS, macroKcal, sumEntries } from './nutrition.js';
 import { parseDecimal, round } from './numbers.js';
 
 // ---------------------------------------------------------------------------------- models
@@ -325,6 +325,68 @@ export function parsePhotoAnswer(text) {
   const items = usable.slice(0, MAX_ITEMS).map(sanitiseItem);
   if (!items.length) return { ...photoError('empty'), note };
   return { ok: true, items, note, dropped: list.length - items.length };
+}
+
+// ---------------------------------------------------------------------------------- review → quick add
+export const ENTRY_NAME_MAX = 80; // same limit as the manual Quick add name field
+
+/**
+ * New per-100 values after the user typed an absolute value for the item's portion
+ * (e.g. "this 250 g portion has 30 g protein"). Other nutrients are unchanged.
+ * @param {Record<string, number|null>} per100 @param {number|null} amount
+ * @param {string} key nutrient @param {number|null} value for the whole portion (null = unknown)
+ * @returns {Record<string, number|null>} a new object; the input is returned as a copy if amount is unusable
+ */
+export function setPortionValue(per100, amount, key, value) {
+  const out = { ...(per100 || {}) };
+  if (!(typeof amount === 'number' && amount > 0) || !NUTRIENTS.includes(key)) return out;
+  out[key] = typeof value === 'number' && Number.isFinite(value) && value >= 0 ? round((value * 100) / amount, 3) : null;
+  return out;
+}
+
+/** Item name shortened for a meal title: "Chicken thigh, grilled" → "Chicken thigh". */
+function shortItemName(name) {
+  const n = String(name || '').replace(/\s+/g, ' ').trim();
+  if (!n || n === 'Unnamed item') return '';
+  return (n.split(/\s*[,(]\s*/)[0] || n).trim();
+}
+
+/**
+ * Short meal name for logging an estimate as one entry: the main items (most kcal first), else the hint.
+ * @param {Array<{name: string, amount: number|null, per100: object}>} items
+ * @param {string} [hint]
+ * @returns {string} at most ENTRY_NAME_MAX characters, 'Meal photo' if nothing usable
+ */
+export function photoMealName(items, hint = '') {
+  const ranked = (items || [])
+    .map((it, i) => ({ i, name: shortItemName(it && it.name), kcal: sumEntries([{ per100: it && it.per100, amount: it && it.amount }]).kcal }))
+    .filter((x) => x.name)
+    .sort((a, b) => b.kcal - a.kcal || a.i - b.i);
+  const names = [];
+  for (const x of ranked) if (!names.some((n) => n.toLowerCase() === x.name.toLowerCase())) names.push(x.name);
+  if (names.length) {
+    const shown = names.slice(0, 3);
+    const more = names.length - shown.length;
+    // "Rice, chicken thigh, broccoli": lower-case later words unless they look like an acronym/brand ("BBQ").
+    let s = shown.map((n, i) => (i > 0 && /^[A-Z][a-z]/.test(n) ? n.charAt(0).toLowerCase() + n.slice(1) : n)).join(', ');
+    if (more) s += ` + ${more} more`;
+    if (s.length > ENTRY_NAME_MAX) s = `${s.slice(0, ENTRY_NAME_MAX - 1).trimEnd()}…`;
+    return s;
+  }
+  const h = cleanHint(hint);
+  if (h) return h.length > ENTRY_NAME_MAX ? `${h.slice(0, ENTRY_NAME_MAX - 1).trimEnd()}…` : h;
+  return 'Meal photo';
+}
+
+/**
+ * Values for logging the reviewed estimate as ONE quick-add entry: the meal totals, rounded the way
+ * the review shows them (kcal whole, macros 0.1 g). Items without a usable amount are not counted.
+ * @param {Array<{amount: number|null, per100: object}>} items
+ * @returns {{kcal: number, protein: number, carbs: number, fat: number}}
+ */
+export function photoMealTotals(items) {
+  const t = sumEntries((items || []).filter((r) => r && typeof r.amount === 'number' && r.amount > 0));
+  return { kcal: round(t.kcal, 0), protein: round(t.protein, 1), carbs: round(t.carbs, 1), fat: round(t.fat, 1) };
 }
 
 // ---------------------------------------------------------------------------------- key display
