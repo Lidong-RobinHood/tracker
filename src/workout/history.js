@@ -2,18 +2,22 @@
 // Routes: workout/history, workout/history/:id
 import * as db from '../db/db.js';
 import { el, pageHeader, href, emptyState, confirmDialog, toast, navigate, fmtDate, fmtDuration, fmtTime, fmtNum } from '../ui/index.js';
-import { sessionStats, formatTarget, formatWeight, doneSets } from '../core/workout.js';
+import { sessionStats, formatTarget, formatWeight, doneSets, applySchedule } from '../core/workout.js';
 import { workoutVolume } from '../core/volume.js';
 import { MUSCLES } from '../core/muscles.js';
-import { ensureCss, loadExercises, loadWorkouts, exName } from './data.js';
+import { ensureCss, loadExercises, loadWorkouts, loadRoutines, exName } from './data.js';
+import { changeDateTime, logPastWorkout } from './datetime.js';
 import { compareSession } from '../core/workout-progress.js';
 import { comparisonBlock } from './progress-ui.js';
 
 export async function mountHistory(container) {
   ensureCss();
-  const [workouts, exMap] = await Promise.all([loadWorkouts(), loadExercises()]);
+  const [workouts, exMap, routines] = await Promise.all([loadWorkouts(), loadExercises(), loadRoutines()]);
   const done = workouts.filter((w) => w.finishedAt);
-  container.append(pageHeader({ title: 'History', back: 'workout' }));
+  container.append(pageHeader({
+    title: 'History', back: 'workout',
+    actions: [el('button', { type: 'button', class: 'btn btn-sm', onClick: () => logPastWorkout(routines) }, 'Log past')],
+  }));
   if (!done.length) { container.append(emptyState('No finished workouts yet.')); return; }
 
   // Group by month.
@@ -52,7 +56,7 @@ export async function mountHistoryDetail(container, { id }) {
   const editHref = href(`workout/session/${encodeURIComponent(w.id)}`);
   container.append(pageHeader({
     title: w.name,
-    subtitle: `${fmtDate(w.date)} · ${fmtTime(w.startedAt)} · ${fmtDuration(st.durationMs)}${w.finishedAt ? '' : ' · in progress'}`,
+    subtitle: `${fmtDate(w.date)} · ${fmtTime(w.startedAt)}${w.finishedAt ? ` · ${fmtDuration(st.durationMs)}` : ' · in progress'}`,
     back: 'workout/history',
     actions: [el('a', { class: 'btn btn-sm', href: editHref }, 'Edit')],
   }));
@@ -92,8 +96,21 @@ export async function mountHistoryDetail(container, { id }) {
       ? rows.map((m) => el('div', { class: 'row-between' }, el('span', m.name), el('span', { class: 'num' }, fmtNum(vol[m.id], 2))))
       : el('p', { class: 'muted small' }, 'No done sets.'))));
 
+  const editTime = async () => {
+    const v = await changeDateTime(w);
+    if (!v) return;
+    applySchedule(w, v);
+    w.updatedAt = Date.now();
+    await db.put('workouts', w);
+    toast(`Moved to ${fmtDate(w.date)}, ${fmtTime(w.startedAt)}`, { type: 'success' });
+    container.replaceChildren();
+    await mountHistoryDetail(container, { id });
+  };
+
   container.append(
+    w.finishedAt ? el('a', { class: 'btn btn-primary btn-block', href: href(`workout/summary/${encodeURIComponent(w.id)}`) }, 'Full analysis') : null,
     el('a', { class: 'btn btn-block', href: editHref }, 'Edit workout'),
+    el('button', { type: 'button', class: 'btn btn-block', onClick: editTime }, 'Change date/time'),
     el('button', {
       type: 'button', class: 'btn btn-ghost btn-block text-danger', onClick: async () => {
         const ok = await confirmDialog({ title: 'Delete workout?', message: 'This workout and its sets will be deleted. This cannot be undone.', confirmLabel: 'Delete', danger: true });

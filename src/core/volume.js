@@ -92,6 +92,60 @@ export function weeklyComparison(workouts, exercises, weights, date) {
   return { weekStart: start, weekEnd: end, rows };
 }
 
+// ---------------------------------------------------------------- breakdown: direct vs partial
+// How a muscle's weighted total is made up. Same counting rules as muscleVolume:
+//   direct  = done NORMAL sets of exercises where the muscle is primary   (value = sets × primary)
+//   partial = done NORMAL sets of exercises where the muscle is secondary (value = sets × secondary)
+//   drop    = done DROPSET rows, either role (value = rows × dropset × primary/secondary weight);
+//             dropDirect / dropPartial are the raw rows per role. Rows are counted even when the
+//             dropset weight is 0 (value 0 then).
+// total = direct.value + partial.value + drop.value, rounded to 2 decimals = muscleVolume()[muscle].
+
+/**
+ * @param {object[]} workouts
+ * @param {Map<string, object>|Record<string, object>} exercises by id
+ * @param {{primary?: number, secondary?: number, dropset?: number}} weights settings.volume
+ * @param {{from: string, to: string}} range inclusive YYYY-MM-DD
+ * @returns {Record<string, {total: number, direct: {sets: number, value: number}, partial: {sets: number, value: number},
+ *   drop: {sets: number, value: number, direct: number, partial: number}}>} only muscles with at least one counted row
+ */
+export function muscleVolumeBreakdown(workouts, exercises, weights, { from, to }) {
+  const w = volumeWeights(weights);
+  const get = lookup(exercises);
+  const acc = {};
+  const row = (m) => (acc[m] ||= { total: 0, direct: { sets: 0, value: 0 }, partial: { sets: 0, value: 0 }, drop: { sets: 0, value: 0, direct: 0, partial: 0 } });
+  for (const wo of workouts || []) {
+    if (!wo || typeof wo.date !== 'string' || wo.date < from || wo.date > to) continue;
+    for (const entry of wo.exercises || []) {
+      const ex = get(entry.exerciseId);
+      if (!ex) continue;
+      for (const s of entry.sets || []) {
+        if (!s || !s.done) continue;
+        const drop = s.type === 'dropset';
+        for (const [list, role, wt] of [[ex.primary, 'direct', w.primary], [ex.secondary, 'partial', w.secondary]]) {
+          for (const m of list || []) {
+            const r = row(m);
+            if (drop) { r.drop.sets++; r.drop[role]++; r.drop.value += w.dropset * wt; } else { r[role].sets++; r[role].value += wt; }
+          }
+        }
+      }
+    }
+  }
+  for (const r of Object.values(acc)) {
+    r.total = round(r.direct.value + r.partial.value + r.drop.value, 2);
+    r.direct.value = round(r.direct.value, 2);
+    r.partial.value = round(r.partial.value, 2);
+    r.drop.value = round(r.drop.value, 2);
+  }
+  return acc;
+}
+
+/** Breakdown for the Mon–Sun week containing `date`. */
+export function weeklyBreakdown(workouts, exercises, weights, date) {
+  const start = weekStart(date);
+  return muscleVolumeBreakdown(workouts, exercises, weights, { from: start, to: addDays(start, 6) });
+}
+
 // ---------------------------------------------------------------- weekly set targets
 // Stored by the workout feature as setting 'volumeTargets': { [muscleId]: sets per week }.
 // Missing setting (undefined), unknown muscles, non-numbers, ≤ 0 and > 100 are dropped.

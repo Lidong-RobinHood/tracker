@@ -4,7 +4,8 @@ import * as db from '../db/db.js';
 import { el, pageHeader, numberInput, toast, fmtNum, confirmDialog } from '../ui/index.js';
 import { MUSCLES } from '../core/muscles.js';
 import { today } from '../core/dates.js';
-import { weeklyComparison, sanitiseTargets, targetProgress, MAX_WEEKLY_TARGET } from '../core/volume.js';
+import { weeklyComparison, weeklyBreakdown, sanitiseTargets, targetProgress, MAX_WEEKLY_TARGET, volumeWeights } from '../core/volume.js';
+import { breakdownText, splitFill, breakdownCaption } from './volume-ui.js';
 import { ensureCss, loadExercises, loadWorkouts } from './data.js';
 
 export const TARGETS_KEY = 'volumeTargets';
@@ -16,10 +17,12 @@ export async function loadTargets() {
 
 export async function mountTargets(container) {
   ensureCss();
-  const [workouts, exMap, weights, targets] = await Promise.all([
+  const [workouts, exMap, rawWeights, targets] = await Promise.all([
     loadWorkouts(), loadExercises(), db.getSetting('volume'), loadTargets(),
   ]);
+  const weights = volumeWeights(rawWeights);
   const cmp = weeklyComparison(workouts, exMap, weights, today());
+  const parts = weeklyBreakdown(workouts, exMap, weights, today());
   const done = Object.fromEntries(cmp.rows.map((r) => [r.muscle, r.current]));
 
   let chain = Promise.resolve();
@@ -33,13 +36,11 @@ export async function mountTargets(container) {
   const inputs = [];
   const rows = MUSCLES.map((m) => {
     const pctEl = el('span', { class: 'wk-tg-pct num small' });
-    const fill = el('span', { class: 'wk-vol-fill' });
-    const bar = el('span', { class: 'wk-vol-bar', 'aria-hidden': 'true' }, fill);
+    const bar = el('span', { class: 'wk-vol-bar', 'aria-hidden': 'true' });
     const paint = () => {
       const tp = targetProgress(done[m.id] || 0, targets[m.id]);
       bar.hidden = !tp;
-      fill.style.width = tp ? `${tp.fraction * 100}%` : '0';
-      fill.classList.toggle('is-reached', !!(tp && tp.reached));
+      bar.replaceChildren(splitFill(parts[m.id], tp ? tp.fraction : 0, !!(tp && tp.reached)));
       pctEl.textContent = tp ? `${tp.reached ? '✓ ' : ''}${tp.pct} %` : '';
       pctEl.classList.toggle('text-success', !!(tp && tp.reached));
     };
@@ -58,6 +59,7 @@ export async function mountTargets(container) {
       el('div', { class: 'wk-tg-main' },
         el('div', { class: 'wk-tg-name' }, m.name),
         el('div', { class: 'small muted num' }, `${fmtNum(done[m.id] || 0, 2)} this week`, ' ', pctEl),
+        parts[m.id] ? el('div', { class: 'small muted num' }, breakdownText(parts[m.id], weights)) : null,
         bar),
       input);
   });
@@ -75,7 +77,7 @@ export async function mountTargets(container) {
   container.append(
     pageHeader({ title: 'Weekly set targets', subtitle: 'Saved automatically', back: 'workout' }),
     el('p', { class: 'small muted wk-pad-x' },
-      `Optional sets per week for each muscle (e.g. Chest 12). Sets are counted like the weekly list: a ticked normal set adds ${fmtNum(weights.primary, 2)} to each primary and ${fmtNum(weights.secondary, 2)} to each secondary muscle; a dropset adds ${fmtNum(weights.dropset, 2)} × that. Leave empty for no target.`),
+      `Optional sets per week for each muscle (e.g. Chest 12). Sets are counted like the weekly list. ${breakdownCaption(weights)}Leave empty for no target.`),
     el('div', { class: 'card wk-tg-card' }, rows),
     el('button', { type: 'button', class: 'btn btn-ghost btn-block', onClick: clearAll }, 'Clear all targets'));
 

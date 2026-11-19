@@ -190,3 +190,62 @@ test('sort: least recovered first, fresh last', () => {
   assert.deepEqual(rows.slice(0, 5).map((r) => r.muscle), ['calves', 'glutes', 'quads', 'hamstrings', 'chest']);
   assert.equal(rows.at(-1).status, 'fresh');
 });
+
+// ---------------------------------------------------------------- custom base ranges
+import { validateRange, sanitiseBase, withBase, baseRange } from '../src/core/recovery.js';
+
+test('validateRange: whole hours, min ≥ 6, max ≤ 240, max ≥ min + 4', () => {
+  assert.deepEqual(validateRange(12, 20), { ok: true, value: [12, 20] });
+  assert.deepEqual(validateRange(6, 10), { ok: true, value: [6, 10] });
+  assert.deepEqual(validateRange(236, 240), { ok: true, value: [236, 240] });
+  for (const [a, b] of [[5, 20], [12, 241], [12, 15], [12.5, 20], [12, null], [NaN, 20], ['12', 20]]) {
+    assert.equal(validateRange(a, b).ok, false, `${a}-${b}`);
+  }
+});
+
+test('recoverySettings keeps pace and only valid overrides; withBase sets and resets', () => {
+  assert.deepEqual(recoverySettings({ pace: 'slower' }), { pace: 'slower' });
+  assert.deepEqual(recoverySettings({ pace: 'faster', base: { chest: [12, 20], nope: [10, 20], back: [3, 9], quads: [100, 'x'] } }),
+    { pace: 'faster', base: { chest: [12, 20] } });
+  assert.deepEqual(sanitiseBase(null), {});
+  const v1 = withBase({ pace: 'slower' }, 'chest', [30, 40]);
+  assert.deepEqual(v1, { pace: 'slower', base: { chest: [30, 40] } });
+  const v2 = withBase(v1, 'quads', [100, 200]);
+  assert.deepEqual(v2.base, { chest: [30, 40], quads: [100, 200] });
+  assert.deepEqual(withBase(v2, 'chest', null), { pace: 'slower', base: { quads: [100, 200] } });
+  assert.deepEqual(withBase(withBase(v2, 'chest', null), 'quads', null), { pace: 'slower' });
+  assert.throws(() => withBase(v1, 'chest', [10, 12]));
+  assert.deepEqual(v1, { pace: 'slower', base: { chest: [30, 40] } }); // not mutated
+  assert.deepEqual(baseRange('chest', v2.base), { range: [30, 40], custom: true });
+  assert.deepEqual(baseRange('back', v2.base), { range: [48, 72], custom: false });
+});
+
+test('custom range: exact at the reference dose, default caps do not clip it', () => {
+  // Below the default 24 h cap and narrower than the default 8 h width.
+  assert.deepEqual(recoveryWindow('chest', 4, 1, RECOVERY_CONFIG, [12, 16]), [12, 16]);
+  // Above the default 120 h cap.
+  assert.deepEqual(recoveryWindow('quads', 4, 1, RECOVERY_CONFIG, [100, 200]), [100, 200]);
+  // Dose and pace still scale it; the input limits 6–240 h are the caps then.
+  assert.deepEqual(recoveryWindow('quads', 9, 1, RECOVERY_CONFIG, [100, 200]), [150, 240]);
+  assert.deepEqual(recoveryWindow('chest', 1, 1, RECOVERY_CONFIG, [12, 16]), [8, 12]); // 8.4, 11.2 → width 4 kept
+  assert.deepEqual(recoveryWindow('chest', 1, 0.8, RECOVERY_CONFIG, [6, 10]), [6, 10]); // 3.4 → 6 floor; width 4
+  assert.deepEqual(recoveryWindow('chest', 4, 1.25, RECOVERY_CONFIG, [30, 40]), [38, 50]); // 37.5 → 38
+  // Without a custom range nothing changed.
+  assert.deepEqual(recoveryWindow('chest', 4), [48, 72]);
+});
+
+test('muscleRecovery uses overrides for that muscle only and marks it custom', () => {
+  const w = [W(20, { bench: S(4) })]; // chest 4 sets, triceps/shoulders 2
+  const def = run(w);
+  const own = run(w, { base: { chest: [12, 16] } });
+  assert.deepEqual([get(def, 'chest').minHours, get(def, 'chest').maxHours], [48, 72]);
+  assert.equal(get(def, 'chest').status, 'recovering');
+  assert.deepEqual([get(own, 'chest').minHours, get(own, 'chest').maxHours], [12, 16]);
+  assert.equal(get(own, 'chest').status, 'fresh'); // 20 h ≥ 16 h
+  assert.equal(get(own, 'chest').custom, true);
+  assert.equal(get(own, 'triceps').custom, false);
+  assert.deepEqual([get(own, 'triceps').minHours, get(own, 'triceps').maxHours], [get(def, 'triceps').minHours, get(def, 'triceps').maxHours]);
+  // Pace applies after the override.
+  const slow = run(w, { base: { chest: [12, 16] }, factor: 1.25 });
+  assert.deepEqual([get(slow, 'chest').minHours, get(slow, 'chest').maxHours], [15, 20]);
+});

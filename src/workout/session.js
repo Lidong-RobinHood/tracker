@@ -4,12 +4,14 @@
 import * as db from '../db/db.js';
 import {
   el, pageHeader, numberInput, field, openSheet, openModal, confirmDialog, toast, navigate, emptyState,
-  fmtTime, fmtDuration, fmtNum, fmtDate,
+  fmtTime, fmtDuration, fmtNum, fmtDate, href,
 } from '../ui/index.js';
 import {
   buildEntry, byRecent, lastEntryFor, formatSets, formatTarget, normaliseTarget, fillDownTargets,
-  pendingNormalSets, sessionStats, routineItemsFromWorkout,
+  pendingNormalSets, sessionStats, routineItemsFromWorkout, finishTime, applySchedule, targetCheck,
+  LIVE_WINDOW_MS, MAX_TARGET_WEIGHT,
 } from '../core/workout.js';
+import { changeDateTime } from './datetime.js';
 import { suggestProgression } from '../core/progression.js';
 import { workoutVolume } from '../core/volume.js';
 import { MUSCLES } from '../core/muscles.js';
@@ -31,8 +33,12 @@ export async function mountSession(container, { id }) {
       emptyState('This workout does not exist (deleted?).', el('a', { class: 'btn', href: '#/workout' }, 'Workout home')));
     return undefined;
   }
-  // History for "Last:" / prefill / progression = finished sessions older than this one.
-  const older = workouts.filter((w) => w.id !== workout.id && byRecent(w, workout) > 0);
+  // History for "Last:" / prefill / progression = sessions older than this one by date and start
+  // time (not by creation), so a back-dated session only sees what came before it.
+  const others = workouts.filter((w) => w.id !== workout.id);
+  let older = others.filter((w) => byRecent(w, workout) > 0);
+  /** All workouts with this session's live state (for the exercise picker's "Recent"). */
+  const allWorkouts = () => [...others, workout];
   const finished = () => !!workout.finishedAt;
 
   let gone = false; // discarded/deleted: stop saving
@@ -45,8 +51,11 @@ export async function mountSession(container, { id }) {
   // ------------------------------------------------------------ header
   const subtitle = el('span');
   const updateSubtitle = () => {
-    if (finished()) subtitle.textContent = `${fmtDate(workout.date)} · ${fmtDuration(workout.finishedAt - workout.startedAt)}`;
-    else subtitle.textContent = `Started ${fmtTime(workout.startedAt)} · ${fmtDuration(Date.now() - workout.startedAt)}`;
+    const now = Date.now();
+    if (finished()) subtitle.textContent = `${fmtDate(workout.date)} · ${fmtTime(workout.startedAt)} · ${fmtDuration(workout.finishedAt - workout.startedAt)}`;
+    else if (workout.plannedDurationMs || now - workout.startedAt > LIVE_WINDOW_MS || now < workout.startedAt) {
+      subtitle.textContent = `${fmtDate(workout.date)} · ${fmtTime(workout.startedAt)} · past workout`;
+    } else subtitle.textContent = `Started ${fmtTime(workout.startedAt)} · ${fmtDuration(now - workout.startedAt)}`;
   };
   updateSubtitle();
   const timer = setInterval(updateSubtitle, 30000);
@@ -100,6 +109,18 @@ export async function mountSession(container, { id }) {
       onClick: () => editTarget(entry),
     }, formatTarget(entry));
 
+    const targetHit = el('div', { class: 'wk-tmet small', hidden: true });
+    const updateTarget = () => {
+      const tc = targetCheck(entry);
+      rowCtl.forEach((c, i) => {
+        const hit = !!(tc && tc.perSet[i]);
+        c.row.classList.toggle('is-hit', hit);
+        c.label.setAttribute('aria-label', `${c.name} options${hit ? ', meets the target' : ''}`);
+      });
+      targetHit.hidden = !(tc && tc.met);
+      targetHit.textContent = tc && tc.met ? `Target met: ${tc.hits} set${tc.hits === 1 ? '' : 's'} at ${fmtNum(entry.targetWeight, 2)} kg or more` : '';
+    };
+
     const lastLine = el('div', { class: 'wk-last small muted' },
       last ? `Last: ${formatSets(last.entry.sets)} · ${shortDate(last.workout.date)}` : 'No previous session');
     // Live "vs last time": fixed-width slot (reserved even while empty) so the row never reflows.
@@ -116,10 +137,12 @@ export async function mountSession(container, { id }) {
     };
 
     let chip = null;
+    let progRow = null;
     if (suggestion) {
       chip = el('button', {
         type: 'button', class: 'chip wk-prog',
         onClick: () => {
+          if (chip.classList.contains('is-active')) return;
           const idx = pendingNormalSets(entry.sets);
           for (const i of idx) {
             entry.sets[i].weight = suggestion.weight;
@@ -128,9 +151,19 @@ export async function mountSession(container, { id }) {
           }
           chip.classList.add('is-active');
           chip.textContent = `✓ ${fmtNum(suggestion.weight, 2)} kg applied to ${idx.length} set${idx.length === 1 ? '' : 's'}`;
+          // Offer (never automatic) to raise a weight target that the new weight goes beyond.
+          if (entry.targetWeight && suggestion.weight > entry.targetWeight) {
+            const raise = el('button', {
+              type: 'button', class: 'chip wk-raise',
+              onClick: () => { raiseTarget(entry, suggestion.weight, targetBtn); raise.remove(); },
+            }, `Make ${fmtNum(suggestion.weight, 2)} kg the target`);
+            progRow.append(raise);
+          }
+          updateTarget();
           save();
         },
       }, `↑ ${fmtNum(suggestion.weight, 2)} kg — all sets hit target`);
+      progRow = el('div', { class: 'wk-prog-row' }, chip);
     }
 
     const noteArea = el('textarea', {
@@ -157,7 +190,7 @@ export async function mountSession(container, { id }) {
         onInput: (v) => {
           set.weight = v;
           touched.add(set);
-          if (set.done) updateDelta();
+          if (set.done) { updateDelta(); updateTarget(); }
           if (freshFirst) {
             for (const j of fillDownTargets(entry.sets, i, (k) => !touched.has(entry.sets[k]))) {
               entry.sets[j].weight = v;
@@ -170,7 +203,7 @@ export async function mountSession(container, { id }) {
       wIn.addEventListener('focus', () => { freshFirst = i === firstNormal && !set.done && !touched.has(set); });
       const rIn = numberInput({
         value: set.reps, min: 0, max: 999, integer: true, placeholder: 'reps', ariaLabel: `Set ${number ?? 'drop'} reps`, class: 'wk-in',
-        onInput: (v) => { set.reps = v; touched.add(set); if (set.done) updateDelta(); save(); },
+        onInput: (v) => { set.reps = v; touched.add(set); if (set.done) { updateDelta(); updateTarget(); } save(); },
       });
       const doneBtn = el('button', {
         type: 'button', class: 'wk-done', 'aria-label': `Set ${number ?? 'drop'} done`, 'aria-pressed': set.done ? 'true' : 'false',
@@ -181,6 +214,7 @@ export async function mountSession(container, { id }) {
           doneBtn.setAttribute('aria-pressed', set.done ? 'true' : 'false');
           row.classList.toggle('is-done', set.done);
           updateDelta();
+          updateTarget();
           save();
         },
       }, el('span', { 'aria-hidden': 'true' }, '✓'));
@@ -191,18 +225,20 @@ export async function mountSession(container, { id }) {
       const row = el('div', { class: ['wk-set', isDrop && 'is-drop', set.done && 'is-done'] }, label, wIn, rIn, doneBtn);
       // Long-press anywhere on the label also opens the menu (context menu on desktop).
       label.addEventListener('contextmenu', (e) => { e.preventDefault(); rowMenu(entry, i); });
-      rowCtl[i] = { wIn, rIn, row };
+      rowCtl[i] = { wIn, rIn, row, label, name: `Set ${number ?? 'drop'}` };
       return row;
     }
     renderRows();
     updateDelta();
+    updateTarget();
 
     const card = el('section', { class: ['card', 'wk-card'], 'aria-label': exName(exMap, entry.exerciseId) },
       el('div', { class: 'wk-card-head' },
         el('h2', { class: 'wk-ex-name' }, exName(exMap, entry.exerciseId)),
         el('button', { type: 'button', class: 'btn btn-icon btn-ghost', 'aria-label': 'Exercise menu', onClick: () => exerciseMenu(entry) }, '⋯')),
       el('div', { class: 'wk-meta' }, targetBtn, lastLine, deltaEl),
-      chip,
+      targetHit,
+      progRow,
       rowsEl,
       el('div', { class: 'wk-card-actions' },
         el('button', { type: 'button', class: 'btn btn-sm', onClick: () => addSet(entry, 'normal') }, '+ Set'),
@@ -267,10 +303,12 @@ export async function mountSession(container, { id }) {
     const sets = numberInput({ value: entry.targetSets, min: 1, max: 20, integer: true, ariaLabel: 'Target sets' });
     const reps = numberInput({ value: entry.targetReps, min: 1, max: 100, integer: true, ariaLabel: 'Target reps' });
     const max = numberInput({ value: entry.targetRepsMax, min: 1, max: 100, integer: true, placeholder: 'optional', ariaLabel: 'Max reps' });
+    const wt = numberInput({ value: entry.targetWeight ?? null, min: 0, max: MAX_TARGET_WEIGHT, decimals: 2, placeholder: 'optional', ariaLabel: 'Target weight in kg' });
     const s = openSheet({
       title: `Target · ${exName(exMap, entry.exerciseId)}`,
       content: [
         el('div', { class: 'grid-3' }, field('Sets', sets), field('Reps', reps), field('Max reps', max)),
+        field('Weight', wt, { unit: 'kg', hint: 'Optional. Leave empty for bodyweight or no weight target.' }),
         el('p', { class: 'field-hint' }, 'A range like 3 x 6–8 progresses once every set reaches the max.'),
       ],
     });
@@ -279,10 +317,31 @@ export async function mountSession(container, { id }) {
       el('button', {
         type: 'button', class: 'btn btn-primary', onClick: () => {
           if (sets.getNumber() === null || reps.getNumber() === null) { toast('Enter sets and reps', { type: 'error' }); return; }
-          Object.assign(entry, normaliseTarget({ targetSets: sets.getNumber(), targetReps: reps.getNumber(), targetRepsMax: max.getNumber() }));
+          if (wt.value.trim() && wt.getNumber() === null) { toast('Enter a weight in kg or leave it empty', { type: 'error' }); return; }
+          Object.assign(entry, normaliseTarget({ targetSets: sets.getNumber(), targetReps: reps.getNumber(), targetRepsMax: max.getNumber(), targetWeight: wt.getNumber() }));
           s.close(); rerenderCard(entry); save();
         },
       }, 'Save'));
+  }
+
+  /** Raise the weight target of this entry, and of the routine item it came from. */
+  async function raiseTarget(entry, weight, targetBtn) {
+    entry.targetWeight = weight;
+    targetBtn.textContent = formatTarget(entry);
+    targetBtn.setAttribute('aria-label', `Target ${formatTarget(entry)}, edit`);
+    save();
+    let routineDone = false;
+    try {
+      const r = workout.routineId ? await db.get('routines', workout.routineId) : null;
+      const items = r ? r.items.filter((it) => it.exerciseId === entry.exerciseId) : [];
+      if (items.length) {
+        for (const it of items) it.targetWeight = weight;
+        r.updatedAt = Date.now();
+        await db.put('routines', r);
+        routineDone = true;
+      }
+    } catch (err) { console.error(err); }
+    toast(`Target is now ${fmtNum(weight, 2)} kg${routineDone ? ' (routine updated)' : ''}`, { type: 'success' });
   }
 
   // ------------------------------------------------------------ exercise actions
@@ -310,7 +369,7 @@ export async function mountSession(container, { id }) {
   }
 
   async function replace(entry) {
-    const ex = await pickExercise({ title: 'Replace with', exMap });
+    const ex = await pickExercise({ title: 'Replace with', exMap, workouts: allWorkouts() });
     if (!ex || ex.id === entry.exerciseId) return;
     const anyDone = entry.sets.some((s) => s.done);
     entry.exerciseId = ex.id;
@@ -330,7 +389,7 @@ export async function mountSession(container, { id }) {
   }
 
   async function addExercise() {
-    const ex = await pickExercise({ exMap });
+    const ex = await pickExercise({ exMap, workouts: allWorkouts() });
     if (!ex) return;
     const entry = buildEntry(ex.id, null, older);
     workout.exercises.push(entry);
@@ -346,6 +405,7 @@ export async function mountSession(container, { id }) {
       el('div', { class: 'li-main' }, label));
     s.body.append(el('div', { class: 'list' },
       item('Rename', rename),
+      item('Change date/time', editDateTime),
       item('Save as routine', saveAsRoutine),
       finished() ? null : item('Finish workout', finish),
       item(finished() ? 'Delete workout' : 'Discard workout', discard, 'text-danger')));
@@ -362,6 +422,17 @@ export async function mountSession(container, { id }) {
       },
     }, 'Save'));
     input.focus();
+  }
+
+  async function editDateTime() {
+    const v = await changeDateTime(workout);
+    if (!v) return;
+    applySchedule(workout, v);
+    older = others.filter((w) => byRecent(w, workout) > 0);
+    updateSubtitle();
+    renderAll();
+    await save();
+    toast(`Moved to ${fmtDate(workout.date)}, ${fmtTime(workout.startedAt)}`, { type: 'success' });
   }
 
   async function saveAsRoutine() {
@@ -400,8 +471,11 @@ export async function mountSession(container, { id }) {
       });
       if (!ok) return;
     }
-    workout.finishedAt = Date.now();
+    // A live session ends now; a past one (logged later or forgotten) ends start + its duration.
+    workout.finishedAt = finishTime(workout, Date.now());
+    delete workout.plannedDurationMs;
     clearInterval(timer);
+    updateSubtitle();
     await save();
     showSummary();
   }
@@ -427,7 +501,9 @@ export async function mountSession(container, { id }) {
         rows.length ? el('div', { class: 'stack wk-summary-muscles' }, el('div', { class: 'section-title' }, 'Sets per muscle'), ...rows) : null,
       ],
     });
-    m.footer.append(el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: () => m.close('done') }, 'Done'));
+    m.footer.append(
+      el('a', { class: 'btn btn-block', href: href(`workout/summary/${encodeURIComponent(workout.id)}`) }, 'Full analysis'),
+      el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: () => m.close('done') }, 'Done'));
     m.closed.then((r) => { if (r === 'done') navigate('workout', { replace: true }); });
   }
 

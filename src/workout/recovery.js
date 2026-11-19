@@ -1,10 +1,10 @@
 // Muscle recovery: compact section for the workout home, and the detail screen.
 // Route: workout/recovery. Model and caveats: src/core/recovery.js (general rule of thumb, not a measurement).
 import * as db from '../db/db.js';
-import { el, pageHeader, href, fmtTime, fmtNum, toast } from '../ui/index.js';
+import { el, pageHeader, href, fmtTime, fmtNum, toast, openSheet, numberInput, field, confirmDialog } from '../ui/index.js';
 import {
   muscleRecovery, sortByRecovery, recoveryWords, STATUS_LABEL, RECOVERY_CONFIG, RECOVERY_KEY,
-  recoverySettings, paceFactor, lookbackFrom, doseFactor, recoveryWindow,
+  recoverySettings, paceFactor, lookbackFrom, doseFactor, recoveryWindow, validateRange, withBase, baseRange,
 } from '../core/recovery.js';
 import { MUSCLES } from '../core/muscles.js';
 import { ensureCss, loadExercises } from './data.js';
@@ -23,7 +23,12 @@ export async function loadRecentWorkouts(now) {
   return db.range('workouts', 'date', { lower: lookbackFrom(now) });
 }
 
-/** @returns {Promise<{pace: string}>} */
+/** Options for muscleRecovery from the stored setting: pace factor and the user's own base ranges. */
+export function recoveryOpts(setting) {
+  return { factor: paceFactor(setting), base: recoverySettings(setting).base || null };
+}
+
+/** @returns {Promise<{pace: string, base?: Record<string, [number, number]>}>} */
 export async function loadRecoverySetting() {
   return recoverySettings(await db.getSetting(RECOVERY_KEY));
 }
@@ -100,8 +105,8 @@ function recoveryRow(r, now) {
  * last 14 days are used.
  */
 export function recoverySection(workouts, exMap, weights, setting, now = Date.now()) {
-  const rows = sortByRecovery(muscleRecovery(workouts, exMap, weights, { now, factor: paceFactor(setting) }));
-  const recent = rows.filter((r) => r.trained && now - r.lastAt < HOME_DAYS * 24 * H);
+  const rows = sortByRecovery(muscleRecovery(workouts, exMap, weights, { now, ...recoveryOpts(setting) }));
+  const recent = rows.filter((r) => r.trained && (now - r.lastAt < HOME_DAYS * 24 * H || r.status !== 'fresh'));
   const rested = MUSCLES.filter((m) => !recent.some((r) => r.muscle === m.id)).map((m) => m.name);
   return el('section', { class: 'section', 'data-recovery': '' },
     el('div', { class: 'row-between' },
@@ -130,10 +135,83 @@ export async function mountRecovery(container) {
   container.append(pageHeader({ title: 'Muscle recovery', subtitle: 'General estimate per muscle', back: 'workout' }));
 
   const listHost = el('div', { class: 'card wk-rc-card' });
+  const rangesHost = el('div', { class: 'card card-flush' });
+  const resetAllBtn = el('button', { type: 'button', class: 'btn btn-ghost btn-block', onClick: () => resetAll() }, 'Reset all to default');
   const paint = () => {
-    const rows = sortByRecovery(muscleRecovery(workouts, exMap, weights, { now, factor: paceFactor(setting) }));
+    const rows = sortByRecovery(muscleRecovery(workouts, exMap, weights, { now, ...recoveryOpts(setting) }));
     listHost.replaceChildren(el('div', { class: 'wk-rc-list' }, rows.map((r) => detailRow(r, now))));
+    rangesHost.replaceChildren(el('div', { class: 'list' }, MUSCLES.map((m) => rangeRow(m))));
+    resetAllBtn.hidden = !setting.base;
   };
+  let chain = Promise.resolve();
+  const persist = () => {
+    const value = { ...setting };
+    chain = chain.then(() => db.setSetting(RECOVERY_KEY, value)).catch((err) => {
+      console.error(err); toast(`Could not save: ${err && err.message}`, { type: 'error' });
+    });
+    return chain;
+  };
+  const setRange = (muscle, range) => {
+    const v = withBase(setting, muscle, range);
+    delete setting.base;
+    Object.assign(setting, v);
+    paint();
+    return persist();
+  };
+
+  function rangeRow(m) {
+    const { range, custom } = baseRange(m.id, setting.base);
+    return el('button', {
+      type: 'button', class: 'list-item', onClick: () => editRange(m),
+      'aria-label': `${m.name}: ${range[0]} to ${range[1]} hours${custom ? ', your own range' : ', default'}. Edit`,
+    },
+    el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, m.name)),
+    el('span', { class: 'li-trail num' }, custom ? el('span', { class: 'badge wk-rc-own' }, 'yours') : null, ` ${range[0]}–${range[1]} h`),
+    el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›'));
+  }
+
+  function editRange(m) {
+    const { range, custom } = baseRange(m.id, setting.base);
+    const def = RECOVERY_CONFIG.base[m.id];
+    const c = RECOVERY_CONFIG.custom;
+    const lo = numberInput({ value: range[0], min: 0, max: 999, integer: true, ariaLabel: `${m.name} shortest hours` });
+    const hi = numberInput({ value: range[1], min: 0, max: 999, integer: true, ariaLabel: `${m.name} longest hours` });
+    const err = el('p', { class: 'field-error', role: 'alert', hidden: true });
+    const sh = openSheet({
+      title: `${m.name} recovery`,
+      content: [
+        el('div', { class: 'grid-2' }, field('Shortest', lo, { unit: 'h' }), field('Longest', hi, { unit: 'h' })),
+        el('p', { class: 'field-hint' },
+          `Hours after about ${RECOVERY_CONFIG.referenceDose} hard sets at average pace. More or fewer sets and your pace still scale it. `
+          + `Whole hours, ${c.min}–${c.max} h, longest at least ${c.minGap} h more. Default ${def[0]}–${def[1]} h.`),
+        err,
+      ],
+    });
+    sh.footer.append(
+      custom ? el('button', {
+        type: 'button', class: 'btn', onClick: async () => { sh.close(); await setRange(m.id, null); toast(`${m.name}: default ${def[0]}–${def[1]} h`); },
+      }, 'Reset to default') : el('button', { type: 'button', class: 'btn', onClick: () => sh.close() }, 'Cancel'),
+      el('button', {
+        type: 'button', class: 'btn btn-primary', onClick: async () => {
+          const v = validateRange(lo.getNumber(), hi.getNumber());
+          if (!v.ok) { err.textContent = v.error; err.hidden = false; return; }
+          sh.close();
+          if (v.value[0] === def[0] && v.value[1] === def[1]) await setRange(m.id, null);
+          else await setRange(m.id, v.value);
+          toast(`${m.name}: ${v.value[0]}–${v.value[1]} h saved`, { type: 'success' });
+        },
+      }, 'Save'));
+  }
+
+  async function resetAll() {
+    if (!setting.base) return;
+    const ok = await confirmDialog({ title: 'Reset all ranges?', message: 'Every muscle goes back to the default range. Your pace setting stays.', confirmLabel: 'Reset' });
+    if (!ok) return;
+    delete setting.base;
+    paint();
+    await persist();
+    toast('All ranges reset to default');
+  }
 
   const tabs = el('div', { class: 'tabs wk-rc-tabs', role: 'radiogroup', 'aria-label': 'How fast you recover' },
     PACES.map(([id, label, aria]) => el('button', {
@@ -143,9 +221,7 @@ export async function mountRecovery(container) {
         setting.pace = id;
         for (const b of tabs.children) b.setAttribute('aria-checked', String(b.dataset.pace === id));
         paint();
-        try { await db.setSetting(RECOVERY_KEY, { ...setting }); } catch (err) {
-          console.error(err); toast(`Could not save: ${err && err.message}`, { type: 'error' });
-        }
+        await persist();
       },
     }, label)));
 
@@ -158,6 +234,10 @@ export async function mountRecovery(container) {
       el('p', { class: 'field-hint wk-pad-x' },
         `Scales every window: faster × ${RECOVERY_CONFIG.paces.faster}, average × 1, slower × ${RECOVERY_CONFIG.paces.slower}. Saved automatically.`)),
     el('section', { class: 'section' }, el('h2', { class: 'section-title' }, 'All muscles'), listHost),
+    el('section', { class: 'section' },
+      el('h2', { class: 'section-title' }, 'Recovery range per muscle'),
+      el('p', { class: 'field-hint wk-pad-x' }, `Tap a muscle to set your own range (hours after about ${RECOVERY_CONFIG.referenceDose} hard sets). Saved automatically.`),
+      rangesHost, resetAllBtn),
     assumptions(weights));
 }
 
@@ -202,7 +282,7 @@ function assumptions(weights) {
         + 'Smaller muscles tend to need less, the big leg muscles more. This is not a measurement of your body and not based on a specific study.'),
       el('div', { class: 'wk-rc-table', role: 'table', 'aria-label': `Base range per muscle for about ${cfg.referenceDose} sets` },
         el('div', { class: 'wk-rc-trow is-head', role: 'row' },
-          el('span', { role: 'columnheader' }, 'Muscles'), el('span', { role: 'columnheader' }, `${cfg.referenceDose} sets`)),
+          el('span', { role: 'columnheader' }, 'Muscles'), el('span', { role: 'columnheader' }, `Default, ${cfg.referenceDose} sets`)),
         [...groups].map(([k, names]) => el('div', { class: 'wk-rc-trow', role: 'row' },
           el('span', { role: 'cell' }, names.join(', ')), el('span', { role: 'cell', class: 'num' }, `${k} h`)))),
       el('p', { class: 'small' },
@@ -213,7 +293,9 @@ function assumptions(weights) {
       el('p', { class: 'small' },
         `Less than ${cfg.minDose} counted set (e.g. a single set where the muscle only helps) does not restart the clock. `
         + `If you train a muscle again before its window is over, the leftover part of the earlier sets is added to the new session. `
-        + `Every range stays between ${cfg.capMin} h and ${cfg.capMax} h (${cfg.capMax / 24} days). Only the last ${cfg.lookbackDays} days are looked at.`),
+        + `Default ranges stay between ${cfg.capMin} h and ${cfg.capMax} h (${cfg.capMax / 24} days). `
+        + `A range you set yourself is used as is for about ${cfg.referenceDose} sets and is only kept within ${cfg.custom.min}–${cfg.custom.max} h. `
+        + `Only the last ${cfg.lookbackDays} days are looked at.`),
       el('p', { class: 'small' },
         'Recovering = before the short end of the range. Likely ready = inside the range. Recovered = past the long end. '
         + 'If a muscle still feels sore or weak, give it more time.')));

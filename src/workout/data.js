@@ -2,7 +2,7 @@
 import * as db from '../db/db.js';
 import { el, confirmDialog, navigate } from '../ui/index.js';
 import { today } from '../core/dates.js';
-import { buildEntry, byRecent } from '../core/workout.js';
+import { buildEntry, byRecent, finishTime, rescheduleWorkout, applySchedule } from '../core/workout.js';
 import { muscleName } from '../core/muscles.js';
 import { DEFAULT_INCREMENT } from '../data/exercises.js';
 
@@ -92,9 +92,12 @@ export function createSaver(store, getRecord, onError) {
  * Create a session (from a routine or empty) and open it. If another workout is unfinished, the
  * user is asked to finish it first (never discarded silently).
  * @param {object|null} routine
+ * @param {{date: string, time: string, durationMin?: number|null}|null} [past] log a past workout:
+ *   its date and start time; Finish then uses this duration (see finishTime), not the current time.
+ *   Prefill / "Last:" come from the sessions before that time.
  * @returns {Promise<string|null>} new workout id, or null when cancelled
  */
-export async function startWorkout(routine) {
+export async function startWorkout(routine, past = null) {
   const [workouts, exMap] = await Promise.all([loadWorkouts(), loadExercises()]);
   const open = findUnfinished(workouts);
   if (open) {
@@ -104,7 +107,8 @@ export async function startWorkout(routine) {
       confirmLabel: 'Finish it & start',
     });
     if (!ok) return null;
-    open.finishedAt = Date.now();
+    open.finishedAt = finishTime(open, Date.now());
+    delete open.plannedDurationMs;
     open.updatedAt = Date.now();
     await db.put('workouts', open);
   }
@@ -117,10 +121,17 @@ export async function startWorkout(routine) {
     name: routine ? routine.name : 'Workout',
     startedAt: now,
     finishedAt: null,
-    exercises: items.map((i) => buildEntry(i.exerciseId, i, workouts)),
+    exercises: [],
     createdAt: now,
     updatedAt: now,
   };
+  if (past) {
+    const r = rescheduleWorkout(w, past, now);
+    if (!r.ok) throw new Error(r.error);
+    applySchedule(w, r.value);
+  }
+  const before = past ? workouts.filter((x) => byRecent(x, w) > 0) : workouts;
+  w.exercises = items.map((i) => buildEntry(i.exerciseId, i, before));
   await db.put('workouts', w);
   navigate(`workout/session/${encodeURIComponent(w.id)}`);
   return w.id;

@@ -1,7 +1,7 @@
 // Routines: list (reorder, start, create) and editor (autosaved). Routes: workout/routines, workout/routines/:id
 import * as db from '../db/db.js';
 import { el, pageHeader, numberInput, toast, navigate, href, emptyState, confirmDialog } from '../ui/index.js';
-import { normaliseTarget, formatTarget, DEFAULT_TARGET, lastEntryFor } from '../core/workout.js';
+import { normaliseTarget, formatTarget, DEFAULT_TARGET, lastEntryFor, MAX_TARGET_WEIGHT } from '../core/workout.js';
 import {
   ensureCss, loadExercises, loadRoutines, loadWorkouts, startWorkout, newRoutine, nextRoutineOrder, createSaver, exName,
 } from './data.js';
@@ -82,15 +82,20 @@ export async function mountRoutineEdit(container, { id }, ctx) {
   function render() {
     itemsEl.replaceChildren(...routine.items.map((it, i) => {
       const upd = () => {
-        const t = normaliseTarget({ targetSets: sets.getNumber(), targetReps: reps.getNumber(), targetRepsMax: max.getNumber() });
+        const t = normaliseTarget({ targetSets: sets.getNumber(), targetReps: reps.getNumber(), targetRepsMax: max.getNumber(), targetWeight: wt.getNumber() });
         Object.assign(it, t);
         save();
       };
       const sets = numberInput({ value: it.targetSets, min: 1, max: 20, integer: true, ariaLabel: 'Target sets', onInput: upd });
       const reps = numberInput({ value: it.targetReps, min: 1, max: 100, integer: true, ariaLabel: 'Target reps', onInput: upd });
       const max = numberInput({ value: it.targetRepsMax, min: 1, max: 100, integer: true, placeholder: '–', ariaLabel: 'Max reps (optional)', onInput: upd });
+      const wt = numberInput({ value: it.targetWeight ?? null, min: 0, max: MAX_TARGET_WEIGHT, decimals: 2, placeholder: '–', ariaLabel: 'Target weight in kg (optional)', onInput: upd });
       // Show the normalised values when leaving a field (e.g. max ≤ reps is dropped).
-      for (const f of [sets, reps, max]) f.addEventListener('change', () => { sets.setNumber(it.targetSets); reps.setNumber(it.targetReps); max.setNumber(it.targetRepsMax); });
+      for (const f of [sets, reps, max, wt]) {
+        f.addEventListener('change', () => {
+          sets.setNumber(it.targetSets); reps.setNumber(it.targetReps); max.setNumber(it.targetRepsMax); wt.setNumber(it.targetWeight ?? null);
+        });
+      }
       return el('div', { class: 'card wk-ritem' },
         el('div', { class: 'row-between' },
           el('div', { class: 'li-title grow' }, exName(exMap, it.exerciseId)),
@@ -102,7 +107,9 @@ export async function mountRoutineEdit(container, { id }, ctx) {
           el('span', { class: 'wk-x', 'aria-hidden': 'true' }, 'x'),
           el('label', { class: 'field-label' }, 'Reps', reps),
           el('span', { class: 'wk-x', 'aria-hidden': 'true' }, '–'),
-          el('label', { class: 'field-label' }, 'Max reps', max)));
+          el('label', { class: 'field-label' }, 'Max reps', max),
+          el('span', { class: 'wk-x', 'aria-hidden': 'true' }, '@'),
+          el('label', { class: 'field-label' }, 'kg', wt)));
     }));
     if (!routine.items.length) itemsEl.append(el('p', { class: 'muted small wk-pad-x' }, 'No exercises yet.'));
   }
@@ -113,7 +120,7 @@ export async function mountRoutineEdit(container, { id }, ctx) {
     toast(`Removed ${exName(exMap, removed.exerciseId)}`, { action: { label: 'Undo', onClick: () => { routine.items.splice(i, 0, removed); render(); save(); } } });
   };
   const add = async () => {
-    const ex = await pickExercise({ exMap });
+    const ex = await pickExercise({ exMap, workouts });
     if (!ex) return;
     const last = lastEntryFor(workouts, ex.id);
     routine.items.push({ exerciseId: ex.id, ...normaliseTarget(last ? last.entry : DEFAULT_TARGET) });

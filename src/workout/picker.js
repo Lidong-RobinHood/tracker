@@ -2,7 +2,8 @@
 import * as db from '../db/db.js';
 import { el, openSheet, toast } from '../ui/index.js';
 import { MUSCLES } from '../core/muscles.js';
-import { activeExercises, musclesLine, newExercise, findByName } from './data.js';
+import { activeExercises, musclesLine, newExercise, findByName, shortDate } from './data.js';
+import { exerciseUsage, recentExercises, rankExercises, RECENT_LIMIT } from '../core/exercise-usage.js';
 import { exerciseForm } from './exercise-form.js';
 
 /** Case-insensitive match of every search word against name, equipment and primary muscles. */
@@ -13,11 +14,20 @@ export function matches(ex, q) {
 }
 
 /**
- * @param {{title?: string, exMap: Map<string, object>}} opts exMap is updated when a new exercise is created
+ * Empty search: "Recent" (exercises you logged, most recently used first) and then the whole
+ * library by name. Search: best matches first; among equal matches, used exercises first.
+ * @param {{title?: string, exMap: Map<string, object>, workouts?: object[]}} opts exMap is updated when a
+ *   new exercise is created; workouts: for the usage (loaded once here when not given)
  * @returns {Promise<object|null>} the chosen exercise
  */
-export function pickExercise({ title = 'Add exercise', exMap }) {
+export function pickExercise({ title = 'Add exercise', exMap, workouts = null }) {
   let query = '';
+  /** Usage per exercise id, computed once per picker (one pass over the workouts). */
+  let usage = workouts ? exerciseUsage(workouts) : new Map();
+  if (!workouts) {
+    db.getAll('workouts').then((ws) => { usage = exerciseUsage(ws); render(); })
+      .catch((err) => console.error(err));
+  }
   let muscle = null;
   const list = el('div', { class: 'list' });
   const search = el('input', {
@@ -35,20 +45,36 @@ export function pickExercise({ title = 'Add exercise', exMap }) {
 
   const sheet = openSheet({ title, content: [search, chips, list], className: 'wk-picker' });
 
+  const item = (e) => {
+    const u = usage.get(e.id);
+    return el('button', { type: 'button', class: 'list-item', onClick: () => sheet.close(e) },
+      el('div', { class: 'li-main' },
+        el('div', { class: 'li-title' }, e.name),
+        el('div', { class: 'li-sub' }, musclesLine(e))),
+      u ? el('span', { class: 'li-trail small muted wk-last-used' }, `last: ${shortDate(u.lastDate)}`) : null);
+  };
+  const head = (text) => el('div', { class: 'wk-pick-head small muted', role: 'presentation' }, text);
+
   function render() {
-    const items = activeExercises(exMap)
-      .filter((e) => matches(e, query))
+    const pool = activeExercises(exMap)
       .filter((e) => !muscle || (e.primary || []).includes(muscle) || (e.secondary || []).includes(muscle));
-    list.replaceChildren(
-      el('button', { type: 'button', class: 'list-item wk-create', onClick: () => createNew() },
-        el('span', { class: 'wk-plus', 'aria-hidden': 'true' }, '+'),
-        el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, query ? `Create "${query}"` : 'Create new exercise'))),
-      ...items.slice(0, 150).map((e) => el('button', { type: 'button', class: 'list-item', onClick: () => sheet.close(e) },
-        el('div', { class: 'li-main' },
-          el('div', { class: 'li-title' }, e.name),
-          el('div', { class: 'li-sub' }, musclesLine(e))))),
-      ...(items.length ? [] : [el('p', { class: 'muted small wk-pad' }, 'No match. Create it above.')]),
-    );
+    const create = el('button', { type: 'button', class: 'list-item wk-create', onClick: () => createNew() },
+      el('span', { class: 'wk-plus', 'aria-hidden': 'true' }, '+'),
+      el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, query ? `Create "${query}"` : 'Create new exercise')));
+    if (query) {
+      const items = rankExercises(pool, query, usage);
+      list.replaceChildren(create,
+        ...items.slice(0, 150).map(item),
+        ...(items.length ? [] : [el('p', { class: 'muted small wk-pad' }, 'No match. Create it above.')]));
+      return;
+    }
+    const recent = recentExercises(pool, usage, RECENT_LIMIT);
+    list.replaceChildren(create,
+      recent.length ? head('Recent') : null,
+      ...recent.map(item),
+      recent.length ? head('All exercises') : null,
+      ...pool.slice(0, 400).map(item),
+      ...(pool.length ? [] : [el('p', { class: 'muted small wk-pad' }, 'No exercise for this muscle. Create it above.')]));
   }
   render();
 

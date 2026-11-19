@@ -1,8 +1,11 @@
 // Workout session helpers. Pure, no DOM / IndexedDB. Records follow SPEC §3 (`workouts`).
 import { round } from './numbers.js';
+import { isValidDate, parseDate, fromTimestamp, today } from './dates.js';
 
 /** Default target for an exercise added without a routine or previous target. */
-export const DEFAULT_TARGET = Object.freeze({ targetSets: 3, targetReps: 8, targetRepsMax: null });
+export const DEFAULT_TARGET = Object.freeze({ targetSets: 3, targetReps: 8, targetRepsMax: null, targetWeight: null });
+/** Largest target weight accepted (kg). */
+export const MAX_TARGET_WEIGHT = 1000;
 
 /** @param {any} n */
 const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
@@ -21,7 +24,7 @@ export function doneSets(entry) {
  */
 export function byRecent(a, b) {
   if (a.date !== b.date) return a.date < b.date ? 1 : -1;
-  return (b.startedAt || 0) - (a.startedAt || 0);
+  return (b.startedAt || 0) - (a.startedAt || 0) || (b.finishedAt || 0) - (a.finishedAt || 0);
 }
 
 /**
@@ -58,9 +61,9 @@ export function historyFor(workouts, exerciseId) {
 /**
  * Rows for a new session's exercise card.
  * From the last entry: its done sets, same weight/reps/type, not done. Else: `targetSets` normal
- * rows with empty weight and reps = targetReps.
+ * rows with weight = targetWeight (empty when there is none) and reps = targetReps.
  * @param {object|null} lastEntry
- * @param {{targetSets?: number, targetReps?: number|null}} target
+ * @param {{targetSets?: number, targetReps?: number|null, targetWeight?: number|null}} target
  * @returns {{weight: number|null, reps: number|null, type: 'normal'|'dropset', done: boolean}[]}
  */
 export function prefillSets(lastEntry, target) {
@@ -74,21 +77,45 @@ export function prefillSets(lastEntry, target) {
     }));
   }
   const n = Math.max(1, Math.min(20, Math.round(target.targetSets || DEFAULT_TARGET.targetSets)));
+  const tw = cleanTargetWeight(target.targetWeight);
   return Array.from({ length: n }, () => ({
-    weight: null, reps: isNum(target.targetReps) ? target.targetReps : null, type: 'normal', done: false,
+    weight: tw, reps: isNum(target.targetReps) ? target.targetReps : null, type: 'normal', done: false,
   }));
 }
 
+/** A target weight in kg: > 0 and ≤ 1000, 2 decimals; anything else (missing, 0 = bodyweight) → null. */
+export function cleanTargetWeight(w) {
+  return isNum(w) && w > 0 && w <= MAX_TARGET_WEIGHT ? round(w, 2) : null;
+}
+
 /**
- * Normalise a target: sets ≥ 1, reps ≥ 1 or null, max > reps or null.
- * @returns {{targetSets: number, targetReps: number|null, targetRepsMax: number|null}}
+ * Normalise a target: sets ≥ 1, reps ≥ 1 or null, max > reps or null, weight (kg) > 0 or null.
+ * Stored data without `targetWeight` reads as null (no weight target).
+ * @returns {{targetSets: number, targetReps: number|null, targetRepsMax: number|null, targetWeight: number|null}}
  */
 export function normaliseTarget(t = {}) {
   const sets = isNum(t.targetSets) && t.targetSets >= 1 ? Math.round(t.targetSets) : DEFAULT_TARGET.targetSets;
   const reps = isNum(t.targetReps) && t.targetReps >= 1 ? Math.round(t.targetReps) : null;
   let max = isNum(t.targetRepsMax) ? Math.round(t.targetRepsMax) : null;
   if (max !== null && (reps === null || max <= reps)) max = null;
-  return { targetSets: sets, targetReps: reps, targetRepsMax: max };
+  return { targetSets: sets, targetReps: reps, targetRepsMax: max, targetWeight: cleanTargetWeight(t.targetWeight) };
+}
+
+/**
+ * Compare the done sets of an entry with its target weight. null when the entry has no target
+ * weight (or no reps target): nothing is shown then.
+ * A done NORMAL set meets the target when weight ≥ targetWeight and reps ≥ targetReps (the low end
+ * of a range). `met` = at least targetSets such sets. Dropsets are ignored.
+ * @returns {{perSet: boolean[], hits: number, needed: number, met: boolean}|null} perSet by set index
+ */
+export function targetCheck(entry) {
+  const tw = entry ? cleanTargetWeight(entry.targetWeight) : null;
+  if (tw === null || !isNum(entry.targetReps)) return null;
+  const perSet = (entry.sets || []).map((s) => !!(s && s.done && s.type !== 'dropset'
+    && isNum(s.weight) && s.weight >= tw && isNum(s.reps) && s.reps >= entry.targetReps));
+  const hits = perSet.filter(Boolean).length;
+  const needed = isNum(entry.targetSets) && entry.targetSets >= 1 ? entry.targetSets : DEFAULT_TARGET.targetSets;
+  return { perSet, hits, needed, met: hits >= needed };
 }
 
 /**
@@ -104,14 +131,16 @@ export function buildEntry(exerciseId, target, workouts, opts = {}) {
   return { exerciseId, ...t, sets: prefillSets(last ? last.entry : null, t), note: '' };
 }
 
-/** '3 x 6', '3 x 6–8', '3 sets' */
+/** '3 x 6', '3 x 6–8', '3 sets', with a weight target '3 x 6 @ 100 kg' */
 export function formatTarget(t) {
   if (!t) return '';
   const sets = t.targetSets || DEFAULT_TARGET.targetSets;
-  if (!isNum(t.targetReps)) return `${sets} sets`;
+  const tw = cleanTargetWeight(t.targetWeight);
+  const at = tw === null ? '' : ` @ ${tw} kg`;
+  if (!isNum(t.targetReps)) return `${sets} sets${at}`;
   return isNum(t.targetRepsMax) && t.targetRepsMax > t.targetReps
-    ? `${sets} x ${t.targetReps}–${t.targetRepsMax}`
-    : `${sets} x ${t.targetReps}`;
+    ? `${sets} x ${t.targetReps}–${t.targetRepsMax}${at}`
+    : `${sets} x ${t.targetReps}${at}`;
 }
 
 /** Display a weight in kg without unit: 100, 102.5, 'BW' for 0/empty. */
@@ -221,4 +250,101 @@ export function routineItemsFromWorkout(workout) {
     items.push({ exerciseId: e.exerciseId, ...normaliseTarget(e) });
   }
   return items;
+}
+
+// ---------------------------------------------------------------- dates and times of a workout
+// A workout's `date` (local YYYY-MM-DD) is what weekly volume, history and progress group by;
+// startedAt/finishedAt (epoch ms) are what recovery and durations use. They are kept consistent:
+// the local day of startedAt is always `date` when the user sets them here.
+//
+// Past workouts ("Log a past workout", or a date changed before finishing) may carry
+// `plannedDurationMs`: the length used when they are finished, instead of the time Finish is tapped.
+
+const HOUR = 3600000;
+/** Default length of a past workout when none was given. */
+export const DEFAULT_PAST_DURATION_MS = 60 * 60000;
+/** An unfinished workout started longer ago than this is "past": Finish does not stamp `now`. */
+export const LIVE_WINDOW_MS = 12 * HOUR;
+/** Longest duration accepted in the date/time sheet (minutes). */
+export const MAX_DURATION_MIN = 600;
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/** 'HH:MM' (local) of an epoch ms. */
+export function timeOfDay(ms) {
+  const d = new Date(ms);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/**
+ * Epoch ms of a local date and 'HH:MM' time; null when either is invalid.
+ * Built from local components, so DST days work.
+ */
+export function atLocal(date, time) {
+  if (!isValidDate(date)) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(time || ''));
+  if (!m || +m[1] > 23 || +m[2] > 59) return null;
+  const d = parseDate(date);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), +m[1], +m[2]).getTime();
+}
+
+/**
+ * When Finish is tapped at `now`: the finishedAt to store. `date` is never changed.
+ *  - plannedDurationMs set (a past workout) → startedAt + planned, but not after now
+ *  - started within the last 12 h (a live session)  → now
+ *  - otherwise (started long ago, e.g. a forgotten or back-dated session) → startedAt + 60 min, not after now
+ * @returns {number}
+ */
+export function finishTime(workout, now) {
+  const start = isNum(workout.startedAt) ? workout.startedAt : null;
+  if (start === null) return now;
+  if (isNum(workout.plannedDurationMs) && workout.plannedDurationMs > 0) return Math.max(start, Math.min(now, start + workout.plannedDurationMs));
+  if (now >= start && now - start <= LIVE_WINDOW_MS) return now;
+  return Math.max(start, Math.min(now, start + DEFAULT_PAST_DURATION_MS));
+}
+
+/**
+ * New date/time fields for a workout (change date/time, or a new past workout).
+ * Finished: finishedAt = new start + duration (durationMin, else the old duration is kept).
+ * Unfinished: finishedAt stays null; durationMin (if given) becomes plannedDurationMs, null removes it.
+ * Rules: valid date not after today, valid time, start not in the future, a finished workout may not
+ * end in the future, duration 1–600 min.
+ * @param {object} workout current record (not changed)
+ * @param {{date: string, time: string, durationMin?: number|null}} input
+ * @param {number} now epoch ms
+ * @returns {{ok: true, value: {date: string, startedAt: number, finishedAt: number|null, plannedDurationMs: number|null}}
+ *   | {ok: false, error: string}}
+ */
+export function rescheduleWorkout(workout, { date, time, durationMin = null }, now) {
+  if (!isValidDate(date)) return { ok: false, error: 'Pick a date.' };
+  if (date > today(new Date(now))) return { ok: false, error: 'The date cannot be in the future.' };
+  const start = atLocal(date, time);
+  if (start === null) return { ok: false, error: 'Pick a start time.' };
+  if (start > now) return { ok: false, error: 'The start time is in the future.' };
+  let dur = null;
+  if (durationMin !== null && durationMin !== undefined) {
+    if (!isNum(durationMin) || durationMin < 1 || durationMin > MAX_DURATION_MIN) return { ok: false, error: `Duration must be 1–${MAX_DURATION_MIN} min.` };
+    dur = Math.round(durationMin) * 60000;
+  }
+  const finished = isNum(workout.finishedAt);
+  if (finished) {
+    const keep = isNum(workout.startedAt) ? Math.max(0, workout.finishedAt - workout.startedAt) : DEFAULT_PAST_DURATION_MS;
+    const end = start + (dur ?? keep);
+    if (end > now) return { ok: false, error: 'That would end in the future. Pick an earlier start or a shorter duration.' };
+    return { ok: true, value: { date: fromTimestamp(start), startedAt: start, finishedAt: end, plannedDurationMs: null } };
+  }
+  return { ok: true, value: { date: fromTimestamp(start), startedAt: start, finishedAt: null, plannedDurationMs: dur } };
+}
+
+/**
+ * Apply rescheduleWorkout's value to a record in place (removes plannedDurationMs when null).
+ * @returns {object} the same record
+ */
+export function applySchedule(workout, value) {
+  workout.date = value.date;
+  workout.startedAt = value.startedAt;
+  workout.finishedAt = value.finishedAt;
+  if (value.plannedDurationMs) workout.plannedDurationMs = value.plannedDurationMs;
+  else delete workout.plannedDurationMs;
+  return workout;
 }

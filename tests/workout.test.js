@@ -47,8 +47,8 @@ test('buildEntry: explicit target wins, else last target, else default', () => {
 });
 
 test('normaliseTarget drops a max that is not above reps', () => {
-  assert.deepEqual(w.normaliseTarget({ targetSets: 3, targetReps: 8, targetRepsMax: 8 }), { targetSets: 3, targetReps: 8, targetRepsMax: null });
-  assert.deepEqual(w.normaliseTarget({ targetSets: 0, targetReps: 0 }), { targetSets: 3, targetReps: null, targetRepsMax: null });
+  assert.deepEqual(w.normaliseTarget({ targetSets: 3, targetReps: 8, targetRepsMax: 8 }), { targetSets: 3, targetReps: 8, targetRepsMax: null, targetWeight: null });
+  assert.deepEqual(w.normaliseTarget({ targetSets: 0, targetReps: 0 }), { targetSets: 3, targetReps: null, targetRepsMax: null, targetWeight: null });
 });
 
 test('fillDownTargets: untouched, undone, normal rows below only', () => {
@@ -78,4 +78,87 @@ test('sessionStats and routineItemsFromWorkout', () => {
   ] };
   assert.deepEqual(w.sessionStats(wo), { durationMs: 3600000, setsDone: 4, normalSets: 3, dropsets: 1, exercises: 2 });
   assert.deepEqual(w.routineItemsFromWorkout(wo).map((i) => i.exerciseId), ['x', 'y']);
+});
+
+// ---------------------------------------------------------------- target weight
+test('formatTarget with a weight target; bodyweight/empty shows none', () => {
+  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetRepsMax: null, targetWeight: 100 }), '3 x 6 @ 100 kg');
+  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetRepsMax: 8, targetWeight: 102.5 }), '3 x 6–8 @ 102.5 kg');
+  assert.equal(w.formatTarget({ targetSets: 3, targetReps: null, targetWeight: 20 }), '3 sets @ 20 kg');
+  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetWeight: 0 }), '3 x 6');
+  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetWeight: null }), '3 x 6');
+  assert.equal(w.normaliseTarget({ targetSets: 3, targetReps: 6, targetWeight: 82.456 }).targetWeight, 82.46);
+  assert.equal(w.normaliseTarget({ targetSets: 3, targetReps: 6, targetWeight: -5 }).targetWeight, null);
+  assert.equal(w.normaliseTarget({ targetSets: 3, targetReps: 6 }).targetWeight, null); // old data
+});
+
+test('prefill from the target weight only without a previous session', () => {
+  const t = { targetSets: 3, targetReps: 6, targetWeight: 100 };
+  assert.deepEqual(w.prefillSets(null, t), [S(100, 6, 'normal', false), S(100, 6, 'normal', false), S(100, 6, 'normal', false)]);
+  const last = entry([S(95, 6), S(95, 5)]);
+  assert.deepEqual(w.prefillSets(last, t), [S(95, 6, 'normal', false), S(95, 5, 'normal', false)]);
+  const e = w.buildEntry('x', t, []);
+  assert.equal(e.targetWeight, 100);
+  assert.deepEqual(e.sets.map((s) => s.weight), [100, 100, 100]);
+  const routineItems = w.routineItemsFromWorkout({ exercises: [e] });
+  assert.equal(routineItems[0].targetWeight, 100);
+});
+
+test('targetCheck: per done normal set, met with targetSets hits', () => {
+  const t = { targetSets: 3, targetReps: 6, targetRepsMax: 8, targetWeight: 100 };
+  const e = { ...entry([S(100, 6), S(102.5, 7), S(100, 5), S(100, 6, 'normal', false), S(120, 8, 'dropset')], t) };
+  assert.deepEqual(w.targetCheck(e), { perSet: [true, true, false, false, false], hits: 2, needed: 3, met: false });
+  e.sets[2].reps = 6;
+  assert.equal(w.targetCheck(e).met, true);
+  assert.equal(w.targetCheck({ ...e, targetWeight: null }), null);
+  assert.equal(w.targetCheck({ ...e, targetReps: null }), null);
+});
+
+// ---------------------------------------------------------------- dates / times
+const at = (y, mo, d, h = 0, mi = 0) => new Date(y, mo - 1, d, h, mi).getTime();
+const NOW = at(2026, 11, 19, 20, 0);
+
+test('atLocal / timeOfDay', () => {
+  assert.equal(w.atLocal('2026-11-12', '07:05'), at(2026, 11, 12, 7, 5));
+  assert.equal(w.atLocal('2026-11-12', '24:00'), null);
+  assert.equal(w.atLocal('2026-02-30', '07:00'), null);
+  assert.equal(w.timeOfDay(at(2026, 11, 12, 7, 5)), '07:05');
+});
+
+test('rescheduleWorkout: finished keeps duration, date follows start, no future', () => {
+  const fin = { date: '2026-11-19', startedAt: at(2026, 11, 19, 18), finishedAt: at(2026, 11, 19, 19, 15) };
+  const r = w.rescheduleWorkout(fin, { date: '2026-11-12', time: '07:30' }, NOW);
+  assert.deepEqual(r, { ok: true, value: { date: '2026-11-12', startedAt: at(2026, 11, 12, 7, 30), finishedAt: at(2026, 11, 12, 8, 45), plannedDurationMs: null } });
+  const r2 = w.rescheduleWorkout(fin, { date: '2026-11-12', time: '07:30', durationMin: 50 }, NOW);
+  assert.equal(r2.value.finishedAt, at(2026, 11, 12, 8, 20));
+  assert.equal(w.rescheduleWorkout(fin, { date: '2026-11-20', time: '07:00' }, NOW).ok, false);
+  assert.equal(w.rescheduleWorkout(fin, { date: '2026-11-19', time: '20:30' }, NOW).ok, false); // starts in the future
+  assert.equal(w.rescheduleWorkout(fin, { date: '2026-11-19', time: '19:30' }, NOW).ok, false); // would end 20:45
+  assert.equal(w.rescheduleWorkout(fin, { date: '2026-11-12', time: '' }, NOW).ok, false);
+  assert.equal(w.rescheduleWorkout(fin, { date: '2026-11-12', time: '07:00', durationMin: 0 }, NOW).ok, false);
+  const open = { date: '2026-11-19', startedAt: at(2026, 11, 19, 19), finishedAt: null };
+  assert.deepEqual(w.rescheduleWorkout(open, { date: '2026-11-09', time: '18:00', durationMin: 45 }, NOW).value,
+    { date: '2026-11-09', startedAt: at(2026, 11, 9, 18), finishedAt: null, plannedDurationMs: 45 * 60000 });
+  const rec = w.applySchedule({ ...open, plannedDurationMs: 5 }, w.rescheduleWorkout(open, { date: '2026-11-19', time: '19:10' }, NOW).value);
+  assert.equal('plannedDurationMs' in rec, false);
+  assert.equal(rec.startedAt, at(2026, 11, 19, 19, 10));
+});
+
+test('finishTime: live → now; past → start + planned or 60 min; never after now', () => {
+  assert.equal(w.finishTime({ startedAt: NOW - 3600000 }, NOW), NOW);
+  assert.equal(w.finishTime({ startedAt: at(2026, 11, 9, 18), plannedDurationMs: 45 * 60000 }, NOW), at(2026, 11, 9, 18, 45));
+  assert.equal(w.finishTime({ startedAt: at(2026, 11, 9, 18) }, NOW), at(2026, 11, 9, 19));
+  assert.equal(w.finishTime({ startedAt: NOW - 20 * 60000, plannedDurationMs: 3600000 }, NOW), NOW);
+  assert.equal(w.finishTime({}, NOW), NOW);
+});
+
+test('lastEntryFor uses the most recent by date/time, not insertion order (back-dated insert)', () => {
+  const newer = WO('n', '2026-11-18', [entry([S(110, 6)])], true, at(2026, 11, 18, 18));
+  const backdated = WO('b', '2026-11-09', [entry([S(90, 6)])], true, at(2026, 11, 9, 18)); // created later
+  assert.equal(w.lastEntryFor([newer, backdated], 'x').workout.id, 'n');
+  assert.equal(w.lastEntryFor([backdated, newer], 'x').workout.id, 'n');
+  // A session being logged for 10 Nov sees only what came before it.
+  const logging = { id: 'l', date: '2026-11-10', startedAt: at(2026, 11, 10, 18) };
+  const older = [newer, backdated].filter((x) => w.byRecent(x, logging) > 0);
+  assert.deepEqual(older.map((x) => x.id), ['b']);
 });

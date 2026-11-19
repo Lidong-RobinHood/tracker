@@ -57,3 +57,42 @@ test('works with a plain object lookup and invalid weights fall back to defaults
   assert.deepEqual(workoutVolume(w, ex, { primary: -1, secondary: 'x' }), { quads: 2, glutes: 1 });
   assert.deepEqual(volumeWeights(null), DEF);
 });
+
+import { muscleVolumeBreakdown, weeklyBreakdown } from '../src/core/volume.js';
+
+test('breakdown: direct / partial / drop, totals equal muscleVolume', () => {
+  const EX2 = new Map([
+    ['bench', { id: 'bench', primary: ['chest'], secondary: ['triceps', 'shoulders'] }],
+    ['dip', { id: 'dip', primary: ['triceps', 'chest'], secondary: ['shoulders'] }],
+    ['fly', { id: 'fly', primary: ['chest'], secondary: [] }],
+  ]);
+  const wo = (date, id, sets) => ({ id: `${date}${id}`, date, startedAt: 1, finishedAt: 2, exercises: [{ exerciseId: id, sets }] });
+  const ws = [
+    wo('2026-11-16', 'bench', [S(), S(), S(), S(), S('normal', false)]),
+    wo('2026-11-17', 'dip', [S(), S(), S('dropset')]),
+    wo('2026-11-18', 'fly', [S(), S('dropset')]),
+    wo('2026-11-09', 'bench', [S(), S()]), // last week: ignored
+  ];
+  const r = { from: '2026-11-16', to: '2026-11-22' };
+  const b = muscleVolumeBreakdown(ws, EX2, DEF, r);
+  // chest: direct 4 (bench) + 2 (dip) + 1 (fly) = 7; drop rows 2 (dip + fly) × 0 → 7
+  assert.deepEqual(b.chest, { total: 7, direct: { sets: 7, value: 7 }, partial: { sets: 0, value: 0 }, drop: { sets: 2, value: 0, direct: 2, partial: 0 } });
+  // triceps: partial 4 (bench) × 0.5 = 2, direct 2 (dip) → 4
+  assert.deepEqual(b.triceps, { total: 4, direct: { sets: 2, value: 2 }, partial: { sets: 4, value: 2 }, drop: { sets: 1, value: 0, direct: 1, partial: 0 } });
+  // shoulders: partial 4 + 2 = 6 × 0.5 = 3
+  assert.equal(b.shoulders.total, 3);
+  assert.deepEqual(b.shoulders.partial, { sets: 6, value: 3 });
+
+  const W2 = { primary: 1, secondary: 0.5, dropset: 0.5 };
+  const b2 = muscleVolumeBreakdown(ws, EX2, W2, r);
+  assert.deepEqual(b2.chest.drop, { sets: 2, value: 1, direct: 2, partial: 0 }); // 2 × 0.5 × 1
+  assert.equal(b2.chest.total, 8);
+  assert.deepEqual(b2.shoulders.drop, { sets: 1, value: 0.25, direct: 0, partial: 1 }); // 0.5 × 0.5
+  for (const wts of [DEF, W2, { primary: 1.5, secondary: 0.3, dropset: 0.7 }]) {
+    const v = muscleVolume(ws, EX2, wts, r);
+    const br = muscleVolumeBreakdown(ws, EX2, wts, r);
+    for (const [m, x] of Object.entries(br)) assert.equal(x.total, v[m] || 0, m);
+    for (const m of Object.keys(v)) assert.ok(br[m], m);
+  }
+  assert.deepEqual(weeklyBreakdown(ws, EX2, DEF, '2026-11-19'), b);
+});
