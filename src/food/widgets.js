@@ -37,6 +37,13 @@ export function sourceBadge(food, { long = false } = {}) {
   return el('span', { class: ['badge', `badge-src-${src}`] }, (long ? SOURCE_LABEL : SOURCE_SHORT)[src] || src);
 }
 
+/** Attribution required by Open Food Facts wherever its data is shown: 'Data: Open Food Facts · ODbL'. */
+export function offCredit() {
+  const a = (href, text) => el('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text);
+  return el('p', { class: 'small muted off-credit' }, 'Data: ', a('https://world.openfoodfacts.org', 'Open Food Facts'),
+    ' · ', a('https://opendatacommons.org/licenses/odbl/1-0/', 'ODbL'));
+}
+
 /** '539 kcal / 100 g' */
 export function per100Text(food) {
   return `${fmtNum(food.per100 && food.per100.kcal, 0)} kcal / 100 ${food.basis || 'g'}`;

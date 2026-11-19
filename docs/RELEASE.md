@@ -11,7 +11,7 @@ about it themselves; nobody has to reinstall.
    - `sw.js` → `const CACHE_VERSION = '0.4.1';`
 3. **Last step before committing:** `node tools/build-precache.mjs`. It rewrites `precache-list.js`
    (every file the app can load — html, css, js modules, json data, icons, manifest, the vendored
-   barcode ponyfill and wasm — with a content hash each; tests, docs, tools and `spike/` are left out).
+   barcode ponyfill and wasm — with a content hash each; tests, docs and tools are left out).
    Run it again after any further file change.
 4. `npm test` — `tests/app-version.test.js` fails if the two versions differ or `version.js` cannot be
    parsed; `tests/precache.test.js` fails if `precache-list.js` does not match the files on disk.

@@ -170,3 +170,4 @@
 .photo-model-picker { width: 100%; min-width: 0; }
 .photo-active-provider { min-width: 0; overflow-wrap: anywhere; }
 .photo-note a { color: var(--accent); }
+.card-flush + .off-credit { padding: 0 var(--s1); }

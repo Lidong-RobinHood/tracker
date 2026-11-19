@@ -27,8 +27,27 @@ const out = process.argv[3] || join(dirname(fileURLToPath(import.meta.url)), '..
 const DROP_CATEGORIES = new Set([
   'Baby Foods', 'Fast Foods', 'Restaurant Foods', 'American Indian/Alaska Native Foods',
 ]);
-// Brand-name items in SR Legacy start with an all-caps word ("KELLOGG'S, ...", "HORMEL ...").
-const BRANDED = /^[A-Z][A-Z'&.\-]{2,}(\s|,|$)/;
+// Brand names in SR Legacy descriptions are written in capitals, at the start ("KELLOGG'S, ...") or
+// anywhere in the name ("Yogurt, Greek, nonfat, vanilla, CHOBANI", "Candies, MARS SNACKFOOD US, ...").
+// A name is dropped when any word is all capitals (letters, digits, ' & . - !; a trailing 's is ignored)
+// with at least two capital letters in a row, unless it is an ordinary abbreviation in KEEP_CAPS.
+// Mixed-case brand names ("Vitasoy USA Azumaya" is caught by USA; a brand written like "Bimbo" alone
+// would not be) are not detected.
+const KEEP_CAPS = new Set([
+  'USDA', // "(Includes foods for USDA's Food Distribution Program)"
+  'NFS', // "not further specified"
+  'NFSMI', // "NFSMI Recipe No. ..." (National Food Service Management Institute recipe reference)
+  'UHT', // ultra-high temperature (not present in this release; kept for safety)
+  'BBQ', // "Chicken, broiler, rotisserie, BBQ, ..."
+]);
+/** @param {string} name @returns {string|null} the first capitalised brand-like word, or null */
+function brandToken(name) {
+  for (const raw of name.split(/[\s,()/;:"]+/)) {
+    const w = raw.replace(/'s$/, '').replace(/[.!]+$/, '');
+    if (/^[A-Z0-9'&.!\-]+$/.test(w) && /[A-Z]{2}/.test(w) && !KEEP_CAPS.has(w)) return w;
+  }
+  return null;
+}
 
 // FDC nutrient ids
 const N = { kcal: 1008, kj: 1062, protein: 1003, fat: 1004, carbs: 1005, sugars: 2000, satFat: 1258, fibre: 1079, sodiumMg: 1093 };
@@ -56,12 +75,14 @@ const list = raw.SRLegacyFoods || raw.FoundationFoods;
 if (!Array.isArray(list)) throw new Error('Unexpected file: no SRLegacyFoods / FoundationFoods array');
 
 let dropped = 0;
+const droppedBrand = [];
 const foods = [];
 let pubDate = null;
 for (const f of list) {
   const cat = f.foodCategory && f.foodCategory.description;
   const name = String(f.description || '').trim();
-  if (!name || DROP_CATEGORIES.has(cat) || BRANDED.test(name)) { dropped++; continue; }
+  if (!name || DROP_CATEGORIES.has(cat)) { dropped++; continue; }
+  if (brandToken(name)) { dropped++; droppedBrand.push(name); continue; }
   const v = {};
   for (const n of f.foodNutrients || []) {
     if (n.amount === undefined || n.amount === null) continue;
@@ -109,4 +130,5 @@ const doc = {
 // One food per line: small diffs, still compact.
 const text = `{${Object.entries(doc).filter(([k]) => k !== 'foods').map(([k, val]) => `${JSON.stringify(k)}:${JSON.stringify(val)}`).join(',')},\n"foods":[\n${foods.map((x) => JSON.stringify(x)).join(',\n')}\n]}\n`;
 writeFileSync(out, text);
-console.log(`Wrote ${foods.length} foods (${dropped} dropped) to ${out}: ${(Buffer.byteLength(text) / 1024).toFixed(0)} KB`);
+console.log(`Wrote ${foods.length} foods (${dropped} dropped, ${droppedBrand.length} of them brand names) to ${out}: ${(Buffer.byteLength(text) / 1024).toFixed(0)} KB`);
+if (process.env.LIST_DROPPED) writeFileSync(process.env.LIST_DROPPED, `${droppedBrand.join('\n')}\n`);

@@ -18,7 +18,7 @@ test('precache list covers the runtime files and nothing else', () => {
     assert.ok(paths.includes(must), `${must} is precached`);
   }
   for (const p of paths) {
-    assert.ok(!/^(tests|docs|tools|spike)\//.test(p), `${p} must not be precached`);
+    assert.ok(!/^(tests|docs|tools)\//.test(p), `${p} must not be precached`);
     assert.ok(!/\.(md|txt)$/.test(p), `${p} must not be precached`);
     assert.ok(existsSync(join(ROOT, p)));
   }

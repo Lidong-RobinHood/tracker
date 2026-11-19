@@ -9,6 +9,9 @@ None of the four vendors documents its column headers. Every header line below c
 files, not from the vendors. Presets therefore match columns **by name, not position**, and every
 import shows a full preview before anything is saved.
 
+MyFitnessPal, Cronometer, FDDB and Yazio are trademarks of their owners. They are named only to
+describe file formats this app can read; this app is not affiliated with or endorsed by them.
+
 ## MyFitnessPal
 
 - **[official]** Data export is for Premium and Premium+ only. Free accounts can only print a

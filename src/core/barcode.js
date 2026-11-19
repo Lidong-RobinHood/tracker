@@ -1,4 +1,4 @@
-// Barcode helpers, ported from the step-1 spike (spike/lookup.js). Pure, no DOM.
+// Barcode helpers, ported from the step-1 barcode test page (removed in 0.5.2). Pure, no DOM.
 
 /**
  * GTIN check digit (EAN-8, UPC-A, EAN-13, GTIN-14).

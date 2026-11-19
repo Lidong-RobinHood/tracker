@@ -44,6 +44,7 @@ export async function mountFoodImport(container) {
           el('li', null, 'Cronometer (free): on the website, More → Account → Account Data → Export Data. "Servings" has single foods; "Daily Nutrition" has day totals.'),
           el('li', null, 'FDDB (free, website only): My Fddb → Account → Manage content and data → Export food diary. Our layout for this file is not confirmed by FDDB; check the preview.'),
           el('li', null, 'Yazio has no export of its own at the moment (only a data request to their support). If you get a CSV from them, use the column mapping.'))),
+      el('p', { class: 'small muted' }, 'Not affiliated with these apps.'),
       exampleBox('Example of a simple CSV', EXAMPLE),
       filePicker({ label: 'Pick a CSV file', onText: (t) => { textarea.value = ''; load(t); }, onError: (e) => toast(e.message, { type: 'error' }) }),
       textarea,

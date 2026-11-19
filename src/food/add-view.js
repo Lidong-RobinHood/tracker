@@ -11,7 +11,7 @@ import { searchGeneric } from './generic.js';
 import { createScanner } from './scanner.js';
 import { openPortion, editAndSaveFood } from './portion.js';
 import { openLogMeal, openEditMeal, mealKcal } from './meals.js';
-import { foodRow, segmented, ensureCss, per100Text } from './widgets.js';
+import { foodRow, segmented, ensureCss, per100Text, offCredit } from './widgets.js';
 import { buildPhotoScan, PHOTO_DRAFT } from './photo-tab.js';
 import { loadDraft, saveDraft, clearDraft } from '../ui/draft.js';
 
@@ -167,7 +167,7 @@ export async function mountAdd(container, params, ctx) {
         sub: m.missing.length ? 'incomplete' : (m.kcalConverted ? 'kcal from kJ' : null),
         trail: m.food.per100.kcal === null ? '– kcal' : per100Text(m.food),
       }));
-      offSec.replaceChildren(...section('Open Food Facts', rows, rows.length ? null : 'No products found.'));
+      offSec.replaceChildren(...section('Open Food Facts', rows, rows.length ? null : 'No products found.'), rows.length ? offCredit() : '');
     }
 
     let localTimer = null;
@@ -250,10 +250,10 @@ export async function mountAdd(container, params, ctx) {
       if (ctrl.signal.aborted) return;
       lookupCtrl = null;
       if (r.outcome === 'complete') {
-        result.replaceChildren(el('p', { class: 'small muted' }, `${r.food.name} – Open Food Facts.`));
+        result.replaceChildren(el('p', { class: 'small muted' }, `${r.food.name} – Open Food Facts.`), offCredit());
         if (!(await toPortion(r.food, { kcalConverted: r.kcalConverted }))) afterClose();
       } else if (r.outcome === 'incomplete') {
-        result.replaceChildren(el('p', { class: 'small muted' }, `${r.food.name || c} – incomplete on Open Food Facts.`));
+        result.replaceChildren(el('p', { class: 'small muted' }, `${r.food.name || c} – incomplete on Open Food Facts.`), offCredit());
         const ok = await toEditorThenPortion(r.food, { kcalConverted: r.kcalConverted, note: `Open Food Facts is missing: ${r.missing.join(', ')}. Fill in the values from the label; they are saved for next time.` });
         if (!ok) afterClose();
       } else if (r.outcome === 'not_found') {

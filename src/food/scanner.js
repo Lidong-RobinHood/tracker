@@ -1,4 +1,4 @@
-// Camera barcode scanner, ported from the phone-tested spike (spike/app.js).
+// Camera barcode scanner, ported from the phone-tested step-1 test page (removed in 0.5.2).
 // Native BarcodeDetector if it supports all four retail formats, else the vendored ZXing ponyfill
 // (classic script that sets window.BarcodeDetectionAPI + wasm), loaded lazily on first use.
 import { normaliseScan } from '../core/barcode.js';

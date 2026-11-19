@@ -1,5 +1,5 @@
 // Open Food Facts: URLs, response -> food mapping, rate limiting. Pure, no DOM / fetch.
-// Ported from the step-1 spike (spike/lookup.js evaluateProduct).
+// Ported from the step-1 barcode test page (removed in 0.5.2; see git history).
 import { kjToKcal, emptyPer100, missingFields } from './nutrition.js';
 import { parseDecimal, round } from './numbers.js';
 import { servingFromText, parseAmountText, cleanServings, basisFromQuantity, PACK_LABEL } from './portion.js';

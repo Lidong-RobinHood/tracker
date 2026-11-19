@@ -5,6 +5,13 @@ import { el } from '../ui/index.js';
 import { exerciseVideo } from '../core/exercise-video.js';
 import { EXERCISE_VIDEOS } from '../data/exercise-videos.js';
 
+/**
+ * Thumbnails are hot-linked from YouTube's image host (i.ytimg.com). Whether that is allowed outside the
+ * official player is not verified: set to false to show the text and the "Watch on YouTube" link only
+ * (no image request at all).
+ */
+export const SHOW_VIDEO_THUMBNAILS = true;
+
 /** @param {object} ex exercise record */
 export const tutorialFor = (ex) => exerciseVideo(ex, EXERCISE_VIDEOS);
 
@@ -24,18 +31,22 @@ export function tutorialSection(ex) {
   const t = tutorialFor(ex);
   let body;
   if (t.kind === 'video') {
-    const fallback = el('div', { class: 'wk-thumb-fallback', 'aria-hidden': 'true' },
-      el('span', { class: 'wk-thumb-play' }, '▶'), el('span', { class: 'small' }, 'Preview unavailable'));
-    const img = el('img', {
-      class: 'wk-thumb-img', src: t.thumbnail, alt: '', loading: 'lazy', decoding: 'async',
-      referrerpolicy: 'no-referrer', width: '480', height: '360',
-    });
-    const badge = el('span', { class: 'wk-thumb-badge', 'aria-hidden': 'true' }, '▶');
-    img.addEventListener('error', () => { img.hidden = true; badge.hidden = true; fallback.hidden = false; }, { once: true });
-    fallback.hidden = true;
-    const label = t.title ? `Watch “${t.title}” on YouTube (opens in a new tab)` : 'Watch the video on YouTube (opens in a new tab)';
+    let thumb = null;
+    if (SHOW_VIDEO_THUMBNAILS) {
+      const fallback = el('div', { class: 'wk-thumb-fallback', 'aria-hidden': 'true' },
+        el('span', { class: 'wk-thumb-play' }, '▶'), el('span', { class: 'small' }, 'Preview unavailable'));
+      const img = el('img', {
+        class: 'wk-thumb-img', src: t.thumbnail, alt: '', loading: 'lazy', decoding: 'async',
+        referrerpolicy: 'no-referrer', width: '480', height: '360',
+      });
+      const badge = el('span', { class: 'wk-thumb-badge', 'aria-hidden': 'true' }, '▶');
+      img.addEventListener('error', () => { img.hidden = true; badge.hidden = true; fallback.hidden = false; }, { once: true });
+      fallback.hidden = true;
+      const label = t.title ? `Watch “${t.title}” on YouTube (opens in a new tab)` : 'Watch the video on YouTube (opens in a new tab)';
+      thumb = external(t.url, { class: 'wk-thumb', 'aria-label': label, tabindex: '-1' }, fallback, img, badge);
+    }
     body = [
-      external(t.url, { class: 'wk-thumb', 'aria-label': label, tabindex: '-1' }, fallback, img, badge),
+      thumb,
       el('div', { class: 'stack wk-tut-text' },
         el('div', { class: 'wk-tut-title' }, t.title || (t.source === 'user' ? 'Your tutorial video' : 'Tutorial video')),
         t.channel ? el('div', { class: 'small muted' }, t.channel) : null,

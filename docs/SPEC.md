@@ -33,7 +33,7 @@ src/trends/           weight, adaptive targets, dashboard (step 4)
 src/settings/         settings, export/import
 tests/                node --test, covers everything in src/core
 vendor/               third-party
-spike/                the step-1 barcode spike, kept for reference
+(the step-1 barcode spike page was removed in 0.5.2; it is in git history)
 ```
 
 Rule: anything that computes a number lives in `src/core` and has tests. Views only

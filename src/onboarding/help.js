@@ -106,6 +106,9 @@ export async function mountHelp(container, params, ctx) {
         'Metric units only; no micronutrients beyond sugars, saturated fat, fibre and salt.',
         'No medical advice. Estimates of calories, expenditure and recovery are estimates.')),
 
+    topic('licences', 'Licences and data sources',
+      p(a('licences', 'Sources, licences and how the numbers are calculated'), '.')),
+
     topic('version', 'App version and updates',
       p(`You are running version ${APP_VERSION}. The app checks for a new version when it opens and when you come back to it; when one is out, an “Update” button appears at the top. Updating keeps all your data.`),
       el('div', { class: 'row-between' }, updStatus, updBtn)),

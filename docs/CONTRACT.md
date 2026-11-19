@@ -137,7 +137,7 @@ only while `meta.seedVersion < SEED_VERSION`, adding missing ids and never overw
 ## Other facts
 
 - Barcode decoding: the vendored ZXing fallback is at `vendor/barcode-detector/ponyfill.js` (classic
-  script, sets `window.BarcodeDetectionAPI`) + `zxing_reader.wasm`; see `spike/app.js` for how to load it
+  script, sets `window.BarcodeDetectionAPI`) + `zxing_reader.wasm`; see `src/food/scanner.js` for how to load it
   lazily and point `locateFile` at the wasm with a relative URL. Prefer native `BarcodeDetector`.
 - Service worker (`sw.js`) is network-first and ignores cross-origin requests, so API calls are never cached.
   It precaches every file listed in `precache-list.js` at install; after adding, removing or changing any

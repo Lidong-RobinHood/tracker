@@ -537,7 +537,7 @@ function aboutSection() {
       el('div', { class: 'list-item' }, el('span', { class: 'li-main' }, 'App version'), el('span', { class: 'num' }, APP_VERSION)),
       updateRow(),
       el('div', { class: 'list-item' }, el('span', { class: 'li-main' }, 'Data schema'), el('span', { class: 'num' }, db.DB_VERSION)),
-      el('a', { class: 'list-item', href: 'spike/index.html' }, el('span', { class: 'li-main' }, 'Barcode spike (step 1)'), el('span', { class: 'li-chevron' }, '›'))));
+      el('a', { class: 'list-item', href: '#/licences' }, el('span', { class: 'li-main' }, 'Licences and data sources'), el('span', { class: 'li-chevron' }, '\u203a'))));
 }
 
 // ---------------------------------------------------------------- backup reminder, update check

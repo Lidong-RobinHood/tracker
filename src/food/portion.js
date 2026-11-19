@@ -5,7 +5,7 @@ import { defaultAmount, multiplyAmount } from '../core/portion.js';
 import { mealLabel } from '../core/food-diary.js';
 import { logFood, saveFood } from './store.js';
 import { openFoodEditor } from './food-editor.js';
-import { mealSelect, dateInput, sourceBadge, per100Text } from './widgets.js';
+import { mealSelect, dateInput, sourceBadge, per100Text, offCredit } from './widgets.js';
 
 /**
  * Edit a food's values (userEdited) and store it. Returns the stored record or null.
@@ -36,6 +36,7 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
 
   const titleEl = el('div', { class: 'portion-name' });
   const subEl = el('div', { class: 'portion-sub small muted' });
+  const creditEl = offCredit();
   const amount = numberInput({ value: defaultAmount(food), min: 0.1, max: 10000, decimals: 1, ariaLabel: 'Amount', onInput: () => update() });
   amount.classList.add('portion-amount');
   const unit = el('span', { class: 'unit' });
@@ -52,6 +53,7 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
     className: 'portion-sheet',
     content: [
       el('div', { class: 'portion-head' }, titleEl, subEl),
+      creditEl,
       el('div', { class: 'portion-amount-row' },
         el('label', { class: 'field-label', htmlFor: amount.id = `amt-${Math.random().toString(36).slice(2)}` }, 'Amount'),
         el('div', { class: 'input-unit' }, amount, unit)),
@@ -72,6 +74,7 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
     replaceChildren(subEl, sourceBadge(current, { long: true }),
       converted ? el('span', { class: 'badge badge-warning' }, 'kcal from kJ') : null,
       ` ${[current.brand, per100Text(current)].filter(Boolean).join(' · ')}`);
+    creditEl.hidden = current.source !== 'off';
     unit.textContent = current.basis || 'g';
     chips.replaceChildren(
       ...(current.servings || []).map((s) => el('button', {

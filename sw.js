@@ -5,7 +5,7 @@
 // and run `node tools/build-precache.mjs` last. See docs/RELEASE.md.
 // Changing this file or precache-list.js is what makes browsers install the new worker; old caches
 // are deleted on activate.
-const CACHE_VERSION = '0.5.1';
+const CACHE_VERSION = '0.5.2';
 
 // self.PRECACHE = { hash, files: [[path, contentHash, bytes], ...] } (generated, see tools/build-precache.mjs).
 importScripts('precache-list.js');

@@ -3,7 +3,7 @@ import { el, openSheet, numberInput, field, toast, fmtNum } from '../ui/index.js
 import { missingFields, kjToKcal, macroKcal, NUTRIENTS } from '../core/nutrition.js';
 import { copyPer100 } from '../core/food-diary.js';
 import { round } from '../core/numbers.js';
-import { segmented } from './widgets.js';
+import { segmented, offCredit } from './widgets.js';
 
 const LABELS = {
   kcal: 'Energy', protein: 'Protein', carbs: 'Carbohydrates', fat: 'Fat',
@@ -91,6 +91,7 @@ export function openFoodEditor({ food, title = 'Edit values', note, kcalConverte
     nameField,
     mode === 'food' ? brandField : null,
     draft.barcode ? el('p', { class: 'small muted' }, `Barcode ${draft.barcode}`) : null,
+    draft.source === 'off' ? offCredit() : null,
     basisCtl,
     per100Title,
     el('div', { class: 'grid-2' }, fields.kcal, kjField, fields.protein, fields.carbs, fields.fat, fields.sugars, fields.satFat, fields.fibre, fields.salt),
