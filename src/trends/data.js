@@ -1,6 +1,7 @@
 // Data access and shared helpers for the Trends views. All reads/writes go through db.js;
 // all numbers come from src/core.
 import * as db from '../db/db.js';
+import { signedRateText } from '../core/goal-display.js';
 import { el } from '../ui/index.js';
 import { today, addDays } from '../core/dates.js';
 import { sumEntries } from '../core/nutrition.js';
@@ -71,7 +72,7 @@ export function signed(n, decimals = 1) {
 /** Plain-language goal: 'Lose 0.5 kg a week' */
 export function goalText(rate) {
   if (!rate) return 'Maintain weight';
-  return `${rate < 0 ? 'Lose' : 'Gain'} ${Math.abs(rate).toString()} kg a week`;
+  return `${rate < 0 ? 'Lose' : 'Gain'} · ${signedRateText(rate)}`;
 }
 
 export const CONFIDENCE_LABEL = { high: 'High confidence', medium: 'Medium confidence', low: 'Low confidence' };

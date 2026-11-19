@@ -1,7 +1,9 @@
 // Service worker: network-first with cache fallback for same-origin GETs.
 // Never touches cross-origin requests (APIs such as Open Food Facts go straight to the network).
-// Bump CACHE_VERSION on release (old caches are deleted on activate). Keep APP_VERSION in src/version.js in step.
-const CACHE_VERSION = 'v2';
+// Release: set CACHE_VERSION to the same string as APP_VERSION in src/version.js (npm test checks it).
+// Changing this file is what makes browsers install the new worker; old caches are deleted on activate.
+// See docs/RELEASE.md.
+const CACHE_VERSION = '0.4.0';
 const CACHE = `tracker-${CACHE_VERSION}`;
 
 // Small shell so the app opens offline after the first visit. Everything else is cached as it is fetched.
@@ -15,6 +17,12 @@ self.addEventListener('install', (event) => {
     await Promise.all(SHELL.map((url) => cache.add(new Request(url, { cache: 'no-cache' })).catch(() => {})));
     await self.skipWaiting();
   })());
+});
+
+// The page can ask a waiting worker to take over (Update button). Install already calls skipWaiting,
+// so this only matters if a browser kept a worker waiting anyway.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -32,6 +40,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;       // cross-origin: not handled, not cached
   if (!url.pathname.startsWith(new URL('./', self.location).pathname)) return; // outside our scope
   if (req.headers.has('range')) return;                   // media range requests: let the browser handle
+  if (req.cache === 'no-store') return;                   // update check: straight to the network, never cached
   event.respondWith(networkFirst(req));
 });
 

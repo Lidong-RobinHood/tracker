@@ -6,7 +6,12 @@ import { MACROS, SPLIT_PRESETS, targetMode, validateSplit, macroGrams, gramsFrom
 import { today } from '../core/dates.js';
 import { APP_VERSION } from '../version.js';
 import { ACTIVITY_LEVELS, ADAPTIVE_DEFAULTS } from '../core/adaptive.js';
-import { rateToGoal, goalToRate, goalSummary, amountValid, GOAL_AMOUNT_MAX, GOAL_PRESETS, GOAL_DEFAULT_AMOUNT } from '../core/goal-rate.js';
+import { rateToGoal, goalToRate, amountValid, GOAL_AMOUNT_MAX, GOAL_PRESETS, GOAL_DEFAULT_AMOUNT } from '../core/goal-rate.js';
+import { buildTargets } from '../core/setup.js';
+import { goalSign, signedAmount, signedRateSpeech, signedGoalSummary } from '../core/goal-display.js';
+import { lastExportText } from '../core/backup-reminder.js';
+import { backupState, markExported, noteRestored } from '../onboarding/backup.js';
+import { onUpdateState, checkForUpdate, applyUpdate } from '../onboarding/update.js';
 
 const STORE_LABELS = {
   foods: 'Foods', diary: 'Diary entries', meals: 'Saved meals', exercises: 'Exercises', routines: 'Routines',
@@ -27,6 +32,7 @@ export async function mountSettings(container) {
   const goalEl = goalSection(targets, goal, profile, adaptive || {});
   container.append(
     pageHeader({ title: 'Settings' }),
+    backupReminderCard(),
     targetsSection(targets, (t) => goalEl.updateSplitNote(t)),
     goalEl,
     volumeSection(volume),
@@ -35,7 +41,11 @@ export async function mountSettings(container) {
     storageSection(),
     aboutSection(),
   );
+  return () => { for (const fn of cleanups.splice(0)) fn(); };
 }
+
+/** Run when the view is left (update-state subscription). */
+const cleanups = [];
 
 function section(title, ...children) {
   return el('section', { class: 'section' }, el('h2', { class: 'section-title' }, title), el('div', { class: 'card stack' }, children));
@@ -168,19 +178,14 @@ function targetsSection(targets, onSaved) {
     const kcal = kcalInput.getNumber();
     if (kcal === null) { kcalInput.focus(); toast('Enter a valid calories target.', { type: 'error' }); return; }
     const current = await db.getSetting('targets');
-    let next;
-    if (mode === 'grams') {
-      const g = gramValues();
-      for (const k of MACROS) {
-        if (g[k] === null) { grams[k].focus(); toast(`Enter a valid ${k} target.`, { type: 'error' }); return; }
-      }
-      const { pct: _drop, ...rest } = current;
-      next = { ...rest, kcal, ...g, source: 'manual', mode: 'grams' };
-    } else {
-      const p = pctValues();
-      if (!validateSplit(p).ok) { toast('The three percentages must add up to 100.', { type: 'error' }); return; }
-      next = { ...current, kcal, ...gramsFromPct(kcal, p), source: 'manual', mode: 'percent', pct: p };
+    // Same rules as the first-run setup (core/setup.js buildTargets).
+    const r = buildTargets(current, mode === 'grams' ? { mode, kcal, ...gramValues() } : { mode, kcal, pct: pctValues() });
+    if (!r.ok) {
+      if (grams[r.field]) grams[r.field].focus();
+      toast(r.error, { type: 'error' });
+      return;
     }
+    const next = r.targets;
     await db.setSetting('targets', next);
     memo = { kcal, grams: { protein: next.protein, carbs: next.carbs, fat: next.fat }, pct: next.pct || pctValues() };
     if (mode === 'percent') for (const k of MACROS) grams[k].setNumber(next[k]);
@@ -269,16 +274,23 @@ function goalSection(targets, goal, profile, adaptive) {
 
 /**
  * Goal as Lose | Maintain | Gain plus a positive amount in kg a week (no minus key needed on a phone keypad).
- * Stored as the signed settings.goal.rateKgPerWeek (see core/goal-rate.js).
+ * The sign is always shown: a fixed "−" (lose) or "+" (gain) in front of the field, signed chips and a
+ * signed summary (core/goal-display.js). Stored as the signed settings.goal.rateKgPerWeek (core/goal-rate.js).
+ * Shared with the first-run setup (src/onboarding/welcome.js).
  * @returns {HTMLElement & {getRate: () => number|null, getDirection: () => string, amount: HTMLInputElement}}
  */
-function goalRateControl(storedRate) {
+export function goalRateControl(storedRate) {
+  ensureCss();
   const initial = rateToGoal(storedRate);
   let direction = initial.direction;
   const uid = Math.random().toString(36).slice(2);
   const amount = numberInput({ value: initial.amount, min: 0, max: Math.max(GOAL_AMOUNT_MAX.lose, GOAL_AMOUNT_MAX.gain), decimals: 2,
     ariaLabel: 'Amount in kg per week', id: `goal-amount-${uid}` });
-  const summary = el('div', { class: 'field-hint', 'aria-live': 'polite' });
+  // Visible summary with the signed rate; screen readers get the spoken form ("minus 0.5 kilograms per week").
+  const summaryText = el('span', { 'aria-hidden': 'true' });
+  const summarySpeech = el('span', { class: 'set-sr' });
+  const summary = el('div', { class: 'field-hint', 'aria-live': 'polite' }, summaryText, summarySpeech);
+  const signEl = el('span', { class: 'set-goal-sign', 'aria-hidden': 'true' });
   const DIRS = [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']];
   const dirBtns = DIRS.map(([d, label]) => el('button', { type: 'button', role: 'radio', dataset: { dir: d },
     onClick: () => setDirection(d, true) }, label));
@@ -294,8 +306,10 @@ function goalRateControl(storedRate) {
     dirBtns.find((b) => b.dataset.dir === next).focus();
   });
   const chipsBox = el('div', { class: 'chips', role: 'group', 'aria-label': 'Common amounts' });
+  const amountLabel = el('label', { class: 'field-label', htmlFor: amount.id }, 'Amount');
   const amountRow = el('div', { class: 'stack' },
-    field('Amount', amount, { unit: 'kg/wk' }),
+    el('div', { class: 'field' }, amountLabel,
+      el('div', { class: 'input-unit set-goal-signed' }, signEl, amount, el('span', { class: 'unit' }, 'kg/wk'))),
     chipsBox);
 
   const current = () => amount.getNumber();
@@ -316,16 +330,19 @@ function goalRateControl(storedRate) {
     else amount.removeAttribute('aria-invalid');
     for (const c of chipsBox.children) c.setAttribute('aria-pressed', String(Number(c.dataset.kg) === n));
     const kcalDay = valid ? Math.round((n * ADAPTIVE_DEFAULTS.kcalPerKg) / 7 / 10) * 10 : null;
-    summary.textContent = `${goalSummary(direction, n)}`
-      + (kcalDay ? ` (about ${fmtNum(kcalDay, 0)} kcal a day ${direction === 'lose' ? 'below' : 'above'} what you burn).` : '.')
-      + ` Lose up to ${GOAL_AMOUNT_MAX.lose} kg or gain up to ${GOAL_AMOUNT_MAX.gain} kg a week.`;
+    const limits = ` Lose up to ${GOAL_AMOUNT_MAX.lose} kg or gain up to ${GOAL_AMOUNT_MAX.gain} kg a week.`;
+    const line = signedGoalSummary(direction, n, { max: GOAL_AMOUNT_MAX[direction], kcalDay });
+    summaryText.textContent = `${line}.${limits}`;
+    summarySpeech.textContent = `${valid || maintain ? signedRateSpeech(direction, n) : line}.${limits}`;
+    signEl.textContent = goalSign(direction);
+    amount.setAttribute('aria-label', direction === 'lose' ? 'Amount to lose, minus kilograms per week' : 'Amount to gain, plus kilograms per week');
   }
   function setDirection(d, byUser) {
     direction = d;
     if (d !== 'maintain') {
       chipsBox.replaceChildren(...GOAL_PRESETS[d].map((kg) => el('button', { class: 'chip', type: 'button', dataset: { kg: String(kg) },
-        'aria-pressed': 'false', 'aria-label': `${d === 'lose' ? 'Lose' : 'Gain'} ${kg} kg a week`,
-        onClick: () => { amount.setNumber(kg); paint(); } }, `${kg} kg`)));
+        'aria-pressed': 'false', 'aria-label': signedRateSpeech(d, kg),
+        onClick: () => { amount.setNumber(kg); paint(); } }, signedAmount(d, kg))));
       // Switching from Maintain with nothing typed yet: start from a sensible amount.
       if (byUser && amount.value.trim() === '') amount.setNumber(GOAL_DEFAULT_AMOUNT[d]);
     } else {
@@ -376,26 +393,41 @@ function volumeSection(volume) {
 
 // ---------------------------------------------------------------- export / import
 
+/**
+ * Download every store as one JSON file and record the export time (settings.meta.lastExportAt) for
+ * the backup reminder. Also used by the reminder banner. @returns {Promise<boolean>} success
+ */
+export async function exportBackup() {
+  try {
+    const data = await db.exportAll();
+    const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = el('a', { href: url, download: `tracker-export-${today()}.json` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    await markExported(data.exportedAt);
+    const n = Object.values(data.stores).reduce((s, r) => s + r.length, 0);
+    toast(`Exported ${n} records. Keep the file somewhere other than this phone.`, { type: 'success', duration: 5000 });
+    window.dispatchEvent(new CustomEvent('tracker:exported'));
+    return true;
+  } catch (err) {
+    console.error(err);
+    toast(`Export failed: ${err.message}`, { type: 'error' });
+    return false;
+  }
+}
+
 function dataSection() {
   const fileInput = el('input', { type: 'file', accept: 'application/json,.json', hidden: true });
-
-  const doExport = async () => {
-    try {
-      const data = await db.exportAll();
-      const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = el('a', { href: url, download: `tracker-export-${today()}.json` });
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-      const n = Object.values(data.stores).reduce((s, r) => s + r.length, 0);
-      toast(`Exported ${n} records`, { type: 'success' });
-    } catch (err) {
-      console.error(err);
-      toast(`Export failed: ${err.message}`, { type: 'error' });
-    }
+  const lastLine = el('p', { class: 'small', 'aria-live': 'polite' });
+  const refreshLast = async () => {
+    const meta = await db.getSetting('meta');
+    lastLine.textContent = `Last export from this device: ${lastExportText(meta.lastExportAt, Date.now())}.`;
   };
+  const doExport = async () => { if (await exportBackup()) refreshLast(); };
+  refreshLast();
 
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files && fileInput.files[0];
@@ -412,15 +444,20 @@ function dataSection() {
   });
 
   return section('Backup',
-    el('p', { class: 'muted small' }, 'All data lives only on this device. Export regularly.'),
+    el('p', { class: 'muted small' }, 'All data lives only on this device. Export regularly and keep the file somewhere else (cloud drive, e-mail to yourself). To move to a new phone: export here, import the file there.'),
+    lastLine,
     el('div', { class: 'row' },
       el('button', { class: 'btn btn-block', type: 'button', onClick: doExport }, 'Export JSON'),
       el('button', { class: 'btn btn-block', type: 'button', onClick: () => fileInput.click() }, 'Import JSON')),
     fileInput);
 }
 
-/** Validate, show counts, confirm, replace. Exported for testing from the console. */
-export async function importFlow(data) {
+/**
+ * Validate, show counts, confirm, replace, reload. Also used by the first-run setup ("Restore a backup").
+ * @param {object} data parsed export file
+ * @param {{reloadTo?: string}} [opts] route to open after the reload (default: stay)
+ */
+export async function importFlow(data, { reloadTo } = {}) {
   const v = db.validateImport(data);
   if (!v.ok) { toast(`Import failed: ${v.error}`, { type: 'error', duration: 5000 }); return false; }
   const rows = Object.entries(v.counts).map(([s, n]) =>
@@ -434,7 +471,10 @@ export async function importFlow(data) {
   if (!ok) return false;
   try {
     await db.importAll(v.data);
+    // The device now holds exactly the file's data: counts as backed up; asks to keep the data.
+    await noteRestored(data).catch((err) => console.error(err));
     toast('Import complete', { type: 'success' });
+    if (reloadTo) history.replaceState(null, '', `#/${reloadTo}`);
     location.reload();
     return true;
   } catch (err) {
@@ -448,12 +488,12 @@ export async function importFlow(data) {
 
 function storageSection() {
   const status = el('p', 'Checking…');
-  const btn = el('button', { class: 'btn btn-block', type: 'button', hidden: true }, 'Ask to keep data permanently');
+  const btn = el('button', { class: 'btn btn-block', type: 'button', hidden: true }, 'Ask the browser to keep it');
   const refresh = async () => {
     const s = await db.storageStatus();
-    const persist = s.persisted === null ? 'Persistence not supported by this browser.'
-      : s.persisted ? 'Persistent: the browser will not clear this data automatically.'
-        : 'Not persistent: the browser may clear data under storage pressure. Export regularly.';
+    const persist = s.persisted === null ? 'This browser does not say whether it keeps the data. Keep backups.'
+      : s.persisted ? 'Protected: the browser will not delete this data on its own. Clearing site data or removing the app still deletes it.'
+        : 'Not protected: the browser may delete this data when the phone runs low on space. Installing the app and keeping backups helps.';
     status.textContent = `${persist}${s.usage !== null ? ` Using ${fmtBytes(s.usage)}.` : ''}`;
     btn.hidden = s.persisted !== false;
   };
@@ -486,6 +526,50 @@ function aboutSection() {
   return section('About',
     el('div', { class: 'list' },
       el('div', { class: 'list-item' }, el('span', { class: 'li-main' }, 'App version'), el('span', { class: 'num' }, APP_VERSION)),
+      updateRow(),
       el('div', { class: 'list-item' }, el('span', { class: 'li-main' }, 'Data schema'), el('span', { class: 'num' }, db.DB_VERSION)),
       el('a', { class: 'list-item', href: 'spike/index.html' }, el('span', { class: 'li-main' }, 'Barcode spike (step 1)'), el('span', { class: 'li-chevron' }, '›'))));
+}
+
+// ---------------------------------------------------------------- backup reminder, update check
+
+/** Quiet card at the top when the last export is 14+ days old (the snooze only hides the banner). */
+function backupReminderCard() {
+  const card = el('section', { class: 'card stack set-backup-card', hidden: true, 'aria-live': 'polite' });
+  const refresh = async () => {
+    const st = await backupState('settings');
+    if (!st.due) { card.hidden = true; return; }
+    card.replaceChildren(
+      el('div', { class: 'card-title' }, 'Time for a backup'),
+      el('p', { class: 'small' }, st.never
+        ? 'You have not exported a backup from this device yet. If this browser’s data is cleared, everything is gone.'
+        : `Your last backup is ${st.daysSince} days old. Export one and keep the file somewhere other than this phone.`),
+      el('button', { class: 'btn btn-primary btn-block', type: 'button', onClick: async () => { if (await exportBackup()) refresh(); } }, 'Export backup'));
+    card.hidden = false;
+  };
+  refresh();
+  return card;
+}
+
+/** "Check for update" row; turns into an Update button when a new version is deployed. */
+function updateRow() {
+  const status = el('span', { class: 'small muted', 'aria-live': 'polite' });
+  const btn = el('button', { class: 'btn btn-sm set-update-btn', type: 'button' }, 'Check for update');
+  btn.addEventListener('click', () => {
+    if (btn.dataset.mode === 'apply') applyUpdate();
+    else checkForUpdate();
+  });
+  const off = onUpdateState((st) => {
+    const apply = st.status === 'available';
+    btn.dataset.mode = apply ? 'apply' : 'check';
+    btn.className = apply ? 'btn btn-sm set-update-btn btn-primary' : 'btn btn-sm set-update-btn';
+    btn.textContent = apply ? 'Update' : 'Check for update';
+    btn.disabled = st.status === 'checking';
+    status.textContent = st.status === 'available' ? `Version ${st.deployed} is available.`
+      : st.status === 'current' ? 'Up to date.'
+        : st.status === 'offline' ? 'Offline, cannot check.'
+          : st.status === 'checking' ? 'Checking…' : '';
+  });
+  cleanups.push(off);
+  return el('div', { class: 'list-item' }, el('span', { class: 'li-main' }, 'Updates', el('br'), status), btn);
 }

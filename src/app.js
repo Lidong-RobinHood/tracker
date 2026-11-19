@@ -8,7 +8,7 @@ import { routes as workoutRoutes } from './workout/index.js';
 import { routes as trendsRoutes } from './trends/index.js';
 import { routes as settingsRoutes } from './settings/index.js';
 import { routes as importRoutes } from './import/index.js';
-import { routes as onboardingRoutes } from './onboarding/index.js';
+import { routes as onboardingRoutes, startAppServices } from './onboarding/index.js';
 
 /** Tabs in the bottom bar. A route belongs to the tab named by its `tab` field, else its first path segment. */
 const TABS = [
@@ -157,9 +157,13 @@ async function boot() {
   }
   await render();
 
+  let reg = null;
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Service worker registration failed', err));
+    // updateViaCache 'none': the browser always fetches sw.js itself from the server when checking for updates.
+    reg = navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+      .catch((err) => { console.warn('Service worker registration failed', err); });
   }
+  startAppServices(reg); // update check, backup reminder, optional setup card and empty-tab hints
 }
 
 boot();
