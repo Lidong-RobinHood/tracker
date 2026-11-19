@@ -7,6 +7,8 @@ import { routes as foodRoutes } from './food/index.js';
 import { routes as workoutRoutes } from './workout/index.js';
 import { routes as trendsRoutes } from './trends/index.js';
 import { routes as settingsRoutes } from './settings/index.js';
+import { routes as importRoutes } from './import/index.js';
+import { routes as onboardingRoutes } from './onboarding/index.js';
 
 /** Tabs in the bottom bar. A route belongs to the tab named by its `tab` field, else its first path segment. */
 const TABS = [
@@ -17,7 +19,7 @@ const TABS = [
 ];
 const DEFAULT_PATH = 'diary';
 
-const ROUTES = [...foodRoutes, ...workoutRoutes, ...trendsRoutes, ...settingsRoutes].map(compile);
+const ROUTES = [...foodRoutes, ...workoutRoutes, ...trendsRoutes, ...settingsRoutes, ...importRoutes, ...onboardingRoutes].map(compile);
 
 /** Turn 'workout/session/:id' into a matcher. */
 function compile(route) {

@@ -475,7 +475,9 @@ function linksSection() {
   return section('More',
     el('div', { class: 'list' },
       link('#/workout/targets', 'Weekly set targets', 'Sets per muscle per week'),
-      link('#/food/photo-settings', 'Meal photo (AI)', 'Your API key and model')));
+      link('#/food/photo-settings', 'Meal photo (AI)', 'Your API key and model'),
+      link('#/import', 'Import data', 'Workout sheet, body weights, food diary'),
+      link('#/help', 'Help and setup', 'Install, backup, how it works')));
 }
 
 // ---------------------------------------------------------------- about
