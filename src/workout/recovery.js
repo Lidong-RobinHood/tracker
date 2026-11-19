@@ -1,22 +1,24 @@
-// Muscle recovery: compact section for the workout home, and the detail screen.
-// Route: workout/recovery. Model and caveats: src/core/recovery.js (general rule of thumb, not a measurement).
+// Muscle recovery: body-map card for the workout home, and the detail screen.
+// Route: workout/recovery. Model and caveats: src/core/recovery.js (general rule of thumb, not a
+// measurement); the explanation lives in the 'recovery' and 'recovery-math' info sheets.
 import * as db from '../db/db.js';
-import { el, replaceChildren, append, pageHeader, href, fmtTime, fmtNum, toast, openSheet, numberInput, field } from '../ui/index.js';
+import {
+  el, replaceChildren, append, pageHeader, href, fmtTime, fmtNum, toast, openSheet, numberInput, field,
+  cardHeader, sectionHeader, segmented, infoButton, icon, bodyMap, muscleIcon, setBodyMapValues,
+} from '../ui/index.js';
 import {
   muscleRecovery, sortByRecovery, recoveryWords, STATUS_LABEL, RECOVERY_CONFIG, RECOVERY_KEY,
-  recoverySettings, paceFactor, lookbackFrom, doseFactor, recoveryWindow, validateRange, withBase, baseRange,
+  recoverySettings, paceFactor, lookbackFrom, validateRange, withBase, baseRange, fmtSpanRange,
 } from '../core/recovery.js';
 import { MUSCLES } from '../core/muscles.js';
 import { ensureCss, loadExercises, confirmAction } from './data.js';
 
 const H = 3600000;
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const ICON = { recovering: '○', 'likely-ready': '◐', fresh: '●' };
-/** Rows on the home screen: muscles trained within this many days. */
+/** Core status -> body-map / muscle-icon state. Recovered muscles stay neutral on the map. */
+const MAP_STATE = { recovering: 'recovering', 'likely-ready': 'ready', fresh: 'fresh' };
+/** "Recently trained" on the home card: muscles trained within this many days. */
 const HOME_DAYS = 7;
-
-const CAPTION = 'A general estimate from your sets and the time since, not a measurement. '
-  + 'Sleep, nutrition, how hard the sets were and soreness all change real recovery.';
 
 /** Workouts that can matter for recovery at `now` (index query on date, not the whole history). */
 export async function loadRecentWorkouts(now) {
@@ -52,21 +54,6 @@ function relative(ms, now) {
   return h < 48 ? `in about ${Math.round(h)} h` : `in about ${fmtNum(Math.round((h / 24) * 2) / 2, 1)} days`;
 }
 
-function statusBadge(r) {
-  return el('span', { class: ['wk-rc-status', `is-${r.status}`] },
-    el('span', { 'aria-hidden': 'true' }, ICON[r.status]), ' ', STATUS_LABEL[r.status]);
-}
-
-/** Bar: 0 … max hours; the min–max band is hatched, a tick marks min, the fill is time passed. */
-function bar(r) {
-  if (!r.trained) return null;
-  const band = (r.minHours / r.maxHours) * 100;
-  return el('span', { class: 'wk-rc-bar', 'aria-hidden': 'true' },
-    el('span', { class: 'wk-rc-band', style: { left: `${band}%` } }),
-    el('span', { class: ['wk-rc-fill', `is-${r.status}`], style: { width: `${r.progress}%` } }),
-    el('span', { class: 'wk-rc-min', style: { left: `${band}%` } }));
-}
-
 function ariaText(r, now) {
   if (!r.trained) return `${r.name}: no training in the last ${RECOVERY_CONFIG.lookbackDays} days.`;
   return `${r.name}: ${STATUS_LABEL[r.status]}, ${recoveryWords(r)}. Last trained ${lastLine(r)}. `
@@ -74,50 +61,82 @@ function ariaText(r, now) {
     + (r.status === 'fresh' ? '' : ` Ready from ${absTime(r.readyAt)} (${relative(r.readyAt, now)}), fully recovered by ${absTime(r.fullAt)} (${relative(r.fullAt, now)}).`);
 }
 
-/**
- * One muscle row. Tapping toggles between relative words and absolute times.
- * @param {ReturnType<typeof muscleRecovery>[number]} r
- */
-function recoveryRow(r, now) {
-  const words = el('span', { class: 'wk-rc-words' }, recoveryWords(r));
-  const abs = r.status === 'fresh'
+/** Absolute times of one muscle: 'ready from Thu 14:00 · fully by Fri 02:00'. */
+function absText(r) {
+  if (!r.trained) return `not trained in ${RECOVERY_CONFIG.lookbackDays} days`;
+  return r.status === 'fresh'
     ? `recovered since ${absTime(r.fullAt)}`
     : `ready from ${absTime(r.readyAt)} · fully by ${absTime(r.fullAt)}`;
-  const rel = recoveryWords(r);
-  const row = el('button', {
-    type: 'button', class: 'wk-rc-row', 'aria-pressed': 'false', 'aria-label': ariaText(r, now),
-    onClick: () => {
-      const on = row.getAttribute('aria-pressed') !== 'true';
-      row.setAttribute('aria-pressed', String(on));
-      words.textContent = on ? abs : rel;
-    },
-  },
-  el('span', { class: 'wk-rc-head' },
-    el('span', { class: 'wk-rc-name' }, r.name),
-    statusBadge(r)),
-  bar(r),
-  el('span', { class: 'wk-rc-sub small' }, words, el('span', { class: 'wk-rc-last muted' }, lastLine(r))));
-  return row;
+}
+
+/** Short time on a chip: '12–36 h' while recovering, 'Likely ready' inside the window. */
+function chipTime(r) {
+  if (r.status === 'recovering') return fmtSpanRange(r.minHours - r.hoursSince, r.maxHours - r.hoursSince);
+  return STATUS_LABEL[r.status];
+}
+
+function statusLine(r) {
+  return el('span', { class: 'wk-rc-st' }, el('span', { class: ['dot', `is-${MAP_STATE[r.status]}`] }), STATUS_LABEL[r.status]);
 }
 
 /**
- * Home section. `workouts` may be the full list already loaded by the home view; only the
- * last 14 days are used.
+ * Home card: body map (front + back) coloured only for recovering (red) and likely ready (amber)
+ * muscles, a legend, chips for those muscles (least recovered first), recovered muscles in one muted
+ * line. Tapping a chip or a muscle on the map shows its absolute times. `workouts` may be the full
+ * list already loaded by the home view; only the last 14 days are used.
  */
 export function recoverySection(workouts, exMap, weights, setting, now = Date.now()) {
   const rows = sortByRecovery(muscleRecovery(workouts, exMap, weights, { now, ...recoveryOpts(setting) }));
-  const recent = rows.filter((r) => r.trained && (now - r.lastAt < HOME_DAYS * 24 * H || r.status !== 'fresh'));
-  const rested = MUSCLES.filter((m) => !recent.some((r) => r.muscle === m.id)).map((m) => m.name);
-  return el('section', { class: 'section', 'data-recovery': '' },
-    el('div', { class: 'row-between' },
-      el('h2', { class: 'section-title' }, 'Muscle recovery'),
-      el('a', { class: 'wk-rc-more', href: href('workout/recovery') }, 'Details ›')),
-    el('div', { class: 'card wk-rc-card' },
-      recent.length
-        ? el('div', { class: 'wk-rc-list' }, recent.map((r) => recoveryRow(r, now)))
-        : el('p', { class: 'muted small wk-rc-empty' }, `No muscle trained in the last ${HOME_DAYS} days — everything is rested.`),
-      recent.length && rested.length ? el('p', { class: 'small muted wk-rc-rested' }, `Rested: ${rested.join(', ')}`) : null,
-      el('p', { class: 'field-hint wk-rc-caption' }, CAPTION, recent.length ? ' Tap a row for times.' : null)));
+  const byId = new Map(rows.map((r) => [r.muscle, r]));
+  const active = rows.filter((r) => r.trained && r.status !== 'fresh');
+  const rested = rows.filter((r) => !active.includes(r));
+  const anyRecent = rows.some((r) => r.trained && now - r.lastAt < HOME_DAYS * 24 * H);
+  const values = Object.fromEntries(active.map((r) => [r.muscle, MAP_STATE[r.status]]));
+
+  const map = bodyMap({ view: 'both', values, title: `Muscle recovery map: ${active.length ? active.map((r) => `${r.name} ${STATUS_LABEL[r.status].toLowerCase()}`).join(', ') : 'all muscles recovered'}` });
+  map.classList.add('wk-rc-map');
+  const detail = el('p', { class: 't-sub wk-rc-detail-line', 'aria-live': 'polite', hidden: true });
+  const chips = [];
+  let selected = null;
+  const select = (muscle) => {
+    selected = selected === muscle ? null : muscle;
+    for (const c of chips) c.setAttribute('aria-pressed', String(c.dataset.muscle === selected));
+    for (const p of map.querySelectorAll('.bm-muscle')) p.classList.toggle('is-sel', p.getAttribute('data-muscle') === selected);
+    const r = selected ? byId.get(selected) : null;
+    detail.hidden = !r;
+    replaceChildren(detail, r ? [el('span', { class: 'strong' }, r.name), ` · ${absText(r)}`] : null);
+  };
+  map.addEventListener('click', (e) => {
+    const p = /** @type {Element} */ (e.target).closest && /** @type {Element} */ (e.target).closest('[data-muscle]');
+    if (p) select(p.getAttribute('data-muscle'));
+  });
+
+  for (const r of active) {
+    chips.push(el('button', {
+      type: 'button', class: 'wk-mchip', 'aria-pressed': 'false', dataset: { muscle: r.muscle },
+      'aria-label': ariaText(r, now), onClick: () => select(r.muscle),
+    },
+    muscleIcon(r.muscle, { state: MAP_STATE[r.status] }),
+    el('span', { class: 'wk-mchip-main' },
+      el('span', { class: 'wk-mchip-name' }, r.name),
+      el('span', { class: 'wk-mchip-st' }, el('span', { class: ['dot', `is-${MAP_STATE[r.status]}`] }), chipTime(r)))));
+  }
+
+  return el('section', { class: 'card wk-rc-card', 'data-recovery': '' },
+    cardHeader('Muscle recovery', { tag: 'Estimate', info: 'recovery' }),
+    el('div', { class: 'wk-map-row' },
+      map,
+      el('ul', { class: 'legend wk-map-legend' },
+        el('li', el('span', { class: 'swatch is-recovering' }), 'Recovering'),
+        el('li', el('span', { class: 'swatch is-ready' }), 'Likely ready'),
+        el('li', el('span', { class: 'swatch is-fresh' }), 'Recovered'))),
+    chips.length ? el('div', { class: 'wk-mchips' }, chips) : null,
+    !anyRecent && !active.length
+      ? el('p', { class: 't-sub muted wk-rc-rested' }, 'All muscles rested.')
+      : rested.length ? el('p', { class: 't-sub wk-rc-rested' },
+        el('span', { class: 'dot is-fresh' }),
+        el('span', el('span', { class: 'strong' }, 'Recovered'), ' ', el('span', { class: 'muted' }, rested.map((r) => r.name).join(' · ')))) : null,
+    detail);
 }
 
 const PACES = [
@@ -132,15 +151,18 @@ export async function mountRecovery(container) {
   const [workouts, exMap, weights, setting] = await Promise.all([
     loadRecentWorkouts(now), loadExercises(), db.getSetting('volume'), loadRecoverySetting(),
   ]);
-  append(container, pageHeader({ title: 'Muscle recovery', subtitle: 'General estimate per muscle', back: 'workout' }));
+  append(container, pageHeader({ title: 'Muscle recovery', subtitle: 'Rule-of-thumb estimate', back: 'workout', info: 'recovery' }));
 
-  const listHost = el('div', { class: 'card wk-rc-card' });
-  const rangesHost = el('div', { class: 'card card-flush' });
+  const map = bodyMap({ view: 'both', title: 'Muscle recovery map' });
+  map.classList.add('wk-rc-map');
+  const listHost = el('div', { class: 'list' });
+  const rangesHost = el('div', { class: 'list' });
   const resetAllBtn = el('button', { type: 'button', class: 'btn btn-ghost btn-block', onClick: () => resetAll() }, 'Reset all to default');
   const paint = () => {
     const rows = sortByRecovery(muscleRecovery(workouts, exMap, weights, { now, ...recoveryOpts(setting) }));
-    replaceChildren(listHost, el('div', { class: 'wk-rc-list' }, rows.map((r) => detailRow(r, now))));
-    replaceChildren(rangesHost, el('div', { class: 'list' }, MUSCLES.map((m) => rangeRow(m))));
+    setBodyMapValues(map, Object.fromEntries(rows.filter((r) => r.trained && r.status !== 'fresh').map((r) => [r.muscle, MAP_STATE[r.status]])));
+    replaceChildren(listHost, rows.map((r) => detailRow(r, now)));
+    replaceChildren(rangesHost, MUSCLES.map((m) => rangeRow(m)));
     resetAllBtn.hidden = !setting.base;
   };
   let chain = Promise.resolve();
@@ -166,14 +188,14 @@ export async function mountRecovery(container) {
       'aria-label': `${m.name}: ${range[0]} to ${range[1]} hours${custom ? ', your own range' : ', default'}. Edit`,
     },
     el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, m.name)),
-    el('span', { class: 'li-trail num' }, custom ? el('span', { class: 'badge wk-rc-own' }, 'yours') : null, ` ${range[0]}–${range[1]} h`),
-    el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›'));
+    custom ? el('span', { class: 'tag tag-accent' }, 'Yours') : null,
+    el('span', { class: 'li-trail' }, `${range[0]}–${range[1]} h`),
+    icon('chevron-right', { class: 'li-chevron' }));
   }
 
   function editRange(m) {
     const { range, custom } = baseRange(m.id, setting.base);
     const def = RECOVERY_CONFIG.base[m.id];
-    const c = RECOVERY_CONFIG.custom;
     const lo = numberInput({ value: range[0], min: 0, max: 999, integer: true, ariaLabel: `${m.name} shortest hours` });
     const hi = numberInput({ value: range[1], min: 0, max: 999, integer: true, ariaLabel: `${m.name} longest hours` });
     const err = el('p', { class: 'field-error', role: 'alert', hidden: true });
@@ -181,13 +203,13 @@ export async function mountRecovery(container) {
       title: `${m.name} recovery`,
       content: [
         el('div', { class: 'grid-2' }, field('Shortest', lo, { unit: 'h' }), field('Longest', hi, { unit: 'h' })),
-        el('p', { class: 'field-hint' },
-          `Hours after about ${RECOVERY_CONFIG.referenceDose} hard sets at average pace. More or fewer sets and your pace still scale it. `
-          + `Whole hours, ${c.min}–${c.max} h, longest at least ${c.minGap} h more. Default ${def[0]}–${def[1]} h.`),
+        el('div', { class: 'wk-hint-row' },
+          el('p', { class: 'field-hint' }, `For ${RECOVERY_CONFIG.referenceDose} hard sets. Default ${def[0]}–${def[1]} h.`),
+          infoButton('recovery-math')),
         err,
       ],
     });
-    append(sh.footer, 
+    append(sh.footer,
       custom ? el('button', {
         type: 'button', class: 'btn', onClick: async () => { sh.close(); await setRange(m.id, null); toast(`${m.name}: default ${def[0]}–${def[1]} h`); },
       }, 'Reset to default') : el('button', { type: 'button', class: 'btn', onClick: () => sh.close() }, 'Cancel'),
@@ -205,7 +227,7 @@ export async function mountRecovery(container) {
 
   async function resetAll() {
     if (!setting.base) return;
-    const ok = await confirmAction({ title: 'Reset all ranges?', message: 'Every muscle goes back to the default range. Your pace setting stays.', confirmLabel: 'Reset' });
+    const ok = await confirmAction({ title: 'Reset all ranges?', message: 'All muscles return to default. Pace stays.', confirmLabel: 'Reset' });
     if (!ok) return;
     delete setting.base;
     paint();
@@ -213,59 +235,83 @@ export async function mountRecovery(container) {
     toast('All ranges reset to default');
   }
 
-  const tabs = el('div', { class: 'tabs wk-rc-tabs', role: 'radiogroup', 'aria-label': 'How fast you recover' },
-    PACES.map(([id, label, aria]) => el('button', {
-      type: 'button', role: 'radio', 'aria-checked': String(setting.pace === id), 'aria-label': `${aria} (× ${RECOVERY_CONFIG.paces[id]})`,
-      dataset: { pace: id },
-      onClick: async () => {
-        setting.pace = id;
-        for (const b of tabs.children) b.setAttribute('aria-checked', String(b.dataset.pace === id));
-        paint();
-        await persist();
-      },
-    }, label)));
+  const pace = segmented({
+    ariaLabel: 'How fast you recover',
+    value: setting.pace,
+    options: PACES.map(([id, label, aria]) => ({ value: id, label, ariaLabel: `${aria} (× ${RECOVERY_CONFIG.paces[id]})` })),
+    onChange: async (id) => {
+      setting.pace = id;
+      paint();
+      await persist();
+    },
+  });
+  pace.classList.add('wk-rc-pace');
 
   paint();
-  append(container, 
-    el('p', { class: 'small muted wk-pad-x' }, CAPTION),
+  append(container,
+    el('section', { class: 'card wk-rc-card' },
+      el('div', { class: 'wk-map-row' },
+        map,
+        el('ul', { class: 'legend wk-map-legend' },
+          el('li', el('span', { class: 'swatch is-recovering' }), 'Recovering'),
+          el('li', el('span', { class: 'swatch is-ready' }), 'Likely ready'),
+          el('li', el('span', { class: 'swatch is-fresh' }), 'Recovered')))),
+    el('section', { class: 'section' }, sectionHeader('Your pace'), pace),
+    el('section', { class: 'section' }, sectionHeader('All muscles'), el('div', { class: 'card card-flush' }, listHost)),
     el('section', { class: 'section' },
-      el('h2', { class: 'section-title' }, 'Your recovery'),
-      tabs,
-      el('p', { class: 'field-hint wk-pad-x' },
-        `Scales every window: faster × ${RECOVERY_CONFIG.paces.faster}, average × 1, slower × ${RECOVERY_CONFIG.paces.slower}. Saved automatically.`)),
-    el('section', { class: 'section' }, el('h2', { class: 'section-title' }, 'All muscles'), listHost),
-    el('section', { class: 'section' },
-      el('h2', { class: 'section-title' }, 'Recovery range per muscle'),
-      el('p', { class: 'field-hint wk-pad-x' }, `Tap a muscle to set your own range (hours after about ${RECOVERY_CONFIG.referenceDose} hard sets). Saved automatically.`),
-      rangesHost, resetAllBtn),
-    assumptions(weights));
+      sectionHeader('Recovery range per muscle', { info: 'recovery-math' }),
+      el('p', { class: 'field-hint wk-pad-x' }, `Hours for ${RECOVERY_CONFIG.referenceDose} hard sets. Tap to edit.`),
+      el('div', { class: 'card card-flush' }, rangesHost), resetAllBtn),
+    assumptions());
 }
 
+/** One muscle on the detail screen: status, bar, window; tapping toggles relative words and absolute times. */
 function detailRow(r, now) {
-  const row = recoveryRow(r, now);
+  const state = r.trained ? MAP_STATE[r.status] : null;
   if (!r.trained) {
-    return el('div', { class: 'wk-rc-detail' },
-      el('div', { class: 'wk-rc-head wk-rc-static' }, el('span', { class: 'wk-rc-name' }, r.name), statusBadge(r)),
-      el('div', { class: 'small muted' }, `Not trained in the last ${RECOVERY_CONFIG.lookbackDays} days.`));
+    return el('div', { class: 'list-item wk-rc-item' },
+      muscleIcon(r.muscle),
+      el('div', { class: 'li-main' },
+        el('div', { class: 'li-title' }, r.name),
+        el('div', { class: 'li-sub' }, `Not trained in ${RECOVERY_CONFIG.lookbackDays} days`)));
   }
+  const rel = recoveryWords(r);
+  const abs = absText(r);
+  const words = el('span', { class: 'wk-rc-words' }, rel);
+  const band = (r.minHours / r.maxHours) * 100;
   const carried = r.dose - r.lastDose;
-  return el('div', { class: 'wk-rc-detail' },
+  const row = el('button', {
+    type: 'button', class: 'list-item wk-rc-item', 'aria-pressed': 'false', 'aria-label': ariaText(r, now),
+    onClick: () => {
+      const on = row.getAttribute('aria-pressed') !== 'true';
+      row.setAttribute('aria-pressed', String(on));
+      words.textContent = on ? abs : rel;
+    },
+  },
+  muscleIcon(r.muscle, { state }),
+  el('div', { class: 'li-main' },
+    el('div', { class: 'wk-rc-head' }, el('span', { class: 'li-title' }, r.name), statusLine(r)),
+    el('span', { class: 'wk-rc-bar', 'aria-hidden': 'true' },
+      el('span', { class: 'wk-rc-band', style: { left: `${band}%` } }),
+      el('span', { class: ['wk-rc-fill', `is-${state}`], style: { width: `${r.progress}%` } }),
+      el('span', { class: 'wk-rc-min', style: { left: `${band}%` } })),
+    el('div', { class: 'li-sub wk-rc-sub' }, words),
+    el('div', { class: 'li-sub' },
+      `${r.minHours}–${r.maxHours} h · ${sets(r.dose)}${carried > 0.004 ? ` (${fmtNum(carried, 2)} carried over)` : ''} · last ${lastLine(r)}`)));
+  return el('div', { class: 'wk-rc-group' },
     row,
-    el('div', { class: 'small muted wk-rc-why' },
-      `Window ${r.minHours}–${r.maxHours} h after the last session`,
-      carried > 0.004 ? ` (${sets(r.lastDose)} + ${fmtNum(carried, 2)} carried over from the session before = ${sets(r.dose)})` : ` (${sets(r.dose)})`,
-      '.'),
-    el('ul', { class: 'wk-rc-sessions' }, r.sessions.map((s) => el('li', null,
+    r.sessions.length ? el('ul', { class: 'wk-rc-sessions' }, r.sessions.map((s) => el('li', null,
       el('a', {
         class: 'wk-rc-slink',
         href: href(s.finished ? `workout/history/${encodeURIComponent(s.workoutId)}` : `workout/session/${encodeURIComponent(s.workoutId)}`),
       },
       el('span', { class: 'wk-rc-sname' }, `${s.name}${s.finished ? '' : ' (in progress)'}`),
-      el('span', { class: 'small muted num' }, `${absTime(s.at)} · ${sets(s.dose)}`),
-      el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›'))))));
+      el('span', { class: 't-sub muted' }, `${absTime(s.at)} · ${sets(s.dose)}`),
+      icon('chevron-right', { class: 'li-chevron' }))))) : null);
 }
 
-function assumptions(weights) {
+/** Default ranges per muscle group, collapsed. The wording is in the info sheets. */
+function assumptions() {
   const cfg = RECOVERY_CONFIG;
   const groups = new Map();
   for (const m of MUSCLES) {
@@ -273,30 +319,11 @@ function assumptions(weights) {
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(m.name);
   }
-  const ex = (d) => recoveryWindow('chest', d).join('–');
-  return el('section', { class: 'section' },
-    el('h2', { class: 'section-title' }, 'How the estimate works'),
-    el('div', { class: 'card stack wk-rc-assume' },
-      el('p', { class: 'small' },
-        `Rule of thumb from common training advice: a muscle trained hard is usually given about 48–72 h before training it hard again. `
-        + 'Smaller muscles tend to need less, the big leg muscles more. This is not a measurement of your body and not based on a specific study.'),
-      el('div', { class: 'wk-rc-table', role: 'table', 'aria-label': `Base range per muscle for about ${cfg.referenceDose} sets` },
-        el('div', { class: 'wk-rc-trow is-head', role: 'row' },
-          el('span', { role: 'columnheader' }, 'Muscles'), el('span', { role: 'columnheader' }, `Default, ${cfg.referenceDose} sets`)),
-        [...groups].map(([k, names]) => el('div', { class: 'wk-rc-trow', role: 'row' },
-          el('span', { role: 'cell' }, names.join(', ')), el('span', { role: 'cell', class: 'num' }, `${k} h`)))),
-      el('p', { class: 'small' },
-        `Sets are counted like the weekly volume: a ticked set adds ${fmtNum(weights.primary, 2)} to each primary and ${fmtNum(weights.secondary, 2)} to each secondary muscle; `
-        + `a dropset adds ${fmtNum(weights.dropset, 2)} × that. Fewer sets shorten the range, more sets lengthen it: `
-        + `1 set × ${doseFactor(1)}, ${cfg.referenceDose} sets × 1, 8 sets × ${fmtNum(doseFactor(8), 1)}, ${Math.round((cfg.doseFactorMax - cfg.doseIntercept) / cfg.doseSlope)}+ sets × ${cfg.doseFactorMax}. `
-        + `For chest that is ${ex(1)} h (1 set), ${ex(4)} h (4 sets), ${ex(8)} h (8 sets).`),
-      el('p', { class: 'small' },
-        `Less than ${cfg.minDose} counted set (e.g. a single set where the muscle only helps) does not restart the clock. `
-        + `If you train a muscle again before its window is over, the leftover part of the earlier sets is added to the new session. `
-        + `Default ranges stay between ${cfg.capMin} h and ${cfg.capMax} h (${cfg.capMax / 24} days). `
-        + `A range you set yourself is used as is for about ${cfg.referenceDose} sets and is only kept within ${cfg.custom.min}–${cfg.custom.max} h. `
-        + `Only the last ${cfg.lookbackDays} days are looked at.`),
-      el('p', { class: 'small' },
-        'Recovering = before the short end of the range. Likely ready = inside the range. Recovered = past the long end. '
-        + 'If a muscle still feels sore or weak, give it more time.')));
+  return el('details', { class: 'card wk-rc-assume' },
+    el('summary', { class: 'wk-details-sum' }, el('span', { class: 'grow' }, 'How the estimate works'), icon('chevron-down', { class: 'wk-summary-chev' })),
+    el('div', { class: 'wk-rc-table', role: 'table', 'aria-label': `Default range per muscle for ${cfg.referenceDose} sets` },
+      el('div', { class: 'wk-rc-trow is-head', role: 'row' },
+        el('span', { role: 'columnheader' }, 'Muscles'), el('span', { role: 'columnheader' }, `Default, ${cfg.referenceDose} sets`)),
+      [...groups].map(([k, names]) => el('div', { class: 'wk-rc-trow', role: 'row' },
+        el('span', { role: 'cell' }, names.join(', ')), el('span', { role: 'cell' }, `${k} h`)))));
 }

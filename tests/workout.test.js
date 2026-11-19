@@ -9,11 +9,11 @@ const entry = (sets, t = { targetSets: 3, targetReps: 6, targetRepsMax: null }) 
 const WO = (id, date, entries, finished = true, startedAt = 1) => ({ id, date, startedAt, finishedAt: finished ? startedAt + 1 : null, exercises: entries });
 
 test('formatSets / formatTarget match the sheet', () => {
-  assert.equal(w.formatSets([S(100, 7), S(100, 8), S(100, 8), S(80, 5, 'dropset')]), '100×7, 100×8, 100×8 + drop 80×5');
-  assert.equal(w.formatSets([S(100, 7), S(100, 8, 'normal', false)]), '100×7');
-  assert.equal(w.formatSets([S(0, 12), S(null, 10), S(22.5, 8)]), 'BW×12, BW×10, 22.5×8');
-  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetRepsMax: null }), '3 x 6');
-  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetRepsMax: 8 }), '3 x 6–8');
+  assert.equal(w.formatSets([S(100, 7), S(100, 8), S(100, 8), S(80, 5, 'dropset')]), '100 × 7, 100 × 8, 100 × 8 + drop 80 × 5');
+  assert.equal(w.formatSets([S(100, 7), S(100, 8, 'normal', false)]), '100 × 7');
+  assert.equal(w.formatSets([S(0, 12), S(null, 10), S(22.5, 8)]), 'BW × 12, BW × 10, 22.5 × 8');
+  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetRepsMax: null }), '3 × 6');
+  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetRepsMax: 8 }), '3 × 6–8');
   assert.equal(w.formatTarget({ targetSets: 4, targetReps: null }), '4 sets');
 });
 
@@ -82,11 +82,11 @@ test('sessionStats and routineItemsFromWorkout', () => {
 
 // ---------------------------------------------------------------- target weight
 test('formatTarget with a weight target; bodyweight/empty shows none', () => {
-  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetRepsMax: null, targetWeight: 100 }), '3 x 6 @ 100 kg');
-  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetRepsMax: 8, targetWeight: 102.5 }), '3 x 6–8 @ 102.5 kg');
+  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetRepsMax: null, targetWeight: 100 }), '3 × 6 @ 100 kg');
+  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetRepsMax: 8, targetWeight: 102.5 }), '3 × 6–8 @ 102.5 kg');
   assert.equal(w.formatTarget({ targetSets: 3, targetReps: null, targetWeight: 20 }), '3 sets @ 20 kg');
-  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetWeight: 0 }), '3 x 6');
-  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetWeight: null }), '3 x 6');
+  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetWeight: 0 }), '3 × 6');
+  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetWeight: null }), '3 × 6');
   assert.equal(w.normaliseTarget({ targetSets: 3, targetReps: 6, targetWeight: 82.456 }).targetWeight, 82.46);
   assert.equal(w.normaliseTarget({ targetSets: 3, targetReps: 6, targetWeight: -5 }).targetWeight, null);
   assert.equal(w.normaliseTarget({ targetSets: 3, targetReps: 6 }).targetWeight, null); // old data

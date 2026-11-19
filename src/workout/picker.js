@@ -1,6 +1,6 @@
 // Searchable exercise picker sheet with inline "create new".
 import * as db from '../db/db.js';
-import { el, append, replaceChildren, openSheet, toast } from '../ui/index.js';
+import { el, append, replaceChildren, openSheet, toast, icon } from '../ui/index.js';
 import { MUSCLES } from '../core/muscles.js';
 import { activeExercises, musclesLine, newExercise, findByName, shortDate, navAction, swallowTaps } from './data.js';
 import { exerciseUsage, recentExercises, rankExercises, RECENT_LIMIT } from '../core/exercise-usage.js';
@@ -31,7 +31,7 @@ export function pickExercise({ title = 'Add exercise', exMap, workouts = null })
   let muscle = null;
   const list = el('div', { class: 'list' });
   const search = el('input', {
-    class: 'input', type: 'search', placeholder: 'Search exercises', autocomplete: 'off', 'aria-label': 'Search exercises',
+    type: 'search', placeholder: 'Search exercises', autocomplete: 'off', 'aria-label': 'Search exercises',
     onInput: () => { query = search.value.trim(); render(); },
   });
   const chips = el('div', { class: 'chips chips-scroll' });
@@ -44,7 +44,7 @@ export function pickExercise({ title = 'Add exercise', exMap, workouts = null })
   renderChips();
 
   // Search + chips form a fixed header; only the list below them scrolls.
-  const sheet = openSheet({ title, content: [el('div', { class: 'wk-pick-top' }, search, chips), list], className: 'wk-picker' });
+  const sheet = openSheet({ title, content: [el('div', { class: 'wk-pick-top' }, el('label', { class: 'search-field' }, icon('search'), search), chips), list], className: 'wk-picker' });
 
   const item = (e) => {
     const u = usage.get(e.id);
@@ -52,21 +52,21 @@ export function pickExercise({ title = 'Add exercise', exMap, workouts = null })
       el('div', { class: 'li-main' },
         el('div', { class: 'li-title' }, e.name),
         el('div', { class: 'li-sub' }, musclesLine(e))),
-      u ? el('span', { class: 'li-trail small muted wk-last-used' }, `last: ${shortDate(u.lastDate)}`) : null);
+      u ? el('span', { class: 'li-trail t-sub muted wk-last-used' }, `last ${shortDate(u.lastDate)}`) : null);
   };
-  const head = (text) => el('div', { class: 'wk-pick-head small muted', role: 'presentation' }, text);
+  const head = (text) => el('div', { class: 'wk-pick-head t-cap', role: 'presentation' }, text);
 
   function render() {
     const pool = activeExercises(exMap)
       .filter((e) => !muscle || (e.primary || []).includes(muscle) || (e.secondary || []).includes(muscle));
     const create = el('button', { type: 'button', class: 'list-item wk-create', onClick: () => createNew() },
-      el('span', { class: 'wk-plus', 'aria-hidden': 'true' }, '+'),
+      icon('plus', { class: 'li-lead' }),
       el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, query ? `Create "${query}"` : 'Create new exercise')));
     if (query) {
       const items = rankExercises(pool, query, usage);
       replaceChildren(list, create,
         ...items.slice(0, 150).map(item),
-        ...(items.length ? [] : [el('p', { class: 'muted small wk-pad' }, 'No match. Create it above.')]));
+        ...(items.length ? [] : [el('p', { class: 't-sub muted wk-pad' }, 'No match. Create it above.')]));
       return;
     }
     const recent = recentExercises(pool, usage, RECENT_LIMIT);
@@ -75,7 +75,7 @@ export function pickExercise({ title = 'Add exercise', exMap, workouts = null })
       ...recent.map(item),
       recent.length ? head('All exercises') : null,
       ...pool.slice(0, 400).map(item),
-      ...(pool.length ? [] : [el('p', { class: 'muted small wk-pad' }, 'No exercise for this muscle. Create it above.')]));
+      ...(pool.length ? [] : [el('p', { class: 't-sub muted wk-pad' }, 'No exercise for this muscle. Create it above.')]));
   }
   render();
 

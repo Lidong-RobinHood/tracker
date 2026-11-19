@@ -186,8 +186,8 @@ export function formatTarget(t) {
   const at = tw === null ? '' : ` @ ${tw} kg`;
   if (!isNum(t.targetReps)) return `${sets} sets${at}`;
   return isNum(t.targetRepsMax) && t.targetRepsMax > t.targetReps
-    ? `${sets} x ${t.targetReps}–${t.targetRepsMax}${at}`
-    : `${sets} x ${t.targetReps}${at}`;
+    ? `${sets} × ${t.targetReps}–${t.targetRepsMax}${at}`
+    : `${sets} × ${t.targetReps}${at}`;
 }
 
 /** Display a weight in kg without unit: 100, 102.5, 'BW' for 0/empty. */
@@ -196,13 +196,13 @@ export function formatWeight(w) {
   return String(round(w, 2));
 }
 
-/** '100×8' (reps unknown shows '?') */
+/** '100 × 8' (reps unknown shows '?') */
 export function formatSet(s) {
-  return `${formatWeight(s.weight)}×${isNum(s.reps) ? s.reps : '?'}`;
+  return `${formatWeight(s.weight)} × ${isNum(s.reps) ? s.reps : '?'}`;
 }
 
 /**
- * One-line summary of done sets, in order: '100×7, 100×8, 100×8 + drop 80×5'.
+ * One-line summary of done sets, in order: '100 × 7, 100 × 8, 100 × 8 + drop 80 × 5'.
  * @param {object[]} sets (undone sets are ignored)
  */
 export function formatSets(sets) {

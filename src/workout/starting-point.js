@@ -2,7 +2,7 @@
 // finished workout (core/baseline.js, SPEC §3). Route: workout/starting-point
 // Rendering rule: typing never re-renders (nothing jumps); only add/remove rebuild the list.
 import * as db from '../db/db.js';
-import { el, append, replaceChildren, pageHeader, numberInput, toast, navigate, fmtDate } from '../ui/index.js';
+import { el, append, replaceChildren, pageHeader, numberInput, toast, navigate, fmtDate, icon, iconButton } from '../ui/index.js';
 import { today } from '../core/dates.js';
 import {
   findBaseline, baselineRows, validateBaseline, buildBaseline, defaultBaselineDate,
@@ -33,7 +33,8 @@ export async function mountStartingPoint(container) {
     title: 'Starting point',
     subtitle: stored ? `Saved · as of ${fmtDate(stored.date)}` : 'Current working sets',
     back: 'workout',
-    actions: [el('button', { type: 'button', class: 'btn btn-primary btn-sm', onClick: () => save() }, 'Save')],
+    info: 'starting',
+    actions: [el('button', { type: 'button', class: 'btn btn-ghost wk-finish', onClick: () => save() }, 'Save')],
   });
 
   const dateIn = el('input', {
@@ -51,12 +52,12 @@ export async function mountStartingPoint(container) {
   function render() {
     ctls = [];
     if (!rows.length) {
-      replaceChildren(listEl, el('p', { class: 'muted small wk-pad' }, 'No exercises yet.'));
+      replaceChildren(listEl, el('p', { class: 't-sub muted wk-pad' }, 'No exercises yet.'));
       return;
     }
     replaceChildren(listEl, 
-      el('div', { class: 'wk-sp-row wk-sp-head small muted', 'aria-hidden': 'true' },
-        el('span', 'kg'), el('span', 'reps'), el('span', 'sets'), el('span', 'best set (optional)')),
+      el('div', { class: 'wk-sp-row wk-sp-head t-cap', 'aria-hidden': 'true' },
+        el('span', 'kg'), el('span', 'reps'), el('span', 'sets'), el('span', 'Best set')),
       ...rows.map((r, i) => renderRow(r, i)));
     wireNext();
   }
@@ -74,14 +75,11 @@ export async function mountStartingPoint(container) {
       bestReps: mk('bestReps', { min: 1, max: MAX_BASELINE_REPS, integer: true, placeholder: 'reps', ariaLabel: `${name}: best set reps (optional)` }),
     };
     ctls[i] = c;
-    const bwCell = () => el('span', { class: 'wk-sp-bw small muted', 'aria-hidden': 'true' }, 'BW');
+    const bwCell = () => el('span', { class: 'wk-sp-bw t-sub muted', 'aria-hidden': 'true' }, 'BW');
     return el('div', { class: 'wk-sp-item', role: 'group', 'aria-label': name },
       el('div', { class: 'wk-sp-name' },
         el('span', { class: 'grow truncate' }, name),
-        el('button', {
-          type: 'button', class: 'btn btn-icon btn-ghost', 'aria-label': `Remove ${name}`,
-          onClick: () => remove(i),
-        }, '×')),
+        iconButton('x', { label: `Remove ${name}`, onClick: () => remove(i) })),
       el('div', { class: 'wk-sp-row' },
         c.weight || bwCell(), c.reps, c.sets, c.bestWeight || bwCell(), c.bestReps));
   }
@@ -199,14 +197,13 @@ export async function mountStartingPoint(container) {
   render();
   const routineCount = new Set(routines.flatMap((r) => (r.items || []).map((i) => i.exerciseId))).size;
   append(container, ...[header,
-    el('p', { class: 'small muted wk-pad-x' },
-      'Your current working weight × reps × sets per exercise, and your best set if it differs. Used to pre-fill sessions and for records (not for the progression suggestion, which needs a real session); never counted as a workout.'),
-    restored ? el('p', { class: 'small text-warning wk-pad-x' }, 'Unsaved changes restored.') : null,
+    el('p', { class: 'field-hint wk-pad-x' }, 'Pre-fills sessions. Never counted as a workout.'),
+    restored ? el('p', { class: 't-sub text-warning wk-pad-x' }, 'Unsaved changes restored.') : null,
     el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'As of'), dateIn),
     listEl,
     errorEl,
     el('div', { class: 'grid-2' },
-      el('button', { type: 'button', class: 'btn', onClick: addExercises }, '+ Add exercises'),
+      el('button', { type: 'button', class: 'btn', onClick: addExercises }, icon('plus'), 'Add exercises'),
       el('button', { type: 'button', class: 'btn', disabled: !routineCount, onClick: addFromRoutines }, 'Add from routines')),
     el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: () => save() }, 'Save'),
     stored ? el('button', { type: 'button', class: 'btn btn-ghost btn-block text-danger', onClick: del }, 'Delete starting point') : null,

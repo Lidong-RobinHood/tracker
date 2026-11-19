@@ -1,6 +1,7 @@
 // Small pieces for showing how a muscle's weekly sets are made up (direct vs partial).
-// Numbers come from muscleVolumeBreakdown in src/core/volume.js.
-import { el, fmtNum } from '../ui/index.js';
+// Numbers come from muscleVolumeBreakdown in src/core/volume.js. The explanation of the words lives in
+// the 'sets' info sheet.
+import { el, fmtNum, infoButton } from '../ui/index.js';
 
 /**
  * '6 direct + 3 partial × 0.5 + 2 drop (1)'. Multipliers are shown when they are not 1; dropsets
@@ -28,18 +29,35 @@ export function breakdownAria(b, weights) {
 }
 
 /**
- * Bar fill split into direct (solid), partial (lighter) and dropset (lightest) parts.
+ * Sets bar: direct (solid accent) then partial and counted dropsets (lighter accent) inside a track;
+ * a dark tick at the right end when the muscle has a target (the bar is full at 100 %).
+ * @param {object|undefined} b breakdown of the muscle
  * @param {number} fraction 0–1 width of the whole fill
+ * @param {{target?: boolean}} [opts]
  */
-export function splitFill(b, fraction, reached = false) {
-  const segs = b ? [['is-direct', b.direct.value], ['is-partial', b.partial.value], ['is-drop', b.drop.value]] : [];
-  return el('span', { class: ['wk-vol-fill', 'wk-vol-split', reached && 'is-reached'], style: { width: `${Math.max(0, Math.min(1, fraction)) * 100}%` } },
-    segs.filter(([, v]) => v > 0).map(([cls, v]) => el('span', { class: ['wk-vol-seg', cls], style: { flexGrow: String(v) } })));
+export function setsBar(b, fraction, { target = false } = {}) {
+  const segs = b ? [['is-direct', b.direct.value], ['is-partial', b.partial.value + b.drop.value]] : [];
+  return el('span', { class: ['wk-sbar', target && 'has-target'], 'aria-hidden': 'true' },
+    el('span', { class: 'wk-sbar-fill', style: { width: `${(Math.max(0, Math.min(1, fraction)) * 100).toFixed(1)}%` } },
+      segs.filter(([, v]) => v > 0).map(([cls, v]) => el('span', { class: ['wk-sbar-seg', cls], style: { flexGrow: String(v) } }))),
+    target ? el('span', { class: 'wk-sbar-tick' }) : null);
 }
 
-/** One-line explanation of the words, for a caption. */
-export function breakdownCaption(weights) {
-  return `Direct = sets of exercises where the muscle is a main mover (× ${fmtNum(weights.primary, 2)}). `
-    + `Partial = sets where it only assists (× ${fmtNum(weights.secondary, 2)}). `
-    + (weights.dropset ? `Dropsets × ${fmtNum(weights.dropset, 2)} of that. ` : 'Dropsets do not count. ');
+/** Legend line under a sets card title: Direct · Partial (· Target). */
+export function setsLegend({ target = false } = {}) {
+  return el('ul', { class: 'legend legend-row wk-sets-legend' },
+    el('li', el('span', { class: 'swatch is-accent' }), 'Direct'),
+    el('li', el('span', { class: 'swatch is-partial' }), 'Partial'),
+    target ? el('li', el('span', { class: 'wk-tick-swatch' }), 'Target') : null);
+}
+
+/**
+ * Put the 'sets' info button (with the user's own factors) right after the title of a section or card
+ * header. @param {HTMLElement} header from sectionHeader / cardHeader / pageHeader @returns {HTMLElement}
+ */
+export function withSetsInfo(header, weights) {
+  const title = header.querySelector('.section-title, .card-title, .page-title');
+  const btn = infoButton('sets', { values: { primary: weights.primary, secondary: weights.secondary, dropset: weights.dropset } });
+  if (title) title.after(btn);
+  return header;
 }

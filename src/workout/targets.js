@@ -1,11 +1,11 @@
 // Weekly set targets per muscle (optional). Stored as setting 'volumeTargets' ({ muscleId: sets }).
 // Route: workout/targets
 import * as db from '../db/db.js';
-import { el, append, replaceChildren, pageHeader, numberInput, toast, fmtNum } from '../ui/index.js';
+import { el, append, replaceChildren, pageHeader, numberInput, toast, fmtNum, icon } from '../ui/index.js';
 import { MUSCLES } from '../core/muscles.js';
 import { today } from '../core/dates.js';
 import { weeklyComparison, weeklyBreakdown, sanitiseTargets, targetProgress, MAX_WEEKLY_TARGET, volumeWeights } from '../core/volume.js';
-import { breakdownText, splitFill, breakdownCaption } from './volume-ui.js';
+import { breakdownText, setsBar, withSetsInfo } from './volume-ui.js';
 import { ensureCss, loadExercises, loadWorkouts, confirmAction } from './data.js';
 
 export const TARGETS_KEY = 'volumeTargets';
@@ -35,13 +35,13 @@ export async function mountTargets(container) {
 
   const inputs = [];
   const rows = MUSCLES.map((m) => {
-    const pctEl = el('span', { class: 'wk-tg-pct num small' });
-    const bar = el('span', { class: 'wk-vol-bar', 'aria-hidden': 'true' });
+    const pctEl = el('span', { class: 'wk-tg-pct' });
+    const bar = el('div', { class: 'wk-tg-bar' });
     const paint = () => {
       const tp = targetProgress(done[m.id] || 0, targets[m.id]);
       bar.hidden = !tp;
-      replaceChildren(bar, splitFill(parts[m.id], tp ? tp.fraction : 0, !!(tp && tp.reached)));
-      pctEl.textContent = tp ? `${tp.reached ? '✓ ' : ''}${tp.pct} %` : '';
+      replaceChildren(bar, setsBar(parts[m.id], tp ? tp.fraction : 0, { target: true }));
+      replaceChildren(pctEl, tp ? [' · ', tp.reached ? icon('check', { size: 14 }) : null, `${tp.pct}\u202f%`] : null);
       pctEl.classList.toggle('text-success', !!(tp && tp.reached));
     };
     const input = numberInput({
@@ -58,15 +58,15 @@ export async function mountTargets(container) {
     return el('div', { class: 'wk-tg-row' },
       el('div', { class: 'wk-tg-main' },
         el('div', { class: 'wk-tg-name' }, m.name),
-        el('div', { class: 'small muted num' }, `${fmtNum(done[m.id] || 0, 2)} this week`, ' ', pctEl),
-        parts[m.id] ? el('div', { class: 'small muted num' }, breakdownText(parts[m.id], weights)) : null,
+        el('div', { class: 't-sub muted' }, `${fmtNum(done[m.id] || 0, 2)} this week`, pctEl),
+        parts[m.id] ? el('div', { class: 't-sub muted' }, breakdownText(parts[m.id], weights)) : null,
         bar),
       input);
   });
 
   const clearAll = async () => {
     if (!Object.keys(targets).length) return;
-    const ok = await confirmAction({ title: 'Clear all targets?', message: 'Weekly set targets for every muscle are removed.', confirmLabel: 'Clear' });
+    const ok = await confirmAction({ title: 'Clear all targets?', message: 'All muscle targets are removed.', confirmLabel: 'Clear' });
     if (!ok) return;
     for (const k of Object.keys(targets)) delete targets[k];
     for (const [, input, paint] of inputs) { input.setNumber(null); paint(); }
@@ -75,9 +75,8 @@ export async function mountTargets(container) {
   };
 
   append(container, 
-    pageHeader({ title: 'Weekly set targets', subtitle: 'Saved automatically', back: 'workout' }),
-    el('p', { class: 'small muted wk-pad-x' },
-      `Optional sets per week for each muscle (e.g. Chest 12). Sets are counted like the weekly list. ${breakdownCaption(weights)}Leave empty for no target.`),
+    withSetsInfo(pageHeader({ title: 'Weekly set targets', subtitle: 'Saved automatically', back: 'workout' }), weights),
+    el('p', { class: 'field-hint wk-pad-x' }, 'Sets per week. Empty = no target.'),
     el('div', { class: 'card wk-tg-card' }, rows),
     el('button', { type: 'button', class: 'btn btn-ghost btn-block', onClick: clearAll }, 'Clear all targets'));
 

@@ -1,6 +1,6 @@
 // Routines: list (reorder, start, create) and editor (autosaved). Routes: workout/routines, workout/routines/:id
 import * as db from '../db/db.js';
-import { el, append, replaceChildren, pageHeader, numberInput, toast, navigate, href, emptyState } from '../ui/index.js';
+import { el, append, replaceChildren, pageHeader, numberInput, toast, navigate, href, emptyState, icon, iconButton, sectionHeader } from '../ui/index.js';
 import { normaliseTarget, formatTarget, DEFAULT_TARGET, lastEntryFor, MAX_TARGET_WEIGHT } from '../core/workout.js';
 import {
   ensureCss, loadExercises, loadRoutines, loadWorkouts, startWorkout, newRoutine, nextRoutineOrder, createSaver, exName,
@@ -39,20 +39,20 @@ export async function mountRoutines(container) {
         el('div', { class: 'li-sub' }, r.items.length
           ? r.items.map((it) => `${exName(exMap, it.exerciseId)} ${formatTarget(it).replace(/ /g, '\u00a0')}`).join(' · ')
           : 'No exercises')),
-      el('button', { type: 'button', class: 'btn btn-icon btn-ghost wk-icon-sm', 'aria-label': `Move ${r.name} up`, disabled: i === 0, onClick: () => swap(i, -1) }, '↑'),
-      el('button', { type: 'button', class: 'btn btn-icon btn-ghost wk-icon-sm', 'aria-label': `Move ${r.name} down`, disabled: i === routines.length - 1, onClick: () => swap(i, 1) }, '↓'),
-      el('button', { type: 'button', class: 'btn btn-sm btn-primary', onClick: navAction(() => startWorkout(r)) }, 'Start'))));
+      iconButton('arrow-up', { label: `Move ${r.name} up`, class: 'wk-icon-sm', disabled: i === 0, onClick: () => swap(i, -1) }),
+      iconButton('arrow-down', { label: `Move ${r.name} down`, class: 'wk-icon-sm', disabled: i === routines.length - 1, onClick: () => swap(i, 1) }),
+      el('button', { type: 'button', class: 'btn btn-sm', onClick: navAction(() => startWorkout(r)) }, 'Start'))));
   }
   render();
 
   append(container, 
     pageHeader({
       title: 'Routines', back: 'workout',
-      actions: [el('button', { type: 'button', class: 'btn btn-sm btn-primary', onClick: createRoutine() }, '+ New')],
+      actions: [el('button', { type: 'button', class: 'btn btn-icon btn-ghost', 'aria-label': 'New routine', onClick: createRoutine() }, icon('plus'))],
     }),
     routines.length
       ? el('div', { class: 'card card-flush' }, list)
-      : emptyState('No routines yet. A routine is a list of exercises with targets, e.g. Bench Press 3 x 6.',
+      : emptyState('No routines yet.',
         el('button', { type: 'button', class: 'btn btn-primary', onClick: createRoutine() }, 'Create routine')));
 }
 
@@ -70,7 +70,7 @@ export async function mountRoutineEdit(container, { id }, ctx) {
 
   const header = pageHeader({
     title: routine.name, subtitle: 'Saved automatically', back: 'workout/routines',
-    actions: [el('a', { class: 'btn btn-sm', href: href(`workout/routines/${encodeURIComponent(routine.id)}/progress`) }, 'Progress')],
+    actions: [el('a', { class: 'btn btn-icon btn-ghost', href: href(`workout/routines/${encodeURIComponent(routine.id)}/progress`), 'aria-label': 'Routine progress' }, icon('chart-line'))],
   });
   const titleEl = header.querySelector('.page-title');
   const name = el('input', {
@@ -102,20 +102,20 @@ export async function mountRoutineEdit(container, { id }, ctx) {
       }
       return el('div', { class: 'card wk-ritem' },
         el('div', { class: 'row-between' },
-          el('div', { class: 'li-title grow' }, exName(exMap, it.exerciseId)),
-          el('button', { type: 'button', class: 'btn btn-icon btn-ghost wk-icon-sm', 'aria-label': 'Move up', disabled: i === 0, onClick: () => mv(i, -1) }, '↑'),
-          el('button', { type: 'button', class: 'btn btn-icon btn-ghost wk-icon-sm', 'aria-label': 'Move down', disabled: i === routine.items.length - 1, onClick: () => mv(i, 1) }, '↓'),
-          el('button', { type: 'button', class: 'btn btn-icon btn-ghost wk-icon-sm text-danger', 'aria-label': 'Remove', onClick: () => rm(i) }, '×')),
+          el('div', { class: 't-head grow wk-min0' }, exName(exMap, it.exerciseId)),
+          iconButton('arrow-up', { label: 'Move up', class: 'wk-icon-sm', disabled: i === 0, onClick: () => mv(i, -1) }),
+          iconButton('arrow-down', { label: 'Move down', class: 'wk-icon-sm', disabled: i === routine.items.length - 1, onClick: () => mv(i, 1) }),
+          iconButton('trash-2', { label: 'Remove', class: ['wk-icon-sm', 'text-danger'], onClick: () => rm(i) })),
         el('div', { class: 'wk-target-grid' },
           el('label', { class: 'field-label' }, 'Sets', sets),
-          el('span', { class: 'wk-x', 'aria-hidden': 'true' }, 'x'),
+          el('span', { class: 'wk-x', 'aria-hidden': 'true' }, '×'),
           el('label', { class: 'field-label' }, 'Reps', reps),
           el('span', { class: 'wk-x', 'aria-hidden': 'true' }, '–'),
           el('label', { class: 'field-label' }, 'Max reps', max),
           el('span', { class: 'wk-x', 'aria-hidden': 'true' }, '@'),
           el('label', { class: 'field-label' }, 'kg', wt)));
     }));
-    if (!routine.items.length) append(itemsEl, el('p', { class: 'muted small wk-pad-x' }, 'No exercises yet.'));
+    if (!routine.items.length) append(itemsEl, el('p', { class: 't-sub muted wk-pad-x' }, 'No exercises yet.'));
   }
   const mv = (i, d) => { const a = routine.items; [a[i], a[i + d]] = [a[i + d], a[i]]; render(); save(); };
   const rm = (i) => {
@@ -142,10 +142,10 @@ export async function mountRoutineEdit(container, { id }, ctx) {
 
   append(container, header,
     el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'Name'), name),
-    el('div', { class: 'section' }, el('h2', { class: 'section-title' }, 'Exercises'), itemsEl),
-    el('button', { type: 'button', class: 'btn btn-block', onClick: add }, '+ Add exercise'),
+    el('div', { class: 'section' }, sectionHeader('Exercises'), itemsEl),
+    el('button', { type: 'button', class: 'btn btn-block', onClick: add }, icon('plus'), 'Add exercise'),
     el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: navAction(async () => { await saver.flush(); return startWorkout(routine); }) }, 'Start this routine'),
-    el('a', { class: 'btn btn-block', href: href(`workout/routines/${encodeURIComponent(routine.id)}/progress`) }, 'See progress'),
+    el('a', { class: 'btn btn-block', href: href(`workout/routines/${encodeURIComponent(routine.id)}/progress`) }, icon('chart-line'), 'See progress'),
     el('button', { type: 'button', class: 'btn btn-ghost btn-block text-danger', onClick: del }, 'Delete routine'));
 
   if (ctx.query.new) {

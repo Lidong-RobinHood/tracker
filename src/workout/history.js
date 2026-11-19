@@ -1,14 +1,15 @@
 // History: finished sessions by month (each row: detail + direct link to its analysis), and a session detail (view, edit, delete).
 // Routes: workout/history, workout/history/:id
 import * as db from '../db/db.js';
-import { el, replaceChildren, append, pageHeader, href, emptyState, toast, navigate, fmtDate, fmtDuration, fmtTime, fmtNum } from '../ui/index.js';
+import { el, replaceChildren, append, pageHeader, href, emptyState, toast, navigate, fmtDate, fmtDuration, fmtTime, fmtNum, icon, sectionHeader, setBadge } from '../ui/index.js';
 import { sessionStats, formatTarget, formatWeight, doneSets, applySchedule, isLoggedWorkout } from '../core/workout.js';
-import { workoutVolume } from '../core/volume.js';
+import { workoutVolume, volumeWeights } from '../core/volume.js';
 import { MUSCLES } from '../core/muscles.js';
 import { ensureCss, loadExercises, loadWorkouts, loadRoutines, exName, confirmAction } from './data.js';
 import { changeDateTime, logPastWorkout } from './datetime.js';
 import { compareSession } from '../core/workout-progress.js';
-import { comparisonBlock } from './progress-ui.js';
+import { comparisonSection } from './progress-ui.js';
+import { withSetsInfo } from './volume-ui.js';
 import { isBaseline, findBaseline } from '../core/baseline.js';
 import { workoutNav } from './subnav.js';
 
@@ -22,10 +23,10 @@ export async function mountHistory(container) {
   const done = workouts.filter((w) => w.finishedAt && (!isBaseline(w) || w === baseline));
   append(container, pageHeader({
     title: 'Workout',
-    actions: [el('button', { type: 'button', class: 'btn btn-sm', onClick: () => logPastWorkout(routines) }, 'Log past')],
+    actions: [el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: () => logPastWorkout(routines) }, icon('plus', { size: 16 }), 'Log past')],
   }), workoutNav('history'));
   if (!done.length) {
-    append(container, emptyState('No finished workouts yet. Finished workouts are listed here by month; “Log past” adds one you did without the app.',
+    append(container, emptyState('No finished workouts yet.',
       el('a', { class: 'btn', href: href('workout') }, 'Go to Train')));
     return;
   }
@@ -41,7 +42,7 @@ export async function mountHistory(container) {
   for (const [k, ws] of groups) {
     const [y, m] = k.split('-').map(Number);
     append(container, el('section', { class: 'section' },
-      el('h2', { class: 'section-title' }, `${MONTHS[m - 1]} ${y}`),
+      sectionHeader(`${MONTHS[m - 1]} ${y}`, { trail: `${ws.length} ${ws.length === 1 ? 'entry' : 'entries'}` }),
       el('div', { class: 'card card-flush' }, el('div', { class: 'list' }, ws.map((w) => {
         if (isBaseline(w)) return baselineItem(w, exMap);
         if (!isLoggedWorkout(w)) return emptyItem(w);
@@ -55,9 +56,9 @@ export async function mountHistory(container) {
               el('div', { class: 'li-sub' }, `${fmtDate(w.date)} · ${fmtDuration(st.durationMs)} · ${st.setsDone} sets`),
               names.length ? el('div', { class: 'li-sub' }, names.join(', ')) : null)),
           el('a', {
-            class: 'wk-hrow-an', href: href(`workout/summary/${encodeURIComponent(w.id)}`),
+            class: 'btn btn-icon btn-ghost wk-hrow-an', href: href(`workout/summary/${encodeURIComponent(w.id)}`),
             'aria-label': `Analysis of ${w.name}, ${fmtDate(w.date)}`,
-          }, 'Analysis ›'));
+          }, icon('file-chart-column')));
       })))));
   }
 }
@@ -70,7 +71,7 @@ function emptyItem(w) {
         el('div', { class: 'li-title' }, w.name),
         el('div', { class: 'li-sub' }, `${fmtDate(w.date)} · no sets logged · not counted`))),
     el('button', {
-      type: 'button', class: 'btn btn-sm btn-ghost text-danger wk-hrow-del', 'aria-label': `Delete ${w.name}, ${fmtDate(w.date)} (no sets logged)`,
+      type: 'button', class: 'btn btn-icon btn-ghost text-danger wk-hrow-del', 'aria-label': `Delete ${w.name}, ${fmtDate(w.date)} (no sets logged)`,
       onClick: async () => {
         const ok = await confirmAction({ title: 'Delete empty workout?', message: `"${w.name}" on ${fmtDate(w.date)} has no sets logged. Delete it?`, confirmLabel: 'Delete', danger: true });
         if (!ok) return;
@@ -81,7 +82,7 @@ function emptyItem(w) {
         toast('Workout deleted');
         if (list && !list.children.length && section) section.remove();
       },
-    }, 'Delete'));
+    }, icon('trash-2')));
   return row;
 }
 
@@ -92,7 +93,7 @@ function baselineItem(w, exMap) {
       el('div', { class: 'li-title' }, 'Starting point'),
       el('div', { class: 'li-sub' }, `As of ${fmtDate(w.date)} · ${names.length} exercise${names.length === 1 ? '' : 's'} · not a workout`),
       names.length ? el('div', { class: 'li-sub' }, names.join(', ')) : null),
-    el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›'));
+    icon('chevron-right', { class: 'li-chevron' }));
 }
 
 export async function mountHistoryDetail(container, { id }) {
@@ -109,43 +110,48 @@ export async function mountHistoryDetail(container, { id }) {
     title: w.name,
     subtitle: `${fmtDate(w.date)} · ${fmtTime(w.startedAt)}${w.finishedAt ? ` · ${fmtDuration(st.durationMs)}` : ' · in progress'}`,
     back: 'workout/history',
-    actions: [el('a', { class: 'btn btn-sm', href: editHref }, 'Edit')],
+    actions: [el('a', { class: 'btn btn-icon btn-ghost', href: editHref, 'aria-label': 'Edit workout' }, icon('pencil'))],
   }));
 
   for (const e of w.exercises) {
     let n = 0;
     append(container, el('section', { class: 'card wk-hcard' },
-      el('div', { class: 'row-between' },
+      el('div', { class: 'wk-card-head' },
         el('h2', { class: 'wk-ex-name' }, exName(exMap, e.exerciseId)),
-        el('span', { class: 'small muted' }, formatTarget(e))),
+        el('span', { class: 't-sub muted' }, `Target ${formatTarget(e)}`)),
       e.sets.length
-        ? el('div', { class: 'wk-hsets' }, e.sets.map((s) => {
-          const drop = s.type === 'dropset';
-          return el('div', { class: ['wk-hset', drop && 'is-drop', !s.done && 'is-undone'] },
-            el('span', { class: 'wk-hset-n' }, drop ? el('span', { class: 'badge badge-dropset' }, 'Drop') : String(++n)),
-            el('span', { class: 'num' }, `${formatWeight(s.weight)}${formatWeight(s.weight) === 'BW' ? '' : ' kg'}`),
-            el('span', { class: 'num' }, `× ${s.reps ?? '–'}`),
-            el('span', { class: 'small muted' }, s.done ? '' : 'not done'));
-        }))
-        : el('p', { class: 'muted small' }, 'No sets.'),
-      e.note ? el('p', { class: 'small wk-hnote' }, e.note) : null));
+        ? el('div', { class: 'wk-hsets' },
+          el('div', { class: 'wk-hset wk-set-head t-cap', 'aria-hidden': 'true' }, el('span', 'Set'), el('span', 'kg'), el('span', 'Reps'), el('span')),
+          e.sets.map((s) => {
+            const drop = s.type === 'dropset';
+            const bw = formatWeight(s.weight) === 'BW';
+            return el('div', { class: ['wk-hset', drop && 'is-drop', s.done ? 'is-done' : 'is-undone'] },
+              el('span', { class: 'wk-hset-n' }, drop ? setBadge('D', { title: 'Dropset' }) : String(++n)),
+              el('span', bw ? 'BW' : formatWeight(s.weight)),
+              el('span', `${s.reps ?? '–'}`),
+              s.done ? icon('check', { size: 16, label: 'Done', class: 'wk-hset-ok' }) : el('span', { class: 't-sub muted' }, 'not done'));
+          }))
+        : el('p', { class: 't-sub muted' }, 'No sets.'),
+      e.note ? el('p', { class: 't-sub wk-hnote' }, e.note) : null));
   }
 
   if (w.finishedAt && st.setsDone) {
     const cmp = compareSession(workouts, w);
-    append(container, el('section', { class: 'section' },
-      el('h2', { class: 'section-title' }, cmp.prevSession ? 'vs the previous time of this routine' : 'vs last time (each exercise)'),
-      el('div', { class: 'card' }, comparisonBlock(cmp, exMap)),
-      w.routineId ? el('a', { class: 'btn btn-block', href: href(`workout/routines/${encodeURIComponent(w.routineId)}/progress`) }, 'Routine progress') : null));
+    append(container, comparisonSection(cmp.prevSession ? 'vs the previous time of this routine' : 'vs last time', cmp, exMap));
+    if (w.routineId) append(container, el('a', { class: 'btn btn-block', href: href(`workout/routines/${encodeURIComponent(w.routineId)}/progress`) }, 'Routine progress'));
   }
 
   const vol = workoutVolume(w, exMap, weights);
   const rows = MUSCLES.filter((m) => vol[m.id]);
+  const maxSets = Math.max(1, ...rows.map((m) => vol[m.id]));
   append(container, el('section', { class: 'section' },
-    el('h2', { class: 'section-title' }, `Sets per muscle · ${st.normalSets} sets${st.dropsets ? ` + ${st.dropsets} drop` : ''}`),
+    withSetsInfo(sectionHeader('Sets per muscle', { trail: `${st.normalSets} sets${st.dropsets ? ` + ${st.dropsets} drop` : ''}` }), volumeWeights(weights)),
     el('div', { class: 'card' }, rows.length
-      ? rows.map((m) => el('div', { class: 'row-between' }, el('span', m.name), el('span', { class: 'num' }, fmtNum(vol[m.id], 2))))
-      : el('p', { class: 'muted small' }, 'No done sets.'))));
+      ? el('div', { class: 'wk-hbars' }, rows.map((m) => el('div', { class: 'wk-hbar' },
+        el('span', { class: 'wk-hbar-name' }, m.name),
+        el('span', { class: 'wk-hbar-track', 'aria-hidden': 'true' }, el('span', { class: 'wk-hbar-fill', style: { width: `${((vol[m.id] / maxSets) * 100).toFixed(1)}%` } })),
+        el('span', { class: 'wk-hbar-val' }, fmtNum(vol[m.id], 2)))))
+      : el('p', { class: 't-sub muted' }, 'No done sets.'))));
 
   const editTime = async () => {
     const v = await changeDateTime(w);
@@ -161,10 +167,10 @@ export async function mountHistoryDetail(container, { id }) {
   append(container, 
     w.finishedAt ? el('a', { class: 'btn btn-primary btn-block', href: href(`workout/summary/${encodeURIComponent(w.id)}`) }, 'Full analysis') : null,
     el('a', { class: 'btn btn-block', href: editHref }, 'Edit workout'),
-    el('button', { type: 'button', class: 'btn btn-block', onClick: editTime }, 'Change date, time, duration'),
+    el('button', { type: 'button', class: 'btn btn-block', onClick: editTime }, icon('calendar'), 'Change date, time, duration'),
     el('button', {
       type: 'button', class: 'btn btn-ghost btn-block text-danger', onClick: async () => {
-        const ok = await confirmAction({ title: 'Delete workout?', message: 'This workout and its sets will be deleted. This cannot be undone.', confirmLabel: 'Delete', danger: true });
+        const ok = await confirmAction({ title: 'Delete workout?', message: 'This cannot be undone.', confirmLabel: 'Delete', danger: true });
         if (!ok) return;
         await db.remove('workouts', w.id);
         toast('Workout deleted');

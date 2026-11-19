@@ -1,11 +1,15 @@
-// Workout home ("Train"): resume banner, start, starting point, muscle recovery, this week's sets per
-// muscle, links. Looking back (history, routine progress, records) lives in Analysis / History. Route: workout
+// Workout home ("Train"): resume card, muscle recovery body map, this week's sets per muscle (bars or
+// body map), start, starting point, links. Looking back (history, routine progress, records) lives in
+// Analysis / History. Route: workout
 import * as db from '../db/db.js';
-import { el, append, pageHeader, fmtTime, fmtNum, href } from '../ui/index.js';
+import {
+  el, append, replaceChildren, pageHeader, fmtTime, fmtNum, href, icon, cardHeader, sectionHeader, segmented,
+  bodyMap, setBodyMapValues,
+} from '../ui/index.js';
 import { today } from '../core/dates.js';
 import { weeklyComparison, weeklyBreakdown, targetProgress, volumeWeights } from '../core/volume.js';
 import { sessionStats, isLoggedWorkout, LIVE_WINDOW_MS } from '../core/workout.js';
-import { breakdownText, breakdownAria, splitFill, breakdownCaption } from './volume-ui.js';
+import { breakdownAria, breakdownText, setsBar, setsLegend, withSetsInfo } from './volume-ui.js';
 import { logPastWorkout } from './datetime.js';
 import { MUSCLES } from '../core/muscles.js';
 import { isBaseline, findBaseline } from '../core/baseline.js';
@@ -16,6 +20,9 @@ import { ensureCss, loadExercises, loadWorkouts, loadRoutines, unfinishedWorkout
 
 /** Below this many finished workouts the home screen suggests entering a starting point. */
 const THIN_HISTORY = 3;
+
+/** Bars or map, kept while the app is open. */
+const view = { sets: 'bars' };
 
 export async function mountHome(container) {
   ensureCss();
@@ -29,51 +36,64 @@ export async function mountHome(container) {
 
   append(container, pageHeader({ title: 'Workout' }), workoutNav('train'));
 
-  // Resume banners: the live workout first, then any unfinished past workout (see data.js rule).
+  // Resume cards: the live workout first, then any unfinished past workout (see data.js rule).
   for (const open of openList) {
     const st = sessionStats(open);
     append(container, el('a', { class: 'card wk-resume', href: href(`workout/session/${encodeURIComponent(open.id)}`) },
-      el('div', { class: 'grow' },
-        el('div', { class: 'small wk-resume-kicker' }, isLiveOpen(open) ? 'Workout in progress' : 'Past workout not finished'),
-        el('div', { class: 'li-title' }, open.name),
-        el('div', { class: 'li-sub' }, `${resumeWhen(open)} · ${st.setsDone} set${st.setsDone === 1 ? '' : 's'} done`)),
-      el('span', { class: 'btn btn-primary' }, 'Resume')));
+      el('div', { class: 'grow wk-min0' },
+        el('div', { class: 't-cap wk-kicker' }, isLiveOpen(open) ? 'In progress' : 'Not finished'),
+        el('div', { class: 't-head truncate' }, open.name),
+        el('div', { class: 't-sub muted' }, `${resumeWhen(open)} · ${st.setsDone} set${st.setsDone === 1 ? '' : 's'} done`)),
+      el('span', { class: 'btn btn-primary' }, icon('play'), 'Resume')));
   }
+
+  // Muscle recovery (estimate; uses only the last 14 days of the already loaded workouts)
+  append(container, recoverySection(workouts, exMap, weights, recovery));
+
+  // Sets this week (with optional targets: done / target)
+  append(container, setsCard(workouts, exMap, weights, targets));
 
   // Start
   const start = (r) => navAction(() => startWorkout(r));
+  const startRow = (title, sub, onClick) => el('button', { type: 'button', class: 'list-item', onClick },
+    el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, title), sub ? el('div', { class: 'li-sub' }, sub) : null),
+    el('span', { class: 'wk-go', 'aria-hidden': 'true' }, 'Start'));
   append(container, el('section', { class: 'section' },
-    el('h2', { class: 'section-title' }, 'Start workout'),
+    sectionHeader('Start'),
     el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
-      ...routines.map((r) => el('button', { type: 'button', class: 'list-item', onClick: start(r) },
-        el('div', { class: 'li-main' },
-          el('div', { class: 'li-title' }, r.name),
-          el('div', { class: 'li-sub' }, routineSub(r, exMap))),
-        el('span', { class: 'wk-go', 'aria-hidden': 'true' }, 'Start'))),
-      el('button', { type: 'button', class: 'list-item', onClick: start(null) },
-        el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, 'Empty workout'),
-          el('div', { class: 'li-sub' }, 'Add exercises as you go'))),
+      ...routines.map((r) => startRow(r.name, routineSub(r, exMap), start(r))),
+      startRow('Empty workout', null, start(null)),
       el('button', { type: 'button', class: 'list-item', onClick: () => logPastWorkout(routines) },
-        el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, 'Log a past workout'),
-          el('div', { class: 'li-sub' }, 'Pick the day, then enter the sets'))),
+        el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, 'Log a past workout')),
+        icon('calendar', { class: 'li-chevron' })),
       routines.length ? null : el('a', { class: 'list-item', href: href('workout/routines') },
-        el('div', { class: 'li-main' }, el('div', { class: 'li-title wk-link' }, 'Create a routine'),
-          el('div', { class: 'li-sub' }, 'e.g. Bench Press 3 x 6')))))));
+        el('div', { class: 'li-main' }, el('div', { class: 'li-title wk-link' }, 'Create a routine')),
+        icon('chevron-right', { class: 'li-chevron' }))))));
 
   // Starting point prompt while history is thin (always linked below as well)
   if (!baseline && finishedCount < THIN_HISTORY) {
-    append(container, el('div', { class: 'card card-flush wk-sp-cta' }, el('div', { class: 'list' },
+    append(container, el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
       el('a', { class: 'list-item', href: href('workout/starting-point') },
+        icon('target', { class: 'li-lead' }),
         el('div', { class: 'li-main' },
           el('div', { class: 'li-title' }, 'Enter your starting point'),
-          el('div', { class: 'li-sub' }, 'Current working weights, so sessions start pre-filled')),
-        el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›')))));
+          el('div', { class: 'li-sub' }, 'Pre-fills your sessions')),
+        icon('chevron-right', { class: 'li-chevron' })))));
   }
 
-  // Muscle recovery (general estimate; uses only the last 14 days of the already loaded workouts)
-  append(container, recoverySection(workouts, exMap, weights, recovery));
+  // Links
+  const activeEx = [...exMap.values()].filter((e) => !e.archived).length;
+  const nTargets = Object.keys(targets).length;
+  append(container, el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
+    link('workout/routines', 'Routines', `${routines.length}`),
+    link('workout/exercises', 'Exercise library', `${activeEx}`),
+    link('workout/starting-point', 'Starting point', baseline ? shortDate(baseline.date) : 'Not set'),
+    link('workout/targets', 'Weekly set targets', nTargets ? `${nTargets}` : 'Off'),
+    link('workout/recovery', 'Muscle recovery', null))));
+}
 
-  // Weekly volume (with optional targets: sets done / target and % reached)
+/** "Sets this week": one bar per muscle against its target, or the body map shaded by sets. */
+function setsCard(workouts, exMap, weights, targets) {
   const cmp = weeklyComparison(workouts, exMap, weights, today());
   const parts = weeklyBreakdown(workouts, exMap, weights, today());
   const byMuscle = new Map(cmp.rows.map((r) => [r.muscle, r]));
@@ -82,33 +102,63 @@ export async function mountHome(container) {
     .map((m) => byMuscle.get(m.id) || { muscle: m.id, name: m.name, current: 0, previous: 0 });
   const hasTargets = Object.keys(targets).length > 0;
   const max = Math.max(1, ...rowsData.filter((r) => !targets[r.muscle]).map((r) => Math.max(r.current, r.previous)));
-  append(container, el('section', { class: 'section' },
-    el('div', { class: 'row-between' },
-      el('h2', { class: 'section-title' }, `This week · ${shortDate(cmp.weekStart)} – ${shortDate(cmp.weekEnd)}`),
-      el('span', { class: 'small muted' }, hasTargets ? '% target · last wk' : 'last wk')),
-    el('div', { class: 'card wk-volume' },
-      rowsData.length
-        ? rowsData.map((r) => volumeRow(r, targets[r.muscle], max, parts[r.muscle], weights))
-        : el('p', { class: 'muted small' }, 'No sets this week or last week yet.'),
-      el('p', { class: 'field-hint wk-vol-hint' }, breakdownCaption(weights),
-        hasTargets ? 'Rows with a target show done / target; the bar is full at 100 %. ' : null,
-        el('a', { href: href('settings') }, 'Change weights'), ' · ',
-        el('a', { href: href('workout/targets') }, hasTargets ? 'Edit targets' : 'Set targets')))));
+  const range = cmp.weekStart.slice(0, 7) === cmp.weekEnd.slice(0, 7)
+    ? `${Number(cmp.weekStart.slice(8, 10))}–${shortDate(cmp.weekEnd)}`
+    : `${shortDate(cmp.weekStart)} – ${shortDate(cmp.weekEnd)}`;
 
-  // Links
-  const activeEx = [...exMap.values()].filter((e) => !e.archived).length;
-  append(container, el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
-    link('workout/routines', 'Routines', `${routines.length}`),
-    link('workout/exercises', 'Exercise library', `${activeEx}`),
-    link('workout/starting-point', 'Starting point', baseline ? shortDate(baseline.date) : 'not set'),
-    link('workout/targets', 'Weekly set targets', hasTargets ? `${Object.keys(targets).length}` : 'off'))));
+  // Body map: 4 = at target, 3 = over 2/3, 2 = over 1/3, 1 = started (target, or this week's most-trained muscle)
+  const weekMax = Math.max(0, ...rowsData.map((r) => r.current));
+  const step = (r) => {
+    if (!(r.current > 0)) return 0;
+    const t = targets[r.muscle];
+    const f = t ? r.current / t : r.current / weekMax;
+    return f >= 1 ? 4 : f > 2 / 3 ? 3 : f > 1 / 3 ? 2 : 1;
+  };
+  const values = Object.fromEntries(rowsData.map((r) => [r.muscle, step(r)]));
+
+  const body = el('div', { class: 'wk-sets-body' });
+  const paint = () => {
+    if (view.sets === 'map') {
+      const map = bodyMap({
+        view: 'both', title: `Sets this week: ${rowsData.filter((r) => r.current > 0).map((r) => `${r.name} ${fmtNum(r.current, 2)}${targets[r.muscle] ? ` of ${fmtNum(targets[r.muscle], 1)}` : ''}`).join(', ') || 'none'}`,
+      });
+      setBodyMapValues(map, values);
+      map.classList.add('wk-rc-map');
+      replaceChildren(body, el('div', { class: 'wk-map-row' }, map,
+        el('ul', { class: 'legend wk-map-legend' },
+          el('li', el('span', { class: 'swatch is-4' }), hasTargets ? 'At target' : 'Most'),
+          el('li', el('span', { class: 'swatch is-3' }), 'Over 2/3'),
+          el('li', el('span', { class: 'swatch is-2' }), 'Over 1/3'),
+          el('li', el('span', { class: 'swatch is-1' }), 'Started'),
+          el('li', el('span', { class: 'swatch' }), 'None'))));
+      return;
+    }
+    replaceChildren(body,
+      el('div', { class: 'wk-sets-legend-row' }, setsLegend({ target: hasTargets }), el('span', { class: 't-sub muted' }, range)),
+      rowsData.length
+        ? el('div', { class: 'wk-vol' }, rowsData.map((r) => volumeRow(r, targets[r.muscle], max, parts[r.muscle], weights)))
+        : el('p', { class: 't-sub muted' }, 'No sets yet.'));
+  };
+  paint();
+
+  const toggle = segmented({
+    small: true, ariaLabel: 'Show sets as', value: view.sets,
+    options: [{ value: 'bars', label: 'Bars' }, { value: 'map', label: 'Map' }],
+    onChange: (v) => { view.sets = v; paint(); },
+  });
+  return el('section', { class: 'card wk-sets-card' },
+    withSetsInfo(cardHeader('Sets this week', { trail: toggle }), weights),
+    body,
+    el('div', { class: 'wk-card-links' },
+      el('a', { class: 'btn btn-ghost btn-sm', href: href('workout/targets') }, hasTargets ? 'Edit targets' : 'Set targets'),
+      el('a', { class: 'btn btn-ghost btn-sm', href: href('settings') }, 'Set weighting')));
 }
 
 function link(path, title, trail) {
   return el('a', { class: 'list-item', href: href(path) },
     el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, title)),
-    el('span', { class: 'li-trail muted' }, trail),
-    el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›'));
+    trail ? el('span', { class: 'li-trail muted' }, trail) : null,
+    icon('chevron-right', { class: 'li-chevron' }));
 }
 
 function routineSub(r, exMap) {
@@ -117,36 +167,30 @@ function routineSub(r, exMap) {
   return names.join(', ');
 }
 
-/** 'Started 07:03' for a live session, 'Mon 9 Nov · past workout' for a back-dated one. */
+/** '07:03' for a live session, 'Mon 9 Nov · past workout' for a back-dated one. */
 function resumeWhen(w) {
   const now = Date.now();
   if (w.plannedDurationMs || now - w.startedAt > LIVE_WINDOW_MS || now < w.startedAt) return `${shortDate(w.date)} · past workout`;
-  return `Started ${w.date === today() ? fmtTime(w.startedAt) : shortDate(w.date)}`;
+  return w.date === today() ? fmtTime(w.startedAt) : shortDate(w.date);
 }
 
 function volumeRow(r, target, max, b, weights) {
   const tp = targetProgress(r.current, target);
-  const parts = el('span', { class: 'wk-vol-parts small muted num', 'aria-hidden': 'true' }, breakdownText(b, weights));
+  const title = breakdownText(b, weights);
   if (!tp) {
-    return el('div', { class: 'wk-vol-row', role: 'group', 'aria-label': `${r.name}: ${fmtNum(r.current, 2)} sets this week (${breakdownAria(b, weights)}), ${fmtNum(r.previous, 2)} last week` },
-      el('span', { class: 'wk-vol-name' }, r.name),
-      el('span', { class: 'wk-vol-bar', 'aria-hidden': 'true' },
-        splitFill(b, r.current / max),
-        r.previous ? el('span', { class: 'wk-vol-prev', style: { left: `${(r.previous / max) * 100}%` } }) : null),
-      el('span', { class: 'wk-vol-num num', 'aria-hidden': 'true' }, fmtNum(r.current, 2)),
-      el('span', { class: 'wk-vol-last num muted small', 'aria-hidden': 'true' }, fmtNum(r.previous, 2)),
-      parts);
+    return el('div', {
+      class: 'wk-vol-row', role: 'group', title,
+      'aria-label': `${r.name}: ${fmtNum(r.current, 2)} sets this week (${breakdownAria(b, weights)}), ${fmtNum(r.previous, 2)} last week`,
+    },
+    el('span', { class: 'wk-vol-name' }, r.name),
+    setsBar(b, r.current / max),
+    el('span', { class: 'wk-vol-num', 'aria-hidden': 'true' }, el('b', fmtNum(r.current, 2))));
   }
-  const prevFrac = Math.min(1, r.previous / tp.target);
   return el('div', {
-    class: 'wk-vol-row has-target', role: 'group',
+    class: ['wk-vol-row', tp.reached && 'is-reached'], role: 'group', title,
     'aria-label': `${r.name}: ${fmtNum(r.current, 2)} of ${fmtNum(tp.target, 1)} target sets (${breakdownAria(b, weights)}), ${tp.pct} percent reached; ${fmtNum(r.previous, 2)} last week`,
   },
   el('span', { class: 'wk-vol-name' }, r.name),
-  el('span', { class: 'wk-vol-bar is-target', 'aria-hidden': 'true' },
-    splitFill(b, tp.fraction, tp.reached),
-    r.previous ? el('span', { class: 'wk-vol-prev', style: { left: `${prevFrac * 100}%` } }) : null),
-  el('span', { class: 'wk-vol-num num' }, `${fmtNum(r.current, 2)}/${fmtNum(tp.target, 1)}`),
-  el('span', { class: ['wk-vol-last', 'num', 'small', tp.reached ? 'text-success' : 'muted'] }, `${tp.reached ? '✓' : ''}${tp.pct}%`),
-  parts);
+  setsBar(b, tp.fraction, { target: true }),
+  el('span', { class: 'wk-vol-num', 'aria-hidden': 'true' }, el('b', fmtNum(r.current, 2)), ` / ${fmtNum(tp.target, 1)}`));
 }

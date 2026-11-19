@@ -150,8 +150,8 @@ async function settleOpenWorkout(open) {
   if (!n) {
     const c = await askChoice({
       title: 'Workout in progress',
-      message: `"${name}" has no sets ticked yet. Discard it and start the new workout?`,
-      choices: [{ label: 'Keep it open', value: 'keep' }, { label: 'Discard it & start', value: 'discard', kind: 'primary' }],
+      message: `“${name}” has no sets done. Discard it and start?`,
+      choices: [{ label: 'Keep it open', value: 'keep' }, { label: 'Discard & start', value: 'discard', kind: 'primary' }],
     });
     if (c !== 'discard') return false;
     await db.remove('workouts', open.id);
@@ -159,10 +159,10 @@ async function settleOpenWorkout(open) {
   }
   const c = await askChoice({
     title: 'Workout in progress',
-    message: `"${name}" is not finished yet (${n} set${n === 1 ? '' : 's'} done). Finish it, or discard it and lose ${n === 1 ? 'that set' : `those ${n} sets`}?`,
+    message: `“${name}” is open with ${n} done set${n === 1 ? '' : 's'}. Finish it, or discard and lose ${n === 1 ? 'it' : 'them'}?`,
     choices: [
       { label: 'Finish it & start', value: 'finish', kind: 'primary' },
-      { label: `Discard it (${n} set${n === 1 ? '' : 's'} lost) & start`, value: 'discard', kind: 'danger' },
+      { label: 'Discard & start', value: 'discard', kind: 'danger' },
       { label: 'Cancel', value: 'cancel' },
     ],
   });

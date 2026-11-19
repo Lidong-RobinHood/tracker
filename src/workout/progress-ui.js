@@ -1,5 +1,5 @@
-// Small shared pieces for the progress views: percentage badge, load formatting, comparison block.
-import { el, href, fmtNum } from '../ui/index.js';
+// Small shared pieces for the progress views: percentage badge, tonnage formatting, comparison block.
+import { el, href, fmtNum, fmtGrouped, icon, sectionHeader } from '../ui/index.js';
 import { formatPct, trendOf } from '../core/workout-progress.js';
 import { formatWeight } from '../core/workout.js';
 import { exName, shortDate } from './data.js';
@@ -8,18 +8,20 @@ import { isBaseline } from '../core/baseline.js';
 /** '12 Nov', or 'starting point 12 Nov' when the earlier entry is the starting point. */
 const prevWhen = (w) => (isBaseline(w) ? `starting point ${shortDate(w.date)}` : shortDate(w.date));
 
-const ARROW = { up: '▲', down: '▼', flat: '=', none: '' };
+/** '+2.5 %' with a true minus and a narrow no-break space before %. */
+export const pctText = (p) => formatPct(p).replace(' ', ' ');
 
 /**
- * Coloured percentage with an arrow (colour is never the only cue).
+ * Coloured percentage with an arrow icon (colour is never the only cue).
  * @param {number|null} pct
  * @param {{suffix?: string, title?: string}} [opts]
  */
 export function pctBadge(pct, { suffix = '', title } = {}) {
   const t = trendOf(pct);
-  const text = t === 'none' ? '–' : `${ARROW[t]} ${formatPct(pct).replace(' ', ' ')}`;
-  return el('span', { class: ['wk-pct', `is-${t}`, 'num'], title: title || null },
-    text, suffix && t !== 'none' ? el('span', { class: 'wk-pct-suffix' }, ` ${suffix}`) : null);
+  return el('span', { class: ['wk-pct', `is-${t}`], title: title || null },
+    t === 'up' ? icon('arrow-up', { size: 14 }) : t === 'down' ? icon('arrow-down', { size: 14 }) : null,
+    t === 'none' ? '–' : pctText(pct),
+    suffix && t !== 'none' ? el('span', { class: 'wk-pct-suffix' }, ` ${suffix}`) : null);
 }
 
 /** Spoken form of a percentage, for aria-labels. */
@@ -33,33 +35,50 @@ export function pctWords(pct) {
 /** 12450 -> '12 450' (narrow no-break space groups), whole kg. */
 export function fmtLoadNum(n) {
   if (n === null || n === undefined || !Number.isFinite(n)) return '–';
-  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return fmtGrouped(Math.round(n), 0);
 }
 
-/** '12 450 kg' */
-export const fmtLoad = (n) => `${fmtLoadNum(n)} kg`;
+/**
+ * Tonnage with the one unit rule: kg below 1000 (whole kg), t from 1000 kg (one decimal).
+ * '615 kg', '2.6 t', '59.8 t'.
+ */
+export function fmtTonnage(n) {
+  if (n === null || n === undefined || !Number.isFinite(n)) return '–';
+  if (Math.abs(n) < 1000) return `${fmtGrouped(n, 1)} kg`;
+  return `${fmtGrouped(n / 1000, 1)} t`;
+}
+
+/** Tonnage split for a stat tile: { value: '2.6', unit: 't' }. */
+export function tonnageParts(n) {
+  const s = fmtTonnage(n);
+  const i = s.lastIndexOf(' ');
+  return i < 0 ? { value: s, unit: '' } : { value: s.slice(0, i), unit: s.slice(i + 1) };
+}
+
+/** Same as fmtTonnage (older name). */
+export const fmtLoad = fmtTonnage;
 
 /** Top set as '100 × 8' or 'BW × 12'. */
 export function topText(top) {
   if (!top) return '–';
-  return `${formatWeight(top.weight)} × ${top.reps}`;
+  return `${formatWeight(top.weight)} × ${top.reps}`;
 }
 
-/** Value of a comparison in its basis: '2 300 kg' or '36 reps'. */
+/** Value of a comparison in its basis: '2.3 t' or '36 reps'. */
 export function basisValue(basis, v) {
-  return basis === 'reps' ? `${fmtNum(v, 0)} reps` : fmtLoad(v);
+  return basis === 'reps' ? `${fmtNum(v, 0)} reps` : fmtTonnage(v);
 }
 
-const RECORD_LABEL = { weight: 'PR weight', e1rm: 'PR 1RM', reps: 'PR reps' };
+const RECORD_LABEL = { weight: 'Record weight', e1rm: 'Record est. 1RM', reps: 'Record reps' };
 
-/** Badges for newRecords() output. */
+/** Record tags (trophy) for newRecords() output. */
 export function recordBadges(records) {
   return (records || []).map((r) => el('span', {
-    class: 'badge wk-pr',
+    class: 'tag tag-accent wk-pr',
     title: r.kind === 'weight' ? `Heaviest weight: ${formatWeight(r.weight)} kg`
-      : r.kind === 'e1rm' ? `Best estimated 1RM: ${fmtNum(r.value, 1)} kg`
+      : r.kind === 'e1rm' ? `Best est. 1RM: ${fmtNum(r.value, 1)} kg`
         : `Most reps at ${formatWeight(r.weight)}${r.weight ? ' kg' : ''}: ${r.reps}`,
-  }, RECORD_LABEL[r.kind]));
+  }, icon('trophy', { size: 14 }), RECORD_LABEL[r.kind]));
 }
 
 /**
@@ -76,29 +95,35 @@ export function comparisonBlock(cmp, exMap) {
     ['up', 'Went up'], ['flat', 'Same as last time'], ['down', 'Went down'], ['new', 'First time'], ['skipped', 'Skipped this time'],
   ];
   const rows = (status) => cmp.rows.filter((r) => r.status === status);
-  return el('div', { class: 'stack wk-cmp' },
+  return el('div', { class: 'wk-cmp' },
     el('div', { class: 'wk-cmp-total' },
-      el('div', { class: 'grow' },
-        el('div', { class: 'small muted' }, 'Volume load'),
-        el('div', { class: 'wk-cmp-big num' }, fmtLoad(t.cur)),
-        // `cur` is always this session's whole volume load; the % may compare only the exercises
-        // that have an earlier entry (matched basis), so say so when that differs.
-        el('div', { class: 'small muted' }, t.prev === null ? 'Nothing to compare with yet'
-          : `${totalLabel}: ${fmtLoad(t.prev)}${t.basis === 'matched' && t.matchedCur !== t.cur ? ` (same exercises now ${fmtLoad(t.matchedCur)})` : ''}`)),
+      el('div', { class: 'grow wk-min0' },
+        el('div', { class: 't-cap muted' }, 'Tonnage'),
+        el('div', { class: 't-title' }, fmtTonnage(t.cur)),
+        // `cur` is always this session's whole tonnage; the % may compare only the exercises that
+        // have an earlier entry (matched basis), so say so when that differs.
+        el('div', { class: 't-sub muted' }, t.prev === null ? 'Nothing to compare with yet'
+          : `${totalLabel}: ${fmtTonnage(t.prev)}${t.basis === 'matched' && t.matchedCur !== t.cur ? ` (same exercises now ${fmtTonnage(t.matchedCur)})` : ''}`)),
       pctBadge(t.pct)),
     ...groups.map(([status, title]) => {
       const list = rows(status);
       if (!list.length) return null;
       return el('div', { class: 'wk-cmp-group' },
-        el('div', { class: `wk-cmp-head small is-${status}` }, title),
+        el('div', { class: ['t-cap', 'wk-cmp-head', `is-${status}`] }, title),
         ...list.map((r) => el('a', {
           class: 'wk-cmp-row', href: href(`workout/exercises/${encodeURIComponent(r.exerciseId)}`),
         },
         el('div', { class: 'grow wk-min0' },
           el('div', { class: 'wk-cmp-name' }, exName(exMap, r.exerciseId), ...recordBadges(r.records)),
-          el('div', { class: 'small muted num' }, rowDetail(r))),
-        status === 'skipped' || status === 'new' ? null : pctBadge(r.cmp && r.cmp.pct))));
+          el('div', { class: 't-sub muted' }, rowDetail(r))),
+        status === 'skipped' || status === 'new' ? null : pctBadge(r.cmp && r.cmp.pct),
+        icon('chevron-right', { class: 'li-chevron' }))));
     }));
+}
+
+/** Section title + comparison card, used by the summary, history detail and routine progress. */
+export function comparisonSection(title, cmp, exMap) {
+  return el('section', { class: 'section' }, sectionHeader(title, { info: 'tonnage' }), el('div', { class: 'card' }, comparisonBlock(cmp, exMap)));
 }
 
 function rowDetail(r) {

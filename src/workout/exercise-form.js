@@ -1,5 +1,7 @@
 // Exercise editor form (library detail, "new exercise", and inline create from the picker).
-import { el, replaceChildren, field, numberInput } from '../ui/index.js';
+import * as db from '../db/db.js';
+import { el, replaceChildren, field, numberInput, fmtNum } from '../ui/index.js';
+import { volumeWeights } from '../core/volume.js';
 import { MUSCLES } from '../core/muscles.js';
 import { DEFAULT_INCREMENT } from '../data/exercises.js';
 import { parseVideoUrl } from '../core/exercise-video.js';
@@ -24,7 +26,7 @@ export function exerciseForm(initial = {}, { compact = false } = {}) {
     EQUIPMENT.map(([v, label]) => el('option', { value: v, selected: v === (initial.equipment || 'barbell') }, label)));
   const increment = numberInput({
     value: initial.increment ?? DEFAULT_INCREMENT[initial.equipment || 'barbell'],
-    min: 0, max: 50, ariaLabel: 'Increment', onInput: () => { incrementEdited = true; },
+    min: 0, max: 50, ariaLabel: 'Weight step', onInput: () => { incrementEdited = true; },
   });
   equipment.addEventListener('change', () => {
     if (!incrementEdited) increment.setNumber(DEFAULT_INCREMENT[equipment.value] ?? 2.5);
@@ -34,7 +36,7 @@ export function exerciseForm(initial = {}, { compact = false } = {}) {
     class: 'input', type: 'url', inputmode: 'url', value: initial.videoUrl || '', autocomplete: 'off',
     autocapitalize: 'off', spellcheck: 'false', maxlength: '2000', placeholder: 'https://youtu.be/…',
   });
-  const videoField = field('Tutorial link', videoUrl, { hint: 'YouTube video or any https link. Leave empty to use the default tutorial.' });
+  const videoField = field('Tutorial link', videoUrl, { hint: 'Empty = default video.' });
   videoUrl.addEventListener('input', () => { videoField.classList.remove('is-missing'); videoUrl.removeAttribute('aria-invalid'); });
 
   const primaryChips = el('div', { class: 'chips' });
@@ -54,14 +56,22 @@ export function exerciseForm(initial = {}, { compact = false } = {}) {
   }, m.name);
   renderChips();
 
-  const primaryField = el('div', { class: 'field' }, el('div', { class: 'field-label' }, 'Primary muscles (count 1 set each)'), primaryChips);
+  // Labels show the user's own set weighting: 'Direct muscles · × 1', 'Partial muscles · × 0.5'.
+  const directLabel = el('div', { class: 'field-label' }, 'Direct muscles');
+  const partialLabel = el('div', { class: 'field-label' }, 'Partial muscles');
+  db.getSetting('volume').then((raw) => {
+    const w = volumeWeights(raw);
+    directLabel.textContent = `Direct muscles · × ${fmtNum(w.primary, 2)}`;
+    partialLabel.textContent = `Partial muscles · × ${fmtNum(w.secondary, 2)}`;
+  }).catch((err) => console.error(err));
+  const primaryField = el('div', { class: 'field' }, directLabel, primaryChips);
   const node = el('div', { class: 'stack' },
     field('Name', name),
     primaryField,
-    el('div', { class: 'field' }, el('div', { class: 'field-label' }, 'Secondary muscles (count ½ set each by default)'), secondaryChips),
+    el('div', { class: 'field' }, partialLabel, secondaryChips),
     el('div', { class: 'grid-2' },
       field('Equipment', equipment),
-      field('Increment', increment, { unit: 'kg', hint: '0 = no suggestions' })),
+      field('Weight step', increment, { unit: 'kg', hint: '0 = no suggestions', info: 'progression' })),
     compact ? null : field('Notes', notes),
     compact ? null : videoField);
 
@@ -72,9 +82,9 @@ export function exerciseForm(initial = {}, { compact = false } = {}) {
       const n = name.value.trim();
       primaryField.classList.remove('is-missing');
       if (!n) { name.focus(); return { ok: false, error: 'Enter a name.' }; }
-      if (!primary.size) { primaryField.classList.add('is-missing'); return { ok: false, error: 'Pick at least one primary muscle.' }; }
+      if (!primary.size) { primaryField.classList.add('is-missing'); return { ok: false, error: 'Pick at least one direct muscle.' }; }
       const inc = increment.getNumber();
-      if (inc === null) { increment.focus(); return { ok: false, error: 'Enter an increment from 0 to 50 kg.' }; }
+      if (inc === null) { increment.focus(); return { ok: false, error: 'Enter a weight step from 0 to 50 kg.' }; }
       const video = parseVideoUrl(compact ? initial.videoUrl : videoUrl.value);
       videoField.classList.toggle('is-missing', !video.ok);
       if (!video.ok) { videoUrl.setAttribute('aria-invalid', 'true'); videoUrl.focus(); return { ok: false, error: `Tutorial link: ${video.error}` }; }

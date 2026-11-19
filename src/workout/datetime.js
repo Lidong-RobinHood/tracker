@@ -28,12 +28,7 @@ export function changeDateTime(workout) {
     title: 'Change date, time, duration',
     content: [
       el('div', { class: 'grid-2' }, field('Date', date), field('Start time', time)),
-      field('Duration', dur, {
-        unit: 'min',
-        hint: finished
-          ? 'The weekly sets, recovery, history and progress follow the new date.'
-          : 'Leave empty while you are training: Finish then records the time you tap it. Set it for a workout done earlier.',
-      }),
+      field('Duration', dur, { unit: 'min', hint: finished ? null : 'Empty = set when you tap Finish.' }),
       err,
     ],
   });
