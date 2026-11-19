@@ -1,0 +1,145 @@
+# Split library
+
+Browse training splits by days, style, level and equipment, see the planned weekly sets per muscle,
+swap exercises, and follow one split as ordinary routines with a "Next up" rotation.
+
+| Part | File |
+|---|---|
+| Catalogue (data) | `src/data/splits.js` |
+| Logic (pure) | `src/core/splits.js` |
+| Screens | `src/splits/` (`workout/splits`, `workout/splits/:id`), `next-up.js` (`nextUpCard()`) |
+| Info sheets | `split-choose`, `split-sets` in `src/ui/info-sheets.js` |
+| Tests | `tests/splits.test.js`, `tests/splits-data.test.js` |
+
+## Data added
+
+- **`routines.splitId`** (optional string): set on routines created by adopting a split (the split id,
+  e.g. `'ul4-b'`). Otherwise the record is the SPEC §3 shape and an ordinary, editable routine. Routines
+  the user made never have it, so "replace" can only remove adopted ones.
+- **Setting `activeSplit`**: `{ splitId, level: 'minimum'|'standard'|'high', routineIds: [ids in rotation
+  order], adoptedAt }`. Absent = no split followed. "Stop following" removes it and keeps the routines.
+  It lives in `settings`, so export / import carry it with no schema change.
+- Unsaved choices on a split detail (volume level, swaps) are a 24 h draft in localStorage
+  (`tracker.draft.split:<id>`), like other drafts; never in the backup.
+
+## Catalogue
+
+14 splits, 2–6 days, 7 styles, 3 levels, 2 home splits. Names are generic descriptions (style + days);
+no authored or commercial program names (the test has a denylist). Ids are stable: never rename one.
+
+| id | Name | Days | Style | Level | Equipment |
+|---|---|---|---|---|---|
+| `fb2` | Full body 2-day | 2 | Full body | Beginner | Gym |
+| `fb3-b` | Full body 3-day | 3 | Full body | Beginner | Gym |
+| `fb3-i` | Full body 3-day plus | 3 | Full body | Intermediate | Gym |
+| `fb3-home` | Full body 3-day home | 3 | Full body | Beginner | Home |
+| `ppl3` | Push pull legs 3-day | 3 | Push / pull / legs | Intermediate | Gym |
+| `fb4` | Full body 4-day | 4 | Full body | Intermediate | Gym |
+| `ul4-b` | Upper lower 4-day | 4 | Upper / lower | Beginner | Gym |
+| `ul4-i` | Upper lower 4-day plus | 4 | Upper / lower | Intermediate | Gym |
+| `ul4-home` | Upper lower 4-day home | 4 | Upper / lower | Beginner | Home |
+| `tl4` | Torso limbs 4-day | 4 | Torso / limbs | Intermediate | Gym |
+| `ulppl5` | Upper lower + PPL 5-day | 5 | Hybrid | Intermediate | Gym |
+| `bp5` | Body part 5-day | 5 | Body part | Intermediate | Gym |
+| `ppl6` | Push pull legs 6-day | 6 | Push / pull / legs | Advanced | Gym |
+| `pair6` | Paired muscles 6-day | 6 | Paired muscles | Advanced | Gym |
+
+**Rationale.** Each split has its sessions in rotation order; a session is done `days / sessions` times a
+week (A, B, A, B). Main compound lifts use 5–10 reps, secondary compounds 8–12, isolation and small
+muscles 10–20 (growth occurs across a wide range of loads). Sessions hold 5–8 exercises and 12–24 sets.
+Home splits use only dumbbell and bodyweight exercises (they assume a bench and a pull-up bar, which the
+exercise model does not record). The selection, order and set/rep choices are this app's own and copy
+no published program; exercise ids come only from `src/data/exercises.js`.
+
+**Design check** (a test, by the app's own counting with default weights): every muscle stays within a
+review band of weighted sets per week — chest, quads, glutes 6–22; back, shoulders 8–22; hamstrings,
+biceps, triceps 6–20; calves, abs 4–16; traps, forearms 0–16 — every major muscle is a main mover at
+least once a week, and splits with 4+ days give traps ≥ 2. The bands are a design check, not a target.
+
+**Changes from the research draft (2026-11-19):**
+- Sentence-case names ("Full body 3-day"); bullets "don't" → "do not".
+- Traps: draft had 0–1 counted sets in most splits. Shrugs (2 sets) added to `fb3-home`, `ul4-b`,
+  `ul4-i` (Lower B), `ul4-home`, `tl4`, `ulppl5` (Pull), `ppl6` (Pull A), `pair6` (Chest & back B).
+- `fb2`: seated dumbbell press → overhead press (2 sets) for some trap work.
+- `fb3-home`: hanging leg raise added (abs were 3.5, hit once a week).
+- `ul4-home`: inverted row → pull-up (home has a bar; bullet says to swap back if too hard); step-up
+  removed and dumbbell RDL 3 → 4 sets (hamstrings were 8 against glutes 20; now 10 / 18).
+- Days with only 4 exercises filled: `bp5` Chest + machine crunch (moved from Arms, which kept 6),
+  `ppl6` Push B + pec deck, `pair6` Shoulders & arms B + rope pushdown.
+- The draft's fixed weekdays and "flexible" lines were dropped: the app runs splits in order.
+
+Remaining data effects (not split design): shoulders read 15–22 because every press lists them as a
+partial muscle; forearms get partial sets only; `ppl3` and `bp5` train most muscles once a week.
+
+## Coverage
+
+`splitCoverage()` turns the planned sessions into synthetic done sets and runs
+`muscleVolumeBreakdown()` from `src/core/volume.js` with the user's `volume` setting: direct =
+sets × primary weight for each primary muscle, partial = sets × secondary weight for each secondary
+muscle. "Days" = sessions a week in which the muscle is a primary muscle. The map uses fixed bands of
+weekly sets (≥ 12, 8–12, 4–8, under 4, none → `--heat-4` … idle); the Sets list shows direct, partial,
+days and the user's weekly target when one is set.
+
+## Volume level
+
+Applied per session item before coverage and routines (`applyLevel()`):
+
+- **Standard**: the catalogue exactly.
+- **Minimum**: −1 set on every exercise, never below 1.
+- **High**: +1 set on the first exercise of the session for each of its primary muscles (an exercise gets
+  at most +1; never above 5). A muscle trained n times a week gains about n direct sets a week.
+
+## Alternatives
+
+Candidates share at least one primary muscle, are not archived, not the exercise itself and not already
+in that session; custom exercises take part; home splits offer only dumbbell / bodyweight exercises.
+Ranking: same primary muscles (as a set) before partial overlap, then more shared primary muscles;
+exercises the user has logged (`exercise-usage.js`: most recent, then most often) before unused ones;
+same equipment; more shared partial muscles; common base lifts; name. Catalogue exercises the user
+archived or deleted are swapped for the top alternative automatically. Swaps change the planned split
+(and the routines on adopt), never a session already logged.
+
+## Adopt and Next up
+
+Adopt writes, in one transaction: one routine per session (`splitId` set, appended after existing
+routines), `activeSplit`, and — only when ticked — `volumeTargets` = planned weekly totals rounded to
+whole sets for muscles with ≥ 4 (replacing the previous targets). "Replace" deletes routines that carry a
+`splitId` (earlier adopted ones); "Keep" deletes nothing. Routines the user made are never touched.
+
+Next up (`nextUp()`): the routine after the most recent logged workout (`isLoggedWorkout`: finished, ≥ 1
+done set; never the starting point) whose `routineId` is in the rotation, ordered by date then start
+time (`byRecent`); wraps around; no such workout → the first. Workouts of other routines, empty and
+unfinished workouts do not move it; a missed day needs no handling. Deleted routines leave the rotation.
+
+**Mounting.** `src/splits/next-up.js` exports `async nextUpCard({ onChange, showChange = true })` →
+`HTMLElement | null` (null when no split is followed or all its routines are gone). The workout home can
+`const card = await nextUpCard(); if (card) append(container, card);`. Start calls `startWorkout(routine)`
+from `src/workout/data.js`. Until the home mounts it, the card shows on the library screen.
+
+## Evidence (sources)
+
+Only sources the research verified (abstracts read via the Europe PMC API, 2026-11-19). The app states
+them in few words: weekly sets matter most; with equal weekly sets, frequency and split type make little
+measurable difference to growth; ranges are general guides, mostly from young adults, not per-muscle
+prescriptions. No outcome promises.
+
+- Schoenfeld, Grgic, Krieger 2019. How many times per week should a muscle be trained to maximize muscle
+  hypertrophy? J Sports Sci 37:1286. PMID 30558493.
+- Schoenfeld, Ogborn, Krieger 2016. Effects of resistance training frequency on measures of muscle
+  hypertrophy. Sports Med 46:1689. PMID 27102172.
+- Pelland et al. 2026. Sports Med 56:481. doi 10.1007/s40279-025-02344-w (weekly sets, frequency,
+  fractional counting of indirect sets as 0.5).
+- Ramos-Campo et al. 2024. J Strength Cond Res 38:1330. PMID 38595233 (split vs full body, volume equated).
+- Evangelista et al. 2021. Einstein 19:eAO5781. PMID 34468591.
+- Schoenfeld, Ogborn, Krieger 2017. J Sports Sci 35:1073. PMID 27433992 (dose-response of weekly sets).
+- Baz-Valle et al. 2022. J Hum Kinet 81:199. PMID 35291645.
+- ACSM 2009 position stand. Med Sci Sports Exerc 41:687. PMID 19204579.
+- Schoenfeld et al. 2021. Sports 9:32. PMID 33671664 (loading range).
+- Robinson et al. 2024. Sports Med 54:2209. PMID 38970765 (proximity to failure).
+- Refalo et al. 2023. Sports Med 53:649. PMID 36334240.
+
+Conventions, not findings: the deload bullets ("every 6–8 weeks, one week, half the sets") and
+"stop sets 1–3 reps short of failure" are practical wording, consistent with but not prescribed by the
+sources. Originality: exercise routines are methods / systems and not protected as such (17 USC 102(b);
+US Copyright Office, Federal Register 22 June 2012, doc. 2012-15235); text and names are, so all wording is original and names are
+generic. Not legal advice.

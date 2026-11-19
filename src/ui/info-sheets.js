@@ -195,6 +195,22 @@ export const INFO_SHEETS = Object.freeze({
       'A date line starts a new workout; a line like Push names it. Side-by-side sheets: copy one column group at a time.',
     ],
   },
+  // Split library (src/splits/, docs/SPLITS.md): wording from the split-library research, 2026-11-19.
+  'split-choose': {
+    title: 'Choosing a split',
+    text: () => [
+      'Pick the number of days you can keep for months. With the same weekly sets, studies find full body, upper / lower and other splits give similar results.',
+      'Fewer days: full body. Four: upper / lower. Five or six: hybrid or push / pull / legs. Each muscle about twice a week is a simple default.',
+    ],
+  },
+  'split-sets': {
+    title: 'Weekly sets',
+    defaults: { ...DEFAULT_VOLUME },
+    text: (v) => [
+      `Planned sets per muscle per week. Direct (main mover) counts × ${n(v.primary)}, partial (assists) × ${n(v.secondary)}, as in your log.`,
+      'Weekly sets matter most; more tends to add a little more, with shrinking returns. Ranges are general guides, not prescriptions. Add sets only if you recover and keep progressing.',
+    ],
+  },
 });
 
 /** @returns {string[]} all sheet ids */

@@ -32,10 +32,11 @@ test('every info-sheet id used in src/ exists', () => {
   assert.deepEqual(missing, [], `unknown info sheets:\n${missing.join('\n')}`);
 });
 
-test('the 23 sheets of the copy audit exist and are short', () => {
+test('the 23 sheets of the copy audit and the 2 split sheets exist and are short', () => {
   const ids = ['recovery', 'recovery-math', 'sets', 'tonnage', 'records', 'metrics', 'top-exercises', 'progression',
     'starting', 'photo', 'camera', 'expenditure', 'checkin', 'complete', 'trend', 'report', 'macros',
     'adaptive-macros', 'goal', 'backup', 'storage', 'import-weights', 'import-workouts'];
+  ids.push('split-choose', 'split-sets'); // split library (docs/SPLITS.md)
   assert.deepEqual([...INFO_SHEET_IDS].sort(), [...ids].sort());
   for (const id of ids) {
     const s = infoSheet(id);
@@ -57,4 +58,14 @@ test('sheet values come from the code constants and can be overridden', () => {
   assert.match(infoSheet('checkin').paragraphs[1], /capped at 150 kcal per week/);
   assert.equal(fmtInfoNumber(1568), '1 568');
   assert.equal(infoSheet('nope'), null);
+});
+
+test('split sheets use the user\'s set weighting and make no promises', () => {
+  assert.match(infoSheet('split-sets').paragraphs[0], /× 1, partial \(assists\) × 0\.5/);
+  assert.match(infoSheet('split-sets', { primary: 1, secondary: 0.25 }).paragraphs[0], /× 0\.25/);
+  for (const id of ['split-choose', 'split-sets']) {
+    const t = infoSheet(id).paragraphs.join(' ');
+    assert.ok(t.split(/\s+/).length <= 60, id);
+    assert.doesNotMatch(t, /optimal|guarantee|will build|best results/i, id);
+  }
 });

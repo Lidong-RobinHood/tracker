@@ -1,0 +1,66 @@
+/* Split library (src/splits/). Tokens and shared classes only (docs/CONTRACT.md). */
+
+/* filters: one scrolling row per group; padding keeps the chips' 44 px hit area inside the scroller */
+.sp-filters { display: flex; flex-direction: column; gap: var(--s1); margin: 0 calc(-1 * var(--gutter)); }
+.sp-chip-row { padding: var(--s1) var(--gutter); }
+
+/* result rows */
+.sp-row { align-items: flex-start; padding-top: var(--s3); padding-bottom: var(--s3); }
+.sp-row .li-chevron { align-self: center; }
+.sp-row-sub { font-size: var(--fs-sub); line-height: var(--lh-sub); color: var(--ink-2); margin-top: 2px; }
+.sp-tags { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s2); }
+.bm.sp-glyph { width: 40px; height: 44px; margin-top: 2px; }
+
+/* detail */
+.sp-head .sp-tags { margin-top: 0; margin-bottom: var(--s2); }
+.sp-map-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.sp-legend { flex: 1 1 96px; padding-left: var(--s1); }
+.sp-level { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s4); }
+.sp-muscles .list-item:first-child { border-top: 0; }
+.sp-total { font-size: var(--fs-head); font-weight: var(--fw-semibold); }
+.sp-day-head { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4) var(--s2); }
+.sp-day-head .card-title { margin: 0; }
+.sp-day-n {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: var(--r-full);
+  background: var(--accent-soft); color: var(--accent-ink);
+  font-size: var(--fs-sub); font-weight: var(--fw-semibold);
+}
+.sp-target { color: var(--ink-2); font-size: var(--fs-sub); white-space: nowrap; }
+.sp-swapped { display: flex; align-items: center; gap: var(--s1); color: var(--accent-ink); }
+.sp-bullets { margin: 0; padding-left: var(--s5); display: flex; flex-direction: column; gap: var(--s2); }
+.sp-disclaimer { text-align: center; }
+.sp-disclaimer a { color: var(--accent-ink); }
+
+/* alternatives sheet */
+.sp-alt { gap: var(--s2); padding: 0; }
+.sp-alt-main { min-height: 52px; padding: 6px 0; border: 0; background: none; color: inherit; text-align: left; font: inherit; cursor: pointer; display: flex; flex-direction: column; justify-content: center; }
+.sp-alt-current .sp-alt-main { cursor: default; }
+.sp-alt-current .list-item { border-top: 0; }
+.sp-alt-reset { margin: var(--s2) 0 var(--s3); }
+
+/* adopt sheet */
+.sp-adopt-list .list-item:first-child { border-top: 0; }
+.sp-adopt-meta { margin: var(--s2) 0 var(--s4); }
+.sp-adopt .field { margin-bottom: var(--s4); }
+.sp-tick { display: flex; align-items: center; gap: var(--s3); min-height: var(--tap); font-weight: var(--fw-semibold); cursor: pointer; }
+.sp-targets-line { margin-top: var(--s1); }
+
+/* next up */
+.sp-next { display: flex; flex-direction: column; gap: var(--s3); }
+.sp-next-top { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
+.sp-cap { color: var(--accent-ink); }
+.sp-next-split { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); text-decoration: none; }
+.sp-next-main { display: flex; align-items: center; gap: var(--s3); }
+.sp-steps { display: flex; gap: var(--s1); margin: 0; padding: 0; list-style: none; }
+.sp-step { flex: 1 1 0; height: 6px; border-radius: var(--r-full); background: var(--fill); }
+.sp-step.is-next { background: var(--accent); }
+.sp-next-links { display: flex; flex-wrap: wrap; gap: var(--s2); margin: calc(-1 * var(--s2)) 0 calc(-1 * var(--s2)) calc(-1 * var(--s3)); }
+
+@media (max-width: 359px) {
+  .sp-map-row { justify-content: center; }
+  .sp-legend { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; gap: var(--s1) var(--s4); padding: 0; justify-content: center; }
+}
+
+/* exercise names wrap instead of truncating on narrow screens */
+.sp-ex .li-title, .sp-alt .li-title, .sp-row .li-title { white-space: normal; }
