@@ -80,3 +80,17 @@ export function fmtSigned(n, maxDecimals = 0) {
   const s = fmtGrouped(n, maxDecimals);
   return s !== '–' && s !== '0' && !s.startsWith(MINUS) ? `+${s}` : s;
 }
+
+/**
+ * Tonnage (weight × reps): whole kg below 10 000 kg ('2 340 kg'), tonnes with two decimals from
+ * 10 000 kg ('12.48 t'); grouped with a narrow no-break space, true minus; null -> '–'.
+ * `{ kg: true }` always gives kg (single-set and per-exercise tonnage).
+ * @param {number|null|undefined} kg @param {{kg?: boolean}} [opts]
+ */
+export function fmtTonnage(kg, { kg: kgOnly = false } = {}) {
+  if (kg === null || kg === undefined || !Number.isFinite(kg)) return '–';
+  const whole = Math.round(kg);
+  if (kgOnly || Math.abs(whole) < 10000) return `${fmtGrouped(whole, 0)} kg`;
+  const [i, d] = (Math.abs(kg) / 1000).toFixed(2).split('.');
+  return `${kg < 0 ? MINUS : ''}${fmtGrouped(Number(i), 0)}.${d} t`;
+}

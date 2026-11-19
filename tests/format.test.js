@@ -35,3 +35,23 @@ test('grouped and signed numbers (thin-space thousands, true minus)', () => {
   assert.equal(f.fmtSigned(-0.5, 1), '−0.5');
   assert.equal(f.fmtSigned(0), '0');
 });
+
+test('tonnage: whole kg below 10 000 kg, t with two decimals from 10 000 kg', () => {
+  const N = ' ';
+  assert.equal(f.fmtTonnage(0), '0 kg');
+  assert.equal(f.fmtTonnage(615.4), '615 kg');
+  assert.equal(f.fmtTonnage(2300), `2${N}300 kg`);
+  assert.equal(f.fmtTonnage(2340), `2${N}340 kg`);
+  assert.equal(f.fmtTonnage(2550), `2${N}550 kg`);
+  assert.equal(f.fmtTonnage(9999), `9${N}999 kg`);
+  assert.equal(f.fmtTonnage(9999.6), '10.00 t', 'rounds to 10 000 kg first');
+  assert.equal(f.fmtTonnage(10000), '10.00 t');
+  assert.equal(f.fmtTonnage(12480), '12.48 t');
+  assert.equal(f.fmtTonnage(12484.9), '12.48 t');
+  assert.equal(f.fmtTonnage(1234567), `1${N}234.57 t`);
+  assert.equal(f.fmtTonnage(-2340), `−2${N}340 kg`);
+  assert.equal(f.fmtTonnage(-12480), '−12.48 t');
+  assert.equal(f.fmtTonnage(12480, { kg: true }), `12${N}480 kg`, 'single set / per exercise: always kg');
+  assert.equal(f.fmtTonnage(null), '–');
+  assert.equal(f.fmtTonnage(Number.NaN), '–');
+});

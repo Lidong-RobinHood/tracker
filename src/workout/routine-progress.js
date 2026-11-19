@@ -1,7 +1,7 @@
 // Routine progress: every time a routine was performed, as a chart and a list, per-exercise trend and
 // "this time vs last time". Route: workout/routines/:id/progress
 import * as db from '../db/db.js';
-import { el, replaceChildren, append, pageHeader, href, emptyState, fmtDate, fmtDuration, icon, sectionHeader, statTile, fmtNum } from '../ui/index.js';
+import { el, replaceChildren, append, pageHeader, href, emptyState, fmtDate, fmtDuration, icon, sectionHeader, statTile } from '../ui/index.js';
 import { routineProgress, compareSession } from '../core/workout-progress.js';
 import { ensureCss, loadExercises, loadWorkouts, exName, shortDate, startWorkout } from './data.js';
 import { lineChart } from './chart.js';
@@ -52,8 +52,9 @@ export async function mountRoutineProgress(container, { id }) {
     sectionHeader('Tonnage per session', { info: 'tonnage' }),
     el('div', { class: 'card wk-chart-card' },
       lineChart({
-        points: chrono.map((s) => ({ date: s.workout.date, value: s.totals.load })),
-        format: (v) => (v >= 1000 ? `${fmtNum(v / 1000, 1)} t` : `${fmtNum(v, 0)}`),
+        points: chrono.map((s) => ({ date: s.workout.date, value: s.totals.load, label: fmtTonnage(s.totals.load) })),
+        // axis: the shared rule without the kg unit ('2 340', '12.48 t')
+        format: (v) => fmtTonnage(v).replace(/ kg$/, ''),
         ariaLabel: `Tonnage of ${routine.name} over ${n} sessions, from ${fmtTonnage(chrono[0].totals.load)} to ${fmtTonnage(latest.totals.load)}`,
         zero: false,
       }))));

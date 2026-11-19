@@ -17,17 +17,19 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 
 const kg = (n, d = 2) => `${fmtNum(n, d)} kg`;
 
-/** Tonnage with its unit: '615 kg', '1.9 t' (one unit rule). */
+/** Tonnage with its unit, shared rule: '2 340 kg', '12.48 t'. */
 const tKg = (n) => fmtTonnage(n);
+/** Single-set and per-exercise tonnage: always kg ('12 480 kg'). */
+const exKg = (n) => fmtTonnage(n, { kg: true });
 
 /** A best value with its unit, for prose: '102.5 kg × 6', '615 kg (102.5 × 6)', '128.3 kg', '12 reps'. */
 function valueText(metric, b) {
   if (!b) return '–';
   switch (metric) {
     case 'heaviest': return `${kg(b.weight)} × ${b.reps}`;
-    case 'tonnageSet': return `${fmtNum(b.weight, 2)} × ${b.reps} = ${tKg(b.value)}`;
+    case 'tonnageSet': return `${fmtNum(b.weight, 2)} × ${b.reps} = ${exKg(b.value)}`;
     case 'e1rm': return kg(b.value, 1);
-    case 'tonnage': return tKg(b.value);
+    case 'tonnage': return exKg(b.value);
     default: return `${fmtNum(b.value, 0)} reps`;
   }
 }
@@ -37,7 +39,7 @@ function cellText(metric, b) {
   if (!b) return '–';
   switch (metric) {
     case 'heaviest': return `${fmtNum(b.weight, 2)} × ${b.reps}`;
-    case 'tonnageSet': case 'tonnage': return tKg(b.value);
+    case 'tonnageSet': case 'tonnage': return exKg(b.value);
     case 'e1rm': return fmtNum(b.value, 1);
     default: return fmtNum(b.value, 0);
   }
@@ -50,7 +52,7 @@ function absText(d, metric) {
   if (!d) return '';
   const unit = d.unit === 'reps' ? (Math.abs(d.abs) === 1 ? 'rep' : 'reps') : d.unit;
   if (d.abs === 0) return `±0 ${unit}`;
-  return `${d.abs > 0 ? '+' : '−'}${metric === 'tonnage' || metric === 'tonnageSet' ? tKg(Math.abs(d.abs)) : `${fmtNum(Math.abs(d.abs), metric === 'e1rm' ? 1 : 2)} ${unit}`}`;
+  return `${d.abs > 0 ? '+' : '−'}${metric === 'tonnage' || metric === 'tonnageSet' ? exKg(Math.abs(d.abs)) : `${fmtNum(Math.abs(d.abs), metric === 'e1rm' ? 1 : 2)} ${unit}`}`;
 }
 
 /** Coloured % with its sign; colour is never the only cue. */
@@ -205,7 +207,7 @@ function exerciseBlock(r, w, res, name) {
     })));
 
   const notes = [
-    r.dropsets ? `${r.dropsets} dropset${r.dropsets === 1 ? '' : 's'} (${tKg(r.dropTonnage)}) not counted` : null,
+    r.dropsets ? `${r.dropsets} dropset${r.dropsets === 1 ? '' : 's'} (${exKg(r.dropTonnage)}) not counted` : null,
     r.undone ? `${r.undone} not done` : null,
   ].filter(Boolean).join(' · ');
 
@@ -253,9 +255,9 @@ function wholeWorkout(w, res) {
       : el('div', { class: 'card' }, el('p', { class: 't-sub muted' }, 'No sets with weight.'))));
   const h = res.routine.history;
   out.push(el('section', { class: 'section' },
-    sectionHeader(h.length > 1 ? `Session tonnage (t) · last ${h.length}` : 'Session tonnage', { info: 'tonnage' }),
+    sectionHeader(h.length > 1 ? `Session tonnage · last ${h.length}` : 'Session tonnage', { info: 'tonnage' }),
     el('div', { class: 'card' }, h.length > 1
-      ? vBars(h.map((s) => ({ date: s.date, value: s.tonnage, text: fmtNum(s.tonnage / 1000, 1), current: s.current })),
+      ? vBars(h.map((s) => ({ date: s.date, value: s.tonnage, text: tKg(s.tonnage), current: s.current })),
         `Session tonnage of the last ${h.length} ${w.name} sessions, ${h.map((s) => `${fmtDate(s.date)} ${tKg(s.tonnage)}`).join(', ')}`)
       : el('p', { class: 't-sub muted' }, w.routineId ? 'First session of this routine.' : 'Not from a routine.'))));
   return out;
@@ -294,6 +296,6 @@ function monthSection(w, res, name) {
             ? el('td', {}, `BW × ${x.bwReps.reps}`, el('span', { class: 'wk-an-when' }, holder(x.bwReps)))
             : el('td', {}, '–'),
         x.tonnageSet
-          ? el('td', {}, tKg(x.tonnageSet.value), el('span', { class: 'wk-an-when' }, `${fmtNum(x.tonnageSet.weight, 2)} × ${x.tonnageSet.reps} · ${holder(x.tonnageSet)}`))
+          ? el('td', {}, exKg(x.tonnageSet.value), el('span', { class: 'wk-an-when' }, `${fmtNum(x.tonnageSet.weight, 2)} × ${x.tonnageSet.reps} · ${holder(x.tonnageSet)}`))
           : el('td', {}, '–')))))));
 }

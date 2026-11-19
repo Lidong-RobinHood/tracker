@@ -3,7 +3,7 @@ export { el, append, clear, replaceChildren } from './dom.js';
 export { openSheet, openModal, confirmDialog, closeAllOverlays } from './overlay.js';
 export { toast } from './toast.js';
 export { numberInput } from './number-input.js';
-export { fmtNum, fmtKcal, fmtGrams, fmtKg, fmtAmount, fmtDate, fmtDay, fmtTime, fmtDuration, fmtBytes, fmtGrouped, fmtSigned } from './format.js';
+export { fmtNum, fmtKcal, fmtGrams, fmtKg, fmtAmount, fmtDate, fmtDay, fmtTime, fmtDuration, fmtBytes, fmtGrouped, fmtSigned, fmtTonnage } from './format.js';
 export { href, navigate, back, currentPath } from './nav.js';
 export { pageHeader, field, emptyState, iconButton, sectionHeader, cardHeader, tag, setBadge, statTile, progressBar, ring,
   segmented, iconTabs } from './components.js';

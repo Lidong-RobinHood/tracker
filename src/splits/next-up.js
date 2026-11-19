@@ -1,13 +1,15 @@
-// "Next up" block of the followed split. The workout home mounts it later:
+// "Next up" block of the followed split, mounted on the workout home (Train):
 //
 //   import { nextUpCard } from '../splits/next-up.js';
 //   const card = await nextUpCard();          // HTMLElement, or null when no split is followed
 //   if (card) append(container, card);
 //
 // Options: { onChange } runs after "Stop following" (default: the card removes itself);
-// { showChange: false } hides "Change split" (used on the library screen itself).
+// { showChange: false } hides "Change split".
+// followingCard(): the compact "Following <split> · Stop following" block of the library screen,
+// which is where the split is changed or stopped (no second Start there).
 import * as db from '../db/db.js';
-import { el, icon, href, confirmDialog, toast } from '../ui/index.js';
+import { el, append, icon, href, confirmDialog, toast } from '../ui/index.js';
 import { nextUp } from '../core/splits.js';
 import { splitById } from '../data/splits.js';
 import { startWorkout } from '../workout/data.js';
@@ -58,5 +60,31 @@ export async function nextUpCard({ onChange, showChange = true } = {}) {
     el('div', { class: 'sp-next-links' },
       showChange ? el('a', { class: 'btn btn-ghost btn-sm', href: href('workout/splits') }, 'Change split') : null,
       el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: stop }, 'Stop following')));
+  return card;
+}
+
+/**
+ * Library screen: which split is followed, with "Stop following". Null when none is followed.
+ * @param {{onChange?: () => void}} [opts] runs after "Stop following" (default: the card removes itself)
+ * @returns {Promise<HTMLElement|null>}
+ */
+export async function followingCard({ onChange } = {}) {
+  ensureSplitsCss();
+  const active = await loadActiveSplit();
+  const split = active ? splitById(active.splitId) : null;
+  if (!split) return null;
+  const card = el('section', { class: 'card sp-following', 'aria-label': 'Followed split' });
+  const stop = async () => {
+    const ok = await confirmDialog({ title: 'Stop following?', message: 'Your routines stay.', confirmLabel: 'Stop following' });
+    if (!ok) return;
+    try { await stopFollowing(); } catch (err) { console.error(err); toast('Could not save.', { type: 'error' }); return; }
+    if (onChange) onChange(); else card.remove();
+  };
+  append(card,
+    el('a', { class: 'sp-following-main', href: href(`workout/splits/${encodeURIComponent(split.id)}`) },
+      el('span', { class: 't-cap sp-cap' }, 'Following'),
+      el('span', { class: 'li-title' }, split.name),
+      icon('chevron-right', { class: 'li-chevron' })),
+    el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: stop }, 'Stop following'));
   return card;
 }

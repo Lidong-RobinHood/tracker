@@ -6,7 +6,7 @@ import { filterSplits, coverageStep } from '../core/splits.js';
 import { MUSCLE_IDS } from '../core/muscles.js';
 import { loadExercises } from '../workout/data.js';
 import { ensureSplitsCss, coverageFor } from './store.js';
-import { nextUpCard } from './next-up.js';
+import { followingCard } from './next-up.js';
 
 const label = (list, id) => (list.find((x) => x.id === id) || {}).label || id;
 export const styleLabel = (id) => label(STYLES, id);
@@ -35,7 +35,9 @@ export async function mountLibrary(container) {
   const filterBox = el('div', { class: 'sp-filters' });
 
   const renderNext = async () => {
-    const card = await nextUpCard({ showChange: false, onChange: renderNext });
+    // Next up and its Start live on the workout home; here only which split is followed (to change it,
+    // pick another below) and Stop following.
+    const card = await followingCard({ onChange: renderNext });
     replaceChildren(nextSlot, card);
     nextSlot.hidden = !card;
   };

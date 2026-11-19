@@ -24,13 +24,13 @@ const SET_WEEKS = 6;
 
 // ---------------------------------------------------------------- formatting (as on the analysis screen)
 
-/** '102.5 kg × 6 → 105 kg × 6' style: previous → new, for one record. */
+/** '102.5 kg × 6 → 105 kg × 6' style: previous → new, for one record (per exercise: tonnage in kg). */
 function changeText(r) {
   const p = r.prev; const c = r.cur;
   switch (r.metric) {
     case 'heaviest': return `${fmtNum(p.weight, 2)} kg × ${p.reps} → ${fmtNum(c.weight, 2)} kg × ${c.reps}`;
     case 'e1rm': return `${fmtNum(p.value, 1)} → ${fmtNum(c.value, 1)} kg`;
-    case 'tonnageSet': case 'tonnage': return `${fmtTonnage(p.value)} → ${fmtTonnage(c.value)}`;
+    case 'tonnageSet': case 'tonnage': return `${fmtTonnage(p.value, { kg: true })} → ${fmtTonnage(c.value, { kg: true })}`;
     default: return `${fmtNum(p.value, 0)} → ${fmtNum(c.value, 0)} reps`;
   }
 }
@@ -40,7 +40,7 @@ function absText(r) {
   const d = r.delta;
   if (!d) return '';
   const unit = d.unit === 'reps' ? (Math.abs(d.abs) === 1 ? 'rep' : 'reps') : d.unit;
-  const v = r.metric === 'tonnage' || r.metric === 'tonnageSet' ? fmtTonnage(Math.abs(d.abs)) : `${fmtNum(Math.abs(d.abs), r.metric === 'e1rm' ? 1 : 2)} ${unit}`;
+  const v = r.metric === 'tonnage' || r.metric === 'tonnageSet' ? fmtTonnage(Math.abs(d.abs), { kg: true }) : `${fmtNum(Math.abs(d.abs), r.metric === 'e1rm' ? 1 : 2)} ${unit}`;
   return `${d.abs >= 0 ? '+' : '−'}${v}`;
 }
 

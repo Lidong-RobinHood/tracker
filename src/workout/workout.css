@@ -44,6 +44,7 @@
 .wk-map-legend { flex: 1 1 96px; padding-left: var(--s1); }
 .wk-rc-map { cursor: pointer; }
 .wk-rc-map .bm-muscle.is-sel { stroke: var(--ink); stroke-width: 3; }
+.wk-rc-map .bm-muscle:focus-visible { stroke: var(--focus); stroke-width: 3; }
 @media (max-width: 359px) {
   .wk-map-row { justify-content: center; }
   .wk-map-legend { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; gap: var(--s1) var(--s4); padding: 0; justify-content: center; }
@@ -72,12 +73,23 @@
 .wk-tick-swatch { display: inline-block; flex: none; width: 2px; height: 12px; border-radius: 1px; background: var(--ink); }
 .wk-dash-swatch { display: inline-block; flex: none; width: 12px; height: 0; border-top: 2px dashed var(--ink); }
 .wk-vol { display: flex; flex-direction: column; }
-.wk-vol-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) 64px; align-items: center; gap: var(--s3); min-height: 32px; }
+/* Each row is a 44 px button; it opens one detail line under it (direct / partial, last week). */
+.wk-vol-row {
+  display: grid; grid-template-columns: 88px minmax(0, 1fr) 64px 16px; align-items: center; gap: var(--s3);
+  width: 100%; min-height: var(--tap); padding: 0; border: 0; border-radius: var(--r-sm); background: none;
+  color: inherit; font: inherit; text-align: left; cursor: pointer; touch-action: manipulation;
+}
+.wk-vol-row:active { background: var(--fill); }
+.wk-vol-chev { color: var(--ink-3); transition: transform var(--d-fast) var(--ease); }
+.wk-vol-row[aria-expanded="true"] .wk-vol-chev { transform: rotate(180deg); }
+.wk-vol-detail { margin: 0 0 var(--s2); padding: var(--s2) var(--s3); border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink-2); }
+.wk-vol-detail[hidden] { display: none; }
+.wk-map-detail { margin-top: var(--s3); }
 .wk-vol-name { font-size: var(--fs-sub); line-height: var(--lh-sub); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wk-vol-num { text-align: right; font-size: var(--fs-sub); line-height: var(--lh-sub); color: var(--ink-2); white-space: nowrap; }
 .wk-vol-num b { font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--ink); }
 .wk-vol-row.is-reached .wk-vol-num b { color: var(--ok-text); }
-@media (max-width: 359px) { .wk-vol-row { grid-template-columns: 76px minmax(0, 1fr) 56px; gap: var(--s2); } }
+@media (max-width: 359px) { .wk-vol-row { grid-template-columns: 76px minmax(0, 1fr) 56px 16px; gap: var(--s2); } }
 .wk-sbar { position: relative; display: block; height: 10px; border-radius: 3px; background: var(--fill); }
 .wk-sbar-fill { position: absolute; left: 0; top: 0; bottom: 0; display: flex; overflow: hidden; border-radius: 3px; transition: width var(--d-med) var(--ease); }
 .wk-sbar-seg { display: block; height: 100%; min-width: 0; flex-basis: 0; }
@@ -91,12 +103,14 @@
 .wk-card { display: flex; flex-direction: column; padding: var(--s2) 0; }
 .wk-card-head { display: flex; align-items: center; gap: var(--s1); padding: 0 var(--s1) 0 var(--s4); min-height: var(--tap); }
 .wk-ex-name { flex: 1 1 auto; min-width: 0; font-size: var(--fs-head); line-height: var(--lh-head); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
-.wk-meta { display: flex; align-items: center; gap: var(--s2); min-height: var(--tap); padding: 0 var(--s2) 0 var(--s4); }
+.wk-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--s2); min-height: var(--tap); padding: 0 var(--s2) 0 var(--s4); }
+/* The whole target is always readable: no ellipsis; the chip group wraps below it instead. */
 .wk-target {
-  flex: 1 1 0; min-width: 0; min-height: var(--tap); padding: 0; border: 0; background: none;
+  flex: 1 1 auto; min-width: 0; min-height: var(--tap); padding: 0; border: 0; background: none;
   color: var(--ink-2); font: inherit; font-size: var(--fs-body); text-align: left; cursor: pointer;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; touch-action: manipulation;
+  overflow-wrap: anywhere; touch-action: manipulation;
 }
+.wk-prog-group { flex: none; display: flex; align-items: center; gap: var(--s2); margin-left: auto; }
 .chip.wk-prog { flex: none; background: var(--accent-soft); color: var(--accent-ink); touch-action: manipulation; }
 .chip.wk-prog.is-active { background: var(--fill); color: var(--ink-2); }
 .wk-prog-step { flex: none; }
@@ -384,6 +398,7 @@
 .wk-an-vbars { display: flex; align-items: stretch; gap: var(--s1); height: 104px; }
 .wk-an-vbar { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .wk-an-vbar-val, .wk-an-vbar-date { font-size: var(--fs-cap); line-height: var(--lh-cap); color: var(--ink-2); white-space: nowrap; }
+.wk-an-vbar-val { white-space: normal; text-align: center; min-height: calc(2 * var(--lh-cap)); display: flex; align-items: flex-end; justify-content: center; }
 .wk-an-vbar-col { flex: 1 1 auto; width: 100%; max-width: 20px; display: flex; align-items: flex-end; }
 .wk-an-vbar-fill { display: block; width: 100%; border-radius: 3px 3px 0 0; background: var(--accent-2); }
 .wk-an-vbar.is-cur .wk-an-vbar-fill { background: var(--accent); }
@@ -415,9 +430,4 @@
 .wk-card-actions .btn { white-space: nowrap; }
 @media (max-width: 359px) {
   .wk-card-actions .btn-sm { padding: 0 var(--s2); gap: var(--s1); }
-  .wk-meta:has(.wk-prog) .wk-target { font-size: var(--fs-sub); }
-  .wk-meta:has(.wk-prog) .wk-target-word { display: none; }
-}
-@media (min-width: 360px) and (max-width: 399px) {
-  .wk-meta:has(.wk-prog) .wk-target-word { display: none; }
 }

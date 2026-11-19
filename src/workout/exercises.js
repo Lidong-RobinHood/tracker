@@ -176,7 +176,7 @@ function progressSections(ex, workouts) {
 
   const fmtV = (key, v) => {
     if (v === null || v === undefined) return '–';
-    if (key === 'load') return fmtTonnage(v);
+    if (key === 'load') return fmtTonnage(v, { kg: true }); // per exercise: always kg
     if (key === 'bestReps' || key === 'reps') return `${fmtNum(v, 0)} reps`;
     return `${fmtNum(v, 1)} kg`;
   };
@@ -193,7 +193,7 @@ function progressSections(ex, workouts) {
     }));
     const pts = filterRange(points, progressState.range, today());
     const ch = seriesChange(pts, key);
-    const unitShort = (v) => (key === 'load' ? (v >= 1000 ? `${fmtNum(v / 1000, 1)} t` : fmtNum(v, 0)) : fmtNum(v, 1));
+    const unitShort = (v) => (key === 'load' ? fmtTonnage(v, { kg: true }).replace(/ kg$/, '') : fmtNum(v, 1));
     replaceChildren(chartBox, pts.length
       ? lineChart({
         points: pts.map((p) => ({
@@ -242,7 +242,7 @@ function progressSections(ex, workouts) {
       return el('a', { class: 'list-item', href: href(`workout/history/${encodeURIComponent(workout.id)}`) },
         el('div', { class: 'li-main' },
           el('div', { class: 'li-title wk-wrap' }, formatSets(entry.sets), ...recordBadges(records.get(workout.id))),
-          el('div', { class: 'li-sub' }, `${shortDate(workout.date)} · ${workout.name} · ${m.bodyweight ? `${m.reps} reps` : fmtTonnage(m.load)}`)),
+          el('div', { class: 'li-sub' }, `${shortDate(workout.date)} · ${workout.name} · ${m.bodyweight ? `${m.reps} reps` : fmtTonnage(m.load, { kg: true })}`)),
         el('span', { class: 'li-trail' }, c ? pctBadge(c.pct) : el('span', { class: 't-sub muted' }, 'first')),
         icon('chevron-right', { class: 'li-chevron' }));
     }));

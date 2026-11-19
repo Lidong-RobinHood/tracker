@@ -107,9 +107,13 @@ first run; user edits to seeded exercises are kept.
 ```
 { id, name, order,
   items: [ { exerciseId, targetSets, targetReps, targetRepsMax: number|null } ],
+  splitId?: string,
   createdAt, updatedAt }
 ```
 `3 x 6` = `targetSets 3, targetReps 6`. Optional range `3 x 6–8` uses `targetRepsMax 8`.
+`splitId` (optional string): set on routines created by adopting a split (the split id, e.g.
+`'ul4-b'`). Otherwise the record has the shape above and is an ordinary, editable routine. Routines
+the user made never have it, so "replace" can only remove adopted ones.
 
 ### `workouts` (sessions; key `id`; index `date`)
 ```
@@ -165,6 +169,15 @@ working set. Every consumer decides via `isBaseline(workout)`; real workouts nev
 `{ key, value }`. Keys: `profile` (heightCm, birthYear, sex), `goal` (rateKgPerWeek,
 negative = lose), `targets` (kcal, protein, carbs, fat; source 'manual'|'adaptive'),
 `volume` ({primary:1, secondary:0.5, dropset:0}), `meta` (schemaVersion, seededAt).
+`activeSplit` (optional): `{ splitId, level: 'minimum'|'standard'|'high', routineIds: [ids in rotation
+order], adoptedAt }`. Absent = no split followed. "Stop following" removes it and keeps the routines.
+It lives in `settings`, so export / import carry it with no schema change.
+
+**Split library.** Training splits are a catalogue in code (`src/data/splits.js`), not a store.
+Adopting one writes ordinary `routines` (with `splitId`) and the `activeSplit` setting, and may
+replace the `volumeTargets` setting; "Next up" is derived from `activeSplit.routineIds` and the
+logged workouts, never stored. Catalogue, adopt / replace rules, volume levels, alternatives and
+the Next up rotation are documented in `docs/SPLITS.md`.
 
 ### `targetHistory` (key `weekStart`) — step 4
 `{ weekStart, trendKg, tdee, kcalTarget, daysLogged, createdAt }`

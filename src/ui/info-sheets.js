@@ -58,7 +58,7 @@ export const INFO_SHEETS = Object.freeze({
   tonnage: {
     title: 'Tonnage',
     text: () => [
-      'Weight × reps of done normal sets, in kg (t = 1000 kg). Dropsets are shown separately; bodyweight sets count 0 kg.',
+      `Weight × reps of done normal sets, in kg; from ${n(10000)} kg in t (1 t = ${n(1000)} kg). Single sets and exercises always in kg. Dropsets are shown separately; bodyweight sets count 0 kg.`,
       'By muscle: each exercise’s tonnage goes to its direct muscles, split equally. Routine charts show the last 8 sessions; % = change vs the session before.',
     ],
   },
@@ -170,8 +170,8 @@ export const INFO_SHEETS = Object.freeze({
   backup: {
     title: 'Backup',
     text: () => [
-      'All data lives only in this browser on this device: no account, no cloud, no sync. Export regularly and keep the file elsewhere, such as a cloud drive or an e-mail to yourself.',
-      `New phone: export here, then Import JSON there; it replaces everything. API keys are not in the backup. The app reminds you after ${BACKUP_DUE_DAYS} days.`,
+      'All data lives only in this browser on this device: no account, no cloud, no sync. Export backup regularly and keep the file elsewhere, such as a cloud drive or an e-mail to yourself.',
+      `New phone: Export backup here, then Import backup there; it replaces everything. API keys are not in the backup. The app reminds you after ${BACKUP_DUE_DAYS} days.`,
     ],
   },
   storage: {

@@ -318,7 +318,9 @@ export async function mountSession(container, { id }) {
           'aria-label': `${name} tutorial (opens in a new tab)`,
         }, icon('circle-play')),
         iconButton('ellipsis', { label: 'Exercise menu', onClick: () => exerciseMenu(entry) })),
-      el('div', { class: 'wk-meta' }, targetBtn, chip, stepBtn),
+      // Target first, never truncated; the suggestion chip + weight step sit right-aligned on the same
+      // line when there is room, else wrap to their own line (fixed per card, ticking never moves it).
+      el('div', { class: 'wk-meta' }, targetBtn, chip ? el('div', { class: 'wk-prog-group' }, chip, stepBtn) : null),
       raiseRow,
       lastLine,
       targetHit,

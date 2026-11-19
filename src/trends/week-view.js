@@ -2,7 +2,7 @@
 // All numbers come from src/core/weekly-report.js; definitions are documented there and repeated in
 // the info sheets (report, complete, trend, sets, tonnage, macros).
 import * as db from '../db/db.js';
-import { el, pageHeader, emptyState, fmtNum, fmtDate, fmtGrouped, href, navigate, cardHeader, statTile, tag, icon, infoButton } from '../ui/index.js';
+import { el, pageHeader, emptyState, fmtNum, fmtDate, fmtGrouped, fmtTonnage, href, navigate, cardHeader, statTile, tag, icon, infoButton } from '../ui/index.js';
 import { today as todayStr, addDays, weekStart, weekday, isValidDate } from '../core/dates.js';
 import { fmtPercent } from '../core/food-percent.js';
 import { formatPct } from '../core/workout-progress.js';
@@ -31,8 +31,8 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // ---------------------------------------------------------------- list
 
-/** Tonnage: kg below 1000, t (one decimal) from 1000. */
-const tonnage = (kg) => (kg === null || kg === undefined ? '–' : kg < 1000 ? `${fmtGrouped(kg)} kg` : `${fmtNum(kg / 1000, 1)} t`);
+/** Tonnage: the shared rule (whole kg below 10 000 kg, t with two decimals from 10 000 kg). */
+const tonnage = (kg) => fmtTonnage(kg);
 
 /** Route: trends/weeks */
 export async function mountWeeks(container) {
@@ -292,7 +292,7 @@ function trainingCard(r) {
     el('div', { class: 'tiles' },
       statTile({ label: 'Workouts', value: `${t.done}`, sub: t.workouts.length > t.done ? `+${t.workouts.length - t.done} unfinished` : null }),
       statTile({ label: 'Sets', value: `${t.sets}`, sub: `${formatPct(t.setsPct)} vs last` }),
-      statTile({ label: 'Tonnage', value: tonnage(t.load).split(' ')[0], unit: t.load < 1000 ? 'kg' : 't', sub: `${formatPct(t.loadPct)} vs last` })),
+      statTile({ label: 'Tonnage', value: tonnage(t.load).replace(/ (kg|t)$/, ''), unit: tonnage(t.load).replace(/^.* /, ''), sub: `${formatPct(t.loadPct)} vs last` })),
     t.dropsets ? el('div', { class: 't-sub muted' }, `+${plural(t.dropsets, 'dropset')}, not counted`) : null,
     el('div', { class: 'list wr-workouts' }, t.workouts.map((w) => el('a', { class: 'list-item', href: href(w.finished ? `workout/history/${encodeURIComponent(w.id)}` : `workout/session/${encodeURIComponent(w.id)}`) },
       el('div', { class: 'li-main' },

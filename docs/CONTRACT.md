@@ -94,6 +94,7 @@ export const routes = [
 | `fmtDate('2026-11-18')`, `fmtDay(date)` | `'Wed 18 Nov'`; `'Today'`/`'Yesterday'`/`'Tomorrow'` else fmtDate |
 | `fmtTime(ms)`, `fmtDuration(ms)`, `fmtBytes(b)` | `'07:03'`, `'1 h 05 min'`, `'1.2 MB'` |
 | `fmtGrouped(n, maxDecimals = 0)`, `fmtSigned(n, maxDecimals = 0)` | display numbers: `'1 310'` (narrow no-break space U+202F), `'−0.5'` (true minus U+2212); `fmtSigned` adds `+` (`'+50'`, `'−50'`, `'0'`). For numbers a user reads, not for input values |
+| `fmtTonnage(kg, { kg })` | the one tonnage rule: whole kg, grouped, below 10 000 kg (`'2 340 kg'`), tonnes with two decimals from 10 000 kg (`'12.48 t'`; rounded kg decide, so 9 999.6 → `'10.00 t'`); `{ kg: true }` = always kg, for single-set and per-exercise tonnage (`'12 480 kg'`); `null` → `'–'`. Every tonnage on screen goes through it |
 
 ## Design system (2026-11 redesign) — `app.css`
 

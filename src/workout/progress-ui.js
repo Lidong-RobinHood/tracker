@@ -1,5 +1,5 @@
 // Small shared pieces for the progress views: percentage badge, tonnage formatting, comparison block.
-import { el, href, fmtNum, fmtGrouped, icon, sectionHeader } from '../ui/index.js';
+import { el, href, fmtNum, fmtTonnage, icon, sectionHeader } from '../ui/index.js';
 import { formatPct, trendOf } from '../core/workout-progress.js';
 import { formatWeight } from '../core/workout.js';
 import { exName, shortDate } from './data.js';
@@ -32,31 +32,18 @@ export function pctWords(pct) {
   return `${t === 'up' ? 'up' : 'down'} ${fmtNum(Math.abs(pct), 1)} percent`;
 }
 
-/** 12450 -> '12 450' (narrow no-break space groups), whole kg. */
-export function fmtLoadNum(n) {
-  if (n === null || n === undefined || !Number.isFinite(n)) return '–';
-  return fmtGrouped(Math.round(n), 0);
-}
-
 /**
- * Tonnage with the one unit rule: kg below 1000 (whole kg), t from 1000 kg (one decimal).
- * '615 kg', '2.6 t', '59.8 t'.
+ * Tonnage: one shared rule (src/ui/format.js): whole kg below 10 000 kg, t with two decimals from
+ * 10 000 kg; `{ kg: true }` for single sets and per-exercise tonnage. Re-exported for the views.
  */
-export function fmtTonnage(n) {
-  if (n === null || n === undefined || !Number.isFinite(n)) return '–';
-  if (Math.abs(n) < 1000) return `${fmtGrouped(n, 1)} kg`;
-  return `${fmtGrouped(n / 1000, 1)} t`;
-}
+export { fmtTonnage };
 
-/** Tonnage split for a stat tile: { value: '2.6', unit: 't' }. */
-export function tonnageParts(n) {
-  const s = fmtTonnage(n);
+/** Tonnage split for a stat tile: { value: '12.48', unit: 't' } or { value: '2 340', unit: 'kg' }. */
+export function tonnageParts(n, opts) {
+  const s = fmtTonnage(n, opts);
   const i = s.lastIndexOf(' ');
   return i < 0 ? { value: s, unit: '' } : { value: s.slice(0, i), unit: s.slice(i + 1) };
 }
-
-/** Same as fmtTonnage (older name). */
-export const fmtLoad = fmtTonnage;
 
 /** Top set as '100 × 8' or 'BW × 12'. */
 export function topText(top) {
@@ -64,9 +51,9 @@ export function topText(top) {
   return `${formatWeight(top.weight)} × ${top.reps}`;
 }
 
-/** Value of a comparison in its basis: '2.3 t' or '36 reps'. */
+/** Value of a per-exercise comparison in its basis: '2 340 kg' (always kg) or '36 reps'. */
 export function basisValue(basis, v) {
-  return basis === 'reps' ? `${fmtNum(v, 0)} reps` : fmtTonnage(v);
+  return basis === 'reps' ? `${fmtNum(v, 0)} reps` : fmtTonnage(v, { kg: true });
 }
 
 const RECORD_LABEL = { weight: 'Record weight', e1rm: 'Record est. 1RM', reps: 'Record reps' };

@@ -114,7 +114,7 @@ unfinished workouts do not move it; a missed day needs no handling. Deleted rout
 **Mounting.** `src/splits/next-up.js` exports `async nextUpCard({ onChange, showChange = true })` →
 `HTMLElement | null` (null when no split is followed or all its routines are gone). The workout home can
 `const card = await nextUpCard(); if (card) append(container, card);`. Start calls `startWorkout(routine)`
-from `src/workout/data.js`. Until the home mounts it, the card shows on the library screen.
+from `src/workout/data.js`. The workout home mounts it under the resume block; the library screen shows a compact "Following" card instead.
 
 ## Evidence (sources)
 
