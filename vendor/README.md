@@ -7,6 +7,9 @@ Everything here is served as-is from this repo; no CDN is used at runtime.
 | `barcode-detector/ponyfill.js` | [`barcode-detector`](https://www.npmjs.com/package/barcode-detector), file `dist/iife/ponyfill.js` (bundles the JS part of `zxing-wasm`) | 3.2.4 | MIT (`barcode-detector/LICENSE-barcode-detector.txt`) |
 | `barcode-detector/zxing_reader.wasm` | [`zxing-wasm`](https://www.npmjs.com/package/zxing-wasm), file `dist/reader/zxing_reader.wasm` | 3.1.7 (the exact version `barcode-detector@3.2.4` depends on) | zxing-wasm glue: MIT (`barcode-detector/LICENSE-zxing-wasm.txt`); compiled-in [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) and `ZXingWasm.cpp`: Apache-2.0 (`barcode-detector/LICENSE-zxing-cpp.txt`, the unmodified Apache License 2.0 text from apache.org; zxing-cpp ships no NOTICE file) |
 
+| `icons/LICENSE-lucide.txt` | Lucide `LICENSE` from https://github.com/lucide-icons/lucide (branch main, fetched 2026-11-19), unmodified | — | ISC + MIT (Feather) text for the icons inlined in `src/ui/icons.js` |
+| `icons/LICENSE-tabler-icons.txt` | Tabler Icons `LICENSE` from https://github.com/tabler/tabler-icons (branch main, fetched 2026-11-19), unmodified | — | MIT text for the barbell icon in `src/ui/icons.js` |
+
 SHA-256 of `zxing_reader.wasm`: `33c8c50be17d0bb05454b4fd3ffb5b5ab9a8e8d1c0ebeb21a1adf4a89c1a8b59`
 (matches `ZXING_WASM_SHA256` exported by the bundled JS).
 

@@ -17,6 +17,24 @@ Last reviewed: 2026-11-19 (app version 0.5.2).
   Apache License 2.0. Full text: `vendor/barcode-detector/LICENSE-zxing-cpp.txt`
 - The files are unmodified copies of the published npm packages (versions and checksum: `vendor/README.md`).
 
+### Lucide icons
+- Source: https://github.com/lucide-icons/lucide (one SVG file per icon from `icons/`, fetched individually
+  on 2026-11-19). The element markup of each icon is inlined unmodified in `src/ui/icons.js`, which lists
+  every icon used.
+- Licence: ISC License. Copyright (c) 2026 Lucide Icons and Contributors.
+- Icons derived from Feather (the ones Lucide's LICENSE lists, marked in `src/ui/icons.js`): MIT License,
+  Copyright (c) 2013-present Cole Bemis.
+- Full text (ISC and the Feather MIT notice, exactly as in Lucide's LICENSE): `vendor/icons/LICENSE-lucide.txt`
+
+### Tabler Icons (barbell icon only)
+- Source: https://github.com/tabler/tabler-icons, file `icons/outline/barbell.svg` (fetched 2026-11-19),
+  element markup inlined unmodified in `src/ui/icons.js`.
+- Licence: MIT License. Copyright (c) 2020-2026 Paweł Kuna. Full text: `vendor/icons/LICENSE-tabler-icons.txt`
+
+## Original artwork
+The body map and the muscle icons were drawn for this project; no third-party artwork was used
+(`docs/AUTHORSHIP.md`).
+
 ## Bundled data
 
 ### USDA FoodData Central – SR Legacy (April 2018 release)

@@ -1,5 +1,5 @@
 // Boot, hash router and tab bar. Features register routes by exporting `routes` from their index.js.
-import { el, closeAllOverlays } from './ui/index.js';
+import { el, closeAllOverlays, icon } from './ui/index.js';
 import { _dropStaleOverlayEntry } from './ui/overlay.js';
 import { _noteNavigation } from './ui/nav.js';
 import { openDb, seedExercises } from './db/db.js';
@@ -13,10 +13,10 @@ import { routes as onboardingRoutes, startAppServices } from './onboarding/index
 
 /** Tabs in the bottom bar. A route belongs to the tab named by its `tab` field, else its first path segment. */
 const TABS = [
-  { id: 'diary', label: 'Diary', icon: 'M4 5h16M4 10h16M4 15h10M4 20h7' },
-  { id: 'workout', label: 'Workout', icon: 'M3 9v6M6 6v12M18 6v12M21 9v6M6 12h12' },
-  { id: 'trends', label: 'Trends', icon: 'M3 20h18M5 16l4-5 4 3 6-8' },
-  { id: 'settings', label: 'Settings', icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1c.5.4 1.1.7 1.7 1l.4 2.5h4l.4-2.5c.6-.3 1.2-.6 1.7-1l2.4 1 2-3.4z' },
+  { id: 'diary', label: 'Diary', icon: 'utensils' },
+  { id: 'workout', label: 'Workout', icon: 'barbell' },
+  { id: 'trends', label: 'Trends', icon: 'chart-line' },
+  { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 const DEFAULT_PATH = 'diary';
 
@@ -61,15 +61,9 @@ const tabLinks = new Map();
 
 function buildTabbar() {
   for (const t of TABS) {
-    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    icon.setAttribute('viewBox', '0 0 24 24');
-    icon.setAttribute('aria-hidden', 'true');
-    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    p.setAttribute('d', t.icon);
-    icon.append(p);
-    const a = el('a', { class: 'tab', href: `#/${t.id}` }, icon, el('span', t.label));
+    const a = el('a', { class: 'tab', href: `#/${t.id}` }, icon(t.icon, { size: 24 }), el('span', t.label));
     tabLinks.set(t.id, a);
-    tabbar.append(a);
+    tabbar.appendChild(a);
   }
 }
 

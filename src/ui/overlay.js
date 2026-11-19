@@ -2,6 +2,7 @@
 // Each dismissible overlay adds a history entry (same URL), so the phone's Back button closes the top
 // overlay instead of leaving the screen; closing it with its own controls removes that entry again.
 import { el } from './dom.js';
+import { icon } from './icons.js';
 
 const open = new Set();
 
@@ -102,7 +103,7 @@ function openOverlay(kind, { title = '', content = null, onClose = null, dismiss
   const body = el('div', { class: 'overlay-body' }, content);
   const footer = el('div', { class: 'overlay-footer' });
   const closeBtn = dismissible
-    ? el('button', { class: 'btn btn-icon btn-ghost', type: 'button', 'aria-label': 'Close', onClick: () => api.close() }, '×')
+    ? el('button', { class: 'btn btn-icon btn-ghost overlay-close', type: 'button', 'aria-label': 'Close', onClick: () => api.close() }, icon('x'))
     : null;
   const header = title || closeBtn
     ? el('div', { class: 'overlay-header' }, el('h2', { id: titleId, class: 'overlay-title' }, title), closeBtn)
@@ -192,7 +193,7 @@ export function confirmDialog({ title = 'Are you sure?', message = '', confirmLa
   const m = openModal({ title, content: typeof message === 'string' ? el('p', message) : message, className: 'confirm' });
   const ok = el('button', { class: ['btn', danger ? 'btn-danger' : 'btn-primary'], type: 'button', onClick: () => m.close(true) }, confirmLabel);
   m.footer.append(
-    el('button', { class: 'btn', type: 'button', onClick: () => m.close(false) }, cancelLabel),
+    el('button', { class: 'btn btn-secondary', type: 'button', onClick: () => m.close(false) }, cancelLabel),
     ok,
   );
   requestAnimationFrame(() => ok.focus());

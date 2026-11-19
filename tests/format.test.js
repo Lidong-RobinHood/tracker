@@ -24,3 +24,14 @@ test('date formatting', () => {
   assert.equal(f.fmtDuration(45 * 60000), '45 min');
   assert.equal(f.fmtTime(new Date(2026, 0, 1, 7, 3).getTime()), '07:03');
 });
+
+test('grouped and signed numbers (thin-space thousands, true minus)', () => {
+  assert.equal(f.fmtGrouped(1310), '1 310');
+  assert.equal(f.fmtGrouped(12345.67, 1), '12 345.7');
+  assert.equal(f.fmtGrouped(-1300), '−1 300');
+  assert.equal(f.fmtGrouped(999), '999');
+  assert.equal(f.fmtGrouped(null), '–');
+  assert.equal(f.fmtSigned(50), '+50');
+  assert.equal(f.fmtSigned(-0.5, 1), '−0.5');
+  assert.equal(f.fmtSigned(0), '0');
+});

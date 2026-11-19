@@ -58,3 +58,25 @@ export function fmtBytes(b) {
   while (b >= 1000 && i < units.length - 1) { b /= 1000; i++; }
   return `${fmtNum(b, i ? 1 : 0)} ${units[i]}`;
 }
+
+const THIN = ' ';   // narrow no-break space: thousands separator
+const MINUS = '−';  // typographic minus
+
+/**
+ * Grouped number for display: 1310 -> '1 310' (narrow no-break space), −0.5 -> '−0.5' (true minus),
+ * null -> '–'. Up to `maxDecimals` places, trailing zeros dropped (like fmtNum).
+ * @param {number|null|undefined} n @param {number} [maxDecimals]
+ */
+export function fmtGrouped(n, maxDecimals = 0) {
+  const s = fmtNum(n, maxDecimals);
+  if (s === '–') return s;
+  const neg = s.startsWith('-');
+  const [i, d] = (neg ? s.slice(1) : s).split('.');
+  return (neg ? MINUS : '') + i.replace(/\B(?=(\d{3})+$)/g, THIN) + (d ? `.${d}` : '');
+}
+
+/** Signed delta: 50 -> '+50', -0.5 -> '−0.5', 0 -> '0'. Grouped like fmtGrouped. */
+export function fmtSigned(n, maxDecimals = 0) {
+  const s = fmtGrouped(n, maxDecimals);
+  return s !== '–' && s !== '0' && !s.startsWith(MINUS) ? `+${s}` : s;
+}
