@@ -65,8 +65,8 @@ test('round trip for every preset', () => {
 });
 
 test('goalSummary is plain language', () => {
-  assert.equal(goalSummary('lose', 0.5), 'Lose 0.5 kg a week');
-  assert.equal(goalSummary('gain', 0.25), 'Gain 0.25 kg a week');
-  assert.equal(goalSummary('maintain', null), 'Maintain your weight');
-  assert.match(goalSummary('gain', 0.75), /at most 0.5/);
+  assert.equal(goalSummary('lose', 0.5), 'Lose 0.5 kg / week');
+  assert.equal(goalSummary('gain', 0.25), 'Gain 0.25 kg / week');
+  assert.equal(goalSummary('maintain', null), 'Maintain');
+  assert.match(goalSummary('gain', 0.75), /max 0.5/);
 });

@@ -271,7 +271,7 @@ test('item 1: decimal detection reports a confidence; three-digit groups alone a
 test('item 1: plausibility warning when the median day energy looks wrong', () => {
   const low = summariseFood([{ date: '2026-11-12', kcal: 1.1 }, { date: '2026-11-13', kcal: 1.3 }, { date: '2026-11-14', kcal: 980 }]);
   assert.equal(low.warnings.length, 1);
-  assert.match(low.warnings[0].message, /low/);
+  assert.match(low.warnings[0].message, /only 1 kcal/);
   assert.equal(low.warnings[0].code, 'median-low');
   const high = summariseFood([{ date: '2026-11-12', kcal: 9000 }, { date: '2026-11-12', kcal: 9000 }]);
   assert.equal(high.warnings[0].code, 'median-high');

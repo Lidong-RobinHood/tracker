@@ -1,7 +1,7 @@
 // Import food diary history from a CSV/TSV export: file → detected format → column mapping
 // (presets for documented exports) → meal names → preview → confirm.
 import * as db from '../db/db.js';
-import { el, pageHeader, toast, href, fmtNum } from '../ui/index.js';
+import { el, pageHeader, toast, href, fmtGrouped, sectionHeader, statTile, icon } from '../ui/index.js';
 import { today } from '../core/dates.js';
 import {
   FOOD_FIELDS, PRESETS, guessMapping, detectPreset, presetMapping, detectFormats, mealValues, guessMeal,
@@ -34,21 +34,22 @@ export async function mountFoodImport(container) {
   const setup = el('div', { class: 'stack' });
   const preview = el('div', { class: 'stack imp-preview', 'aria-live': 'polite' });
 
+  container.classList.add('imp-view');
   container.append(
     pageHeader({ title: 'Import food diary', back: 'import' }),
-    el('section', { class: 'card stack' },
-      el('p', null, 'Pick the CSV file you exported from your old app (or any spreadsheet saved as CSV). Each row becomes one quick-add entry with its calories and macros.'),
-      el('details', { class: 'imp-example' }, el('summary', null, 'Where do I get the file?'),
-        el('ul', { class: 'small imp-help' },
-          el('li', null, 'MyFitnessPal (Premium): Reports or More → Export → choose dates. You get a zip by email; use the "Nutrition Summary" CSV inside. It has one row per meal per day, not single foods.'),
+    el('section', { class: 'section' }, sectionHeader('1 · Pick or paste a CSV'), el('div', { class: 'card stack' },
+      el('p', { class: 't-sub' }, 'Each CSV row becomes one Quick add entry.'),
+      el('details', { class: 'imp-example' }, el('summary', null, el('span', null, 'Where do I get the file?'), icon('chevron-down', { size: 18, class: 'imp-chev' })),
+        el('ul', { class: 't-sub imp-help' },
+          el('li', null, 'MyFitnessPal (Premium): Reports or More → Export → choose dates. You get a zip by email; use the "Nutrition Summary" CSV inside.'),
           el('li', null, 'Cronometer (free): on the website, More → Account → Account Data → Export Data. "Servings" has single foods; "Daily Nutrition" has day totals.'),
           el('li', null, 'FDDB (free, website only): My Fddb → Account → Manage content and data → Export food diary. Our layout for this file is not confirmed by FDDB; check the preview.'),
           el('li', null, 'Yazio has no export of its own at the moment (only a data request to their support). If you get a CSV from them, use the column mapping.'))),
-      el('p', { class: 'small muted' }, 'Not affiliated with these apps.'),
+      el('p', { class: 't-sub muted' }, 'Not affiliated with these apps.'),
       exampleBox('Example of a simple CSV', EXAMPLE),
       filePicker({ label: 'Pick a CSV file', onText: (t) => { textarea.value = ''; load(t); }, onError: (e) => toast(e.message, { type: 'error' }) }),
       textarea,
-      el('button', { type: 'button', class: 'btn btn-block', onClick: () => { if (textarea.value.trim()) load(textarea.value); else toast('Pick a file or paste its contents', { type: 'error' }); } }, 'Read pasted text')),
+      el('button', { type: 'button', class: 'btn btn-block', onClick: () => { if (textarea.value.trim()) load(textarea.value); else toast('Pick a file or paste its contents', { type: 'error' }); } }, 'Read pasted text'))),
     setup, preview);
 
   async function load(text, keep = false) {
@@ -99,21 +100,20 @@ export async function mountFoodImport(container) {
   function renderSetup() {
     const t = state.table;
     if (!t) { setup.replaceChildren(); return; }
-    if (!t.rows.length) { setup.replaceChildren(el('section', { class: 'card imp-fatal' }, el('p', null, 'The file has no data rows.'))); return; }
+    if (!t.rows.length) { setup.replaceChildren(el('section', { class: 'card imp-fatal' }, el('p', { class: 't-sub' }, 'The file has no data rows.'))); return; }
     const sample = (i) => {
       const v = t.rows.slice(0, 20).map((r) => r.cells[i]).find((x) => x);
       return v ? ` (e.g. ${String(v).slice(0, 24)})` : '';
     };
     const colOptions = [['', '— not in file —'], ...t.headers.map((h, i) => [String(i), `${h}${sample(i)}`])];
     const presetNote = state.preset
-      ? el('p', { class: ['small', state.preset.status === 'unconfirmed' ? 'text-warning' : 'muted'] },
-        `${state.preset.label}${state.presetId === 'auto' ? ' (recognised from the column names)' : ''}. ${state.preset.status === 'unconfirmed' ? 'Unconfirmed layout. ' : 'Layout confirmed from real export files. '}${state.preset.note}`)
-      : el('p', { class: 'small muted' }, 'No known app layout recognised. Map the columns yourself below.');
+      ? el('p', { class: ['t-sub', state.preset.status === 'unconfirmed' ? 'text-warning' : 'muted'] },
+        `${state.preset.label}${state.presetId === 'auto' ? ' · recognised' : ''}. ${state.preset.status === 'unconfirmed' ? '' : 'Layout confirmed from real export files. '}${state.preset.note}`)
+      : el('p', { class: 't-sub muted' }, 'Layout not recognised. Map the columns below.');
 
     const nodes = [
-      el('h2', { class: 'section-title' }, 'File'),
+      sectionHeader('2 · File', { trail: `${plural(t.rows.length, 'row')} · ${plural(t.columnCount, 'column')}` }),
       el('section', { class: 'card stack' },
-        el('p', { class: 'small muted' }, `${plural(t.rows.length, 'data row')}, ${plural(t.columnCount, 'column')}.`),
         el('div', { class: 'grid-2' },
           el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Columns separated by'),
             select(DELIMS, state.delimiter, (v) => { state.delimiter = v; load(state.text, true); }, 'Column separator')),
@@ -127,8 +127,8 @@ export async function mountFoodImport(container) {
           select([['auto', 'Recognise automatically'], ['none', 'None (map columns myself)'], ...PRESETS.map((p) => [p.id, `${p.label}${p.status === 'unconfirmed' ? ' – unconfirmed' : ''}`])],
             state.presetId, (v) => { state.presetId = v; applyPreset(); renderSetup(); preview.replaceChildren(); }, 'App layout')),
         presetNote,
-        state.decimalConfidence !== 'high' ? el('p', { class: 'small text-warning' }, `Number style detected as ${styleLabel(state.decimal)} with ${state.decimalConfidence} confidence${state.decimalReason ? ` (${state.decimalReason})` : ''}. Check it in the preview.`) : null),
-      el('h2', { class: 'section-title' }, 'Columns'),
+        state.decimalConfidence !== 'high' ? el('p', { class: 't-sub text-warning' }, `Numbers read as ${styleLabel(state.decimal)} (${state.decimalConfidence} confidence). Check the preview.`) : null),
+      sectionHeader('Columns'),
       el('section', { class: 'card stack imp-mapping' }, FOOD_FIELDS.map((f) => el('div', { class: ['field', f.required && state.mapping[f.id] === undefined && !(f.id === 'kcal' && state.mapping.kj !== undefined) ? 'is-missing' : null] },
         el('span', { class: 'field-label' }, `${f.label}${f.required ? (f.id === 'kcal' ? ' (required, or kJ)' : ' (required)') : ''}`),
         select(colOptions, state.mapping[f.id] === undefined ? '' : String(state.mapping[f.id]), (v) => {
@@ -142,13 +142,11 @@ export async function mountFoodImport(container) {
     const extra = [];
     if (state.mapping.kcal !== undefined && state.mapping.kj !== undefined) {
       extra.push(el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Energy from'),
-        select([['kcal', 'The kcal column'], ['kj', 'The kJ column (converted: kcal = kJ ÷ 4.184)']], state.energy, (v) => { state.energy = v; invalidate(); }, 'Energy from')));
-    } else if (state.mapping.kj !== undefined) {
-      extra.push(el('p', { class: 'small muted' }, 'Energy is read from the kJ column and converted to kcal (kJ ÷ 4.184).'));
+        select([['kcal', 'kcal column'], ['kj', 'kJ column (converted)']], state.energy, (v) => { state.energy = v; invalidate(); }, 'Energy from')));
     }
     if (state.mapping.sodium !== undefined && state.mapping.salt === undefined) {
       const cb = el('input', { type: 'checkbox', checked: state.sodiumToSalt, onChange: () => { state.sodiumToSalt = cb.checked; invalidate(); } });
-      extra.push(el('label', { class: 'imp-check' }, cb, el('span', null, 'Convert sodium (mg) to salt (g): salt = sodium × 2.5 ÷ 1000')));
+      extra.push(el('label', { class: 'imp-check' }, cb, el('span', null, 'Convert sodium (mg) to salt (g)')));
     }
     const mealOpts = MEALS.map((m) => [m.id, m.label]);
     extra.push(el('div', { class: 'field' }, el('span', { class: 'field-label' }, state.mapping.meal === undefined ? 'Put all entries in' : 'Rows without a meal go to'),
@@ -157,16 +155,16 @@ export async function mountFoodImport(container) {
 
     if (state.mapping.meal !== undefined) {
       const vals = mealValues(t, state.mapping).filter((m) => m.value);
-      nodes.push(el('h2', { class: 'section-title' }, 'Meals in the file'));
+      nodes.push(sectionHeader('Meals in the file'));
       nodes.push(el('section', { class: 'card stack imp-meals' }, vals.slice(0, 40).map((m) => el('div', { class: 'field' },
         el('span', { class: 'field-label' }, `"${m.value}" (${plural(m.count, 'row')})`),
         select([...mealOpts, ['skip', 'Skip these rows']], state.mealMap[m.value] || state.defaultMeal, (v) => { state.mealMap[m.value] = v; invalidate(); }, `Meal for ${m.value}`))),
-      vals.length > 40 ? el('p', { class: 'small muted' }, `${vals.length - 40} more meal names go to the default meal.`) : null));
+      vals.length > 40 ? el('p', { class: 't-sub muted' }, `${vals.length - 40} more meal names go to the default meal.`) : null));
     }
 
     const missing = mappingProblems();
     nodes.push(el('section', { class: 'card stack' },
-      missing.length ? el('ul', { class: 'imp-problems text-danger small' }, missing.map((x) => el('li', null, x))) : null,
+      missing.length ? el('ul', { class: 'imp-problems text-danger t-sub' }, missing.map((x) => el('li', null, x))) : null,
       el('button', { type: 'button', class: 'btn btn-primary btn-block', disabled: missing.length > 0, onClick: (e) => buildPreview(e.currentTarget) }, 'Show preview')));
     setup.replaceChildren(...nodes);
   }
@@ -210,21 +208,21 @@ export async function mountFoodImport(container) {
     const r = state.result;
     const s = state.summary;
     if (!r) { preview.replaceChildren(); return; }
-    const nodes = [el('h2', { class: 'section-title' }, 'Preview')];
+    const nodes = [sectionHeader('3 · Preview')];
     nodes.push(el('section', { class: 'card stack' }, s.entries
-      ? el('dl', { class: 'imp-stats' },
-        st('Days', String(s.days)), st('Entries', String(s.entries)),
-        st('From', dateY(s.from)), st('To', dateY(s.to)),
-        st('kcal/day min', fmtNum(s.kcalMin, 0)), st('median', fmtNum(s.kcalMedian, 0)), st('max', fmtNum(s.kcalMax, 0)))
+      ? [el('div', { class: 'tiles' },
+        statTile({ label: 'Days', value: String(s.days) }), statTile({ label: 'Entries', value: String(s.entries) }),
+        statTile({ label: 'Median day', value: fmtGrouped(s.kcalMedian), unit: 'kcal' })),
+      el('p', { class: 't-sub muted' }, `${dateY(s.from)} – ${dateY(s.to)} · ${fmtGrouped(s.kcalMin)}–${fmtGrouped(s.kcalMax)} kcal / day`)]
       : el('p', { class: 'text-danger' }, 'No row could be used. Check the column mapping and the date and decimal settings.')));
-    for (const w of s.warnings || []) nodes.push(el('p', { class: 'small text-warning' }, w.message));
+    for (const w of s.warnings || []) nodes.push(el('p', { class: 't-sub text-warning imp-note', role: 'alert' }, icon('triangle-exclamation-point', { size: 16 }), ' ', w.message));
     // Number style can be switched here and the file is read again (ambiguous files: "1.050" / "1,050").
     nodes.push(el('section', { class: 'card stack' },
       el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Numbers in the file are written as'),
         select(NUMBER_STYLES, state.decimal, (v) => { state.decimal = v; state.decimalConfidence = 'high'; renderSetup(); buildPreview(); }, 'Number style')),
-      el('p', { class: 'small muted' }, state.decimal === 'comma'
-        ? 'Read as 1.234,5: "1.050" is one thousand and fifty, "9,5" is nine and a half.'
-        : 'Read as 1,234.5: "1,050" is one thousand and fifty, "9.5" is nine and a half.')));
+      el('p', { class: 't-sub muted' }, state.decimal === 'comma'
+        ? '"1.050" = 1050 · "9,5" = 9.5'
+        : '"1,050" = 1050 · "9.5" = 9.5')));
     nodes.push(issueList(r.skipped.map((x) => ({ line: x.line, message: x.reason, level: 'error' })), { title: `${plural(r.skipped.length, 'row')} skipped` }));
 
     if (s.conflictDays.length) {
@@ -232,21 +230,21 @@ export async function mountFoodImport(container) {
         el('input', { type: 'radio', name: 'imp-food-policy', value, checked: state.policy === value, onChange: () => { state.policy = value; renderPreview(); } }),
         el('span', null, label));
       nodes.push(el('section', { class: 'card stack imp-conflicts' },
-        el('div', { class: 'card-title' }, `${plural(s.conflictDays.length, 'day')} already ${s.conflictDays.length === 1 ? 'has' : 'have'} diary entries`),
-        el('p', { class: 'small muted num' }, s.conflictDays.slice(0, 30).map(dateY).join(', ') + (s.conflictDays.length > 30 ? ', …' : '')),
-        radio('skip', 'Skip those days (keep my diary as it is)'),
-        radio('add', 'Add the file entries to those days as well')));
+        el('h3', { class: 'card-title' }, `${plural(s.conflictDays.length, 'day')} already ${s.conflictDays.length === 1 ? 'has' : 'have'} diary entries`),
+        el('p', { class: 't-sub muted' }, s.conflictDays.slice(0, 30).map(dateY).join(', ') + (s.conflictDays.length > 30 ? ', …' : '')),
+        radio('skip', 'Skip those days'),
+        radio('add', 'Add to those days too')));
     }
     if (s.entries) {
       const days = [...s.perDay.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
-      nodes.push(el('details', { class: 'card imp-all' }, el('summary', null, `kcal per day (${days.length})`),
-        el('ul', { class: 'imp-plain small num' }, days.map(([d, k]) => el('li', null, `${dateY(d)}: ${fmtNum(k, 0)} kcal${s.conflictDays.includes(d) ? (state.policy === 'skip' ? ' (skipped, day has entries)' : ' (added to existing day)') : ''}`)))));
+      nodes.push(el('details', { class: 'card imp-all' }, el('summary', null, el('span', null, `kcal per day (${days.length})`), icon('chevron-down', { size: 18, class: 'imp-chev' })),
+        el('ul', { class: 'imp-plain t-sub' }, days.map(([d, k]) => el('li', null, `${dateY(d)}: ${fmtGrouped(k)} kcal${s.conflictDays.includes(d) ? (state.policy === 'skip' ? ' (skipped, day has entries)' : ' (added to existing day)') : ''}`)))));
     }
     const skip = state.policy === 'skip' ? new Set(s.conflictDays) : new Set();
     const n = r.entries.filter((e) => !skip.has(e.date)).length;
     const btn = el('button', { type: 'button', class: 'btn btn-primary btn-block', disabled: n === 0 || state.busy, onClick: () => confirm(btn, skip) },
       n ? `Import ${plural(n, 'entry', 'entries')}` : 'Nothing to import');
-    nodes.push(el('section', { class: 'card stack imp-confirm' }, el('p', { class: 'small muted' }, 'Entries are saved as quick-add items (calories and macros, no food link). The whole import can be undone from the Import page.'), btn));
+    nodes.push(sectionHeader('4 · Import'), el('section', { class: 'card stack imp-confirm' }, el('p', { class: 't-sub muted' }, 'Saved as Quick add entries. Undo on the Import page.'), btn));
     preview.replaceChildren(...nodes.filter(Boolean));
   }
 
@@ -280,14 +278,10 @@ export async function mountFoodImport(container) {
   function doneCard() {
     const d = state.done;
     return el('section', { class: 'card stack imp-done', role: 'status' },
-      el('div', { class: 'card-title' }, 'Import finished'),
-      el('p', null, `${plural(d.count, 'entry', 'entries')} on ${plural(d.days, 'day')} saved.`),
+      el('div', { class: 'imp-card-head imp-ok' }, icon('circle-check', { size: 18 }), el('h3', { class: 'card-title' }, 'Import finished')),
+      el('p', { class: 't-sub' }, `${plural(d.count, 'entry', 'entries')} on ${plural(d.days, 'day')} saved.`),
       el('div', { class: 'row imp-row-wrap' },
         el('a', { class: 'btn btn-primary', href: href(`diary/${d.first}`) }, 'Open first day'),
         el('a', { class: 'btn', href: href('import') }, 'Import page (undo)')));
   }
-}
-
-function st(label, value) {
-  return el('div', { class: 'imp-stat' }, el('dt', { class: 'small muted' }, label), el('dd', { class: 'num' }, value));
 }

@@ -1,7 +1,7 @@
 // Shared pieces of the import screens: CSS, worker-based parsing, file reading, batched writes,
 // run bookkeeping and undo. Imported text is untrusted: it is only ever put into the DOM as text.
 import * as db from '../db/db.js';
-import { el, fmtDate } from '../ui/index.js';
+import { el, fmtDate, icon } from '../ui/index.js';
 import { parseDate } from '../core/dates.js';
 import { chunk } from '../core/import-common.js';
 import { RUNS_KEY, EXERCISE_MAP_KEY, newRun, upsertRun, ownedBy, removableExercises, pruneMappings } from '../core/import-runs.js';
@@ -23,7 +23,7 @@ let workerBroken = false;
 let seq = 0;
 const pending = new Map();
 
-const PARSER_LOAD_ERROR = 'The import tool could not be loaded (offline, or the connection dropped). Reload the app while online and try again.';
+const PARSER_LOAD_ERROR = 'Import tool did not load. Reload while online.';
 
 function fallback(fn, args) {
   // Main thread, after letting the UI paint the "Reading…" state.
@@ -111,7 +111,7 @@ export function filePicker({ label = 'Choose a file', accept = '.txt,.csv,.tsv,t
       input.value = '';
     },
   });
-  return el('label', { class: 'btn imp-file' }, label, input);
+  return el('label', { class: 'btn imp-file' }, icon('upload', { size: 18 }), label, input);
 }
 
 // ---------------------------------------------------------------- small UI pieces
@@ -119,7 +119,7 @@ export function filePicker({ label = 'Choose a file', accept = '.txt,.csv,.tsv,t
 /** "What to paste" example box. */
 export function exampleBox(title, sample) {
   return el('details', { class: 'imp-example' },
-    el('summary', title),
+    el('summary', null, el('span', null, title), icon('chevron-down', { size: 18, class: 'imp-chev' })),
     el('pre', { class: 'imp-pre' }, sample));
 }
 
@@ -133,13 +133,13 @@ export function issueList(issues, { title, limit = 200 }) {
   const errors = issues.filter((i) => i.level !== 'info' && i.level !== 'warning').length;
   const shown = issues.slice(0, limit);
   return el('section', { class: ['card', 'imp-issues', errors ? 'has-errors' : null] },
-    el('div', { class: 'card-title' }, title),
+    el('div', { class: 'imp-card-head' }, icon(errors ? 'triangle-exclamation-point' : 'info', { size: 18 }), el('h3', { class: 'card-title' }, title)),
     el('ul', { class: 'imp-issue-list' }, shown.map((i) => el('li', { class: ['imp-issue', `lvl-${i.level || 'error'}`] },
       el('div', { class: 'imp-issue-head' },
         el('span', { class: 'imp-line num' }, `Line ${i.line}`),
         el('span', { class: 'imp-msg' }, i.message || i.reason || '')),
       i.text !== undefined && i.text !== '' ? el('code', { class: 'imp-src' }, String(i.text).slice(0, 200)) : null))),
-    issues.length > limit ? el('p', { class: 'small muted' }, `…and ${issues.length - limit} more.`) : null);
+    issues.length > limit ? el('p', { class: 't-sub muted' }, `…and ${issues.length - limit} more.`) : null);
 }
 
 /** <input type=date> limited to today. */

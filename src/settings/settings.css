@@ -1,20 +1,68 @@
-/* Settings. Narrow three-column fields at 375 px: the shared 3.2em unit padding hid digits
-   (e.g. "1500" showed as "150", "30.5" as "30."). Tighter padding there only. */
-.settings-view .grid-3 .input-unit .input { padding-left: var(--s2); padding-right: 1.9em; }
-/* 320 px phones: three gram fields side by side must still show 3-digit values in full. */
-@media (max-width: 360px) { .settings-view .grid-3 { gap: var(--s2); } }
-.settings-view .grid-3 .input-unit .unit { right: var(--s2); }
+/* Settings, Goal and targets, Set weighting, Licences. Tokens only (light + dark from app.css). */
 
-/* Goal amount: fixed sign ("−" lose, "+" gain) in front of the typed positive amount. */
-.set-goal-signed .input { padding-left: 1.6em; text-align: left; }
-.set-goal-sign { position: absolute; left: var(--s3); font-weight: 600; pointer-events: none; }
-.set-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-.set-backup-card { border-color: var(--warning); }
-.set-update-btn { min-height: var(--tap); flex: none; }
+/* grouped rows on the home screen */
+.set-list .list-item { gap: var(--s3); }
+.set-list .li-lead { display: flex; }
+.set-list .li-sub.set-wrap, .set-list .li-sub { white-space: normal; }
+.set-title-info { display: flex; align-items: center; overflow: visible; }
+.set-section-note { margin: 0; padding: 0 var(--s1); }
+.set-backup-card { display: flex; flex-direction: column; gap: var(--s3); background: var(--warn-soft); box-shadow: none; }
+.set-backup-head { display: flex; gap: var(--s3); align-items: flex-start; }
+.set-backup-head p { margin: 2px 0 0; }
+.set-warn-ic { color: var(--warn-text); flex: none; margin-top: 2px; }
+.set-update-btn { flex: none; }
+.set-count { min-height: 36px; padding: 4px 0; }
 
-/* Licences screen: compact two-column methods table. */
-.lic-table { width: 100%; border-collapse: collapse; }
-.lic-table th, .lic-table td { text-align: left; vertical-align: top; padding: var(--s2) var(--s2) var(--s2) 0; border-top: 1px solid var(--border); }
-.lic-table thead th { border-top: 0; color: var(--text-muted); font-weight: 500; padding-top: 0; }
-.lic-table tbody th { font-weight: 500; width: 38%; }
-.lic-table td { padding-right: 0; }
+/* cards with label + control rows (Goal and targets, Set weighting) */
+.set-card { padding: 0; overflow: hidden; }
+.set-card-top { padding: var(--s4) var(--s4) var(--s2); }
+.set-card-foot { margin: 0; padding: var(--s3) var(--s4) var(--s4); }
+.set-rows { display: flex; flex-direction: column; }
+.set-rows[hidden] { display: none; }
+.set-row { display: flex; align-items: center; gap: var(--s3); min-height: 60px; padding: var(--s2) var(--s4); border-top: 1px solid var(--line); }
+.set-card-top + .set-rows > .set-row:first-child, .set-card-top + .set-row { border-top: 0; }
+.set-card > .set-rows:first-child > .set-row:first-child { border-top: 0; }
+.set-row[hidden] { display: none; }
+.set-row-label { flex: 1 1 auto; min-width: 0; font-size: var(--fs-body); line-height: var(--lh-body); }
+.set-row-alt { flex: none; font-size: var(--fs-sub); color: var(--ink-2); white-space: nowrap; }
+.set-row > .input-unit, .set-row > .input { flex: none; width: 7.5em; }
+.set-row > .select { flex: 0 1 auto; width: auto; max-width: 62%; }
+.set-row .input-unit .input { padding-left: var(--s2); padding-right: 2.6em; }
+.set-row .input-unit .unit { right: var(--s2); }
+.set-row .swatch { width: 10px; height: 10px; }
+.set-chips { padding: var(--s1) var(--s4) var(--s3); }
+.set-sum { flex-wrap: wrap; }
+.set-sum p { margin: 0; }
+.set-times { position: absolute; left: var(--s3); color: var(--ink-2); pointer-events: none; }
+.set-in .set-times + .input { padding-left: 1.8em; }
+
+/* goal control: Lose / Maintain / Gain, amount stepper, one result line */
+.set-goal { display: flex; flex-direction: column; }
+.set-goal-label { display: flex; flex-direction: column; }
+.set-stepper { display: flex; align-items: center; gap: var(--s1); flex: none; }
+.set-stepper .set-step.btn.btn-icon.btn-ghost { background: var(--fill); color: var(--ink); border-radius: var(--r-md); }
+.set-stepper .set-step.btn.btn-icon.btn-ghost:disabled { color: var(--ink-3); }
+.set-goal-signed { width: 5.2em; }
+.set-row .set-goal-signed .input { padding-left: 1.4em; padding-right: var(--s2); text-align: center; font-size: var(--fs-head); font-weight: var(--fw-semibold); }
+.set-goal-sign { position: absolute; left: var(--s2); font-size: var(--fs-head); font-weight: var(--fw-semibold); pointer-events: none; }
+.set-goal-result { padding: var(--s3) var(--s4) var(--s4); border-top: 1px solid var(--line); font-size: var(--fs-body); line-height: var(--lh-body); font-weight: var(--fw-semibold); }
+.set-goal-row[hidden] + .set-goal-result { border-top: 0; padding-top: var(--s2); }
+.set-goal-result.is-error { color: var(--bad-text); }
+@media (max-width: 360px) {
+  .set-row { gap: var(--s2); padding-left: var(--s3); padding-right: var(--s3); }
+  .set-row > .input-unit, .set-row > .input { width: 6.6em; }
+  .set-goal-signed { width: 4.6em; }
+}
+
+/* Licences screen */
+.lic-card { display: flex; flex-direction: column; gap: var(--s3); }
+.lic-text { margin: 0; font-size: var(--fs-sub); line-height: var(--lh-sub); }
+.lic-link { overflow-wrap: anywhere; }
+.lic-ext { margin-left: 2px; vertical-align: -2px; }
+.lic-foot { margin: 0; padding: 0 var(--s1); }
+.lic-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sub); line-height: var(--lh-sub); }
+.lic-table th, .lic-table td { text-align: left; vertical-align: top; padding: var(--s2) var(--s2) var(--s2) 0; border-top: 1px solid var(--line); }
+.lic-table thead th { border-top: 0; padding-top: 0; font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: var(--fw-semibold); text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
+.lic-table tbody th { font-weight: var(--fw-semibold); width: 36%; }
+.lic-table td { padding-right: 0; overflow-wrap: anywhere; }
+.lic-src { margin-top: 2px; }

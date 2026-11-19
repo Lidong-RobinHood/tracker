@@ -1,21 +1,24 @@
-// Weight: quick entry for today, chart (raw + trend) with range switch, past entries (edit/delete).
-// Route: trends/weight
+// Weight: quick entry for today, the trend chart (dots = weigh-ins, line = trend) with a range switch
+// and the change over 7 / 14 / 30 / 90 days, past entries (edit/delete). Route: trends/weight
 import * as db from '../db/db.js';
-import { el, append, pageHeader, numberInput, field, toast, openSheet, confirmDialog, emptyState, fmtNum, fmtDate, fmtDay } from '../ui/index.js';
+import { el, append, pageHeader, numberInput, field, toast, openSheet, confirmDialog, emptyState, fmtNum, fmtDate, fmtDay,
+  cardHeader, segmented, icon, sectionHeader } from '../ui/index.js';
 import { today, addDays, isValidDate } from '../core/dates.js';
 import { trendSeries, trendAt, weightRate } from '../core/adaptive.js';
-import { weightChart } from './charts.js';
-import { ensureCss, signed } from './data.js';
-
-const RANGES = [{ id: '1m', label: '1 M', days: 30 }, { id: '3m', label: '3 M', days: 91 }, { id: 'all', label: 'All', days: null }];
-let rangeId = '1m'; // remembered while the app is open
+import { trendChart, changeTable, figures } from './charts.js';
+import { fixed, ensureCss, signed, rateText } from './data.js';
 import { MIN_KG, MAX_KG } from '../core/body-weight.js';
+
+const RANGES = [{ id: '1m', label: '1M', days: 30, name: '1 month' }, { id: '3m', label: '3M', days: 91, name: '3 months' },
+  { id: '1y', label: '1Y', days: 365, name: '1 year' }, { id: 'all', label: 'All', days: null, name: 'All weigh-ins' }];
+let rangeId = '1m'; // remembered while the app is open
 
 export async function mountWeight(container) {
   ensureCss();
-  container.append(pageHeader({ title: 'Weight', back: 'trends' }));
-  const body = el('div', { class: 'stack' });
-  container.append(body);
+  container.classList.add('tr-view');
+  const header = el('div');
+  const body = el('div', { class: 'tr-stack' });
+  container.append(header, body);
   let showAll = false;
 
   async function render() {
@@ -23,6 +26,9 @@ export async function mountWeight(container) {
     const weights = (await db.getAll('weights')).sort((a, b) => (a.date < b.date ? -1 : 1));
     const series = trendSeries(weights);
     const todays = weights.find((w) => w.date === now);
+    const rate = weights.length ? weightRate(weights, now) : null;
+    header.replaceChildren(pageHeader({ title: 'Weight', back: 'trends', info: 'trend',
+      subtitle: !weights.length ? null : rate === null ? 'Rate after 1 week' : rateText(rate) }));
 
     // quick entry
     const input = numberInput({ value: todays ? todays.kg : null, min: MIN_KG, max: MAX_KG, decimals: 2, ariaLabel: "Today's weight", placeholder: '0.0' });
@@ -36,60 +42,65 @@ export async function mountWeight(container) {
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
     const entry = el('section', { class: 'card stack', 'aria-label': "Today's weight" },
       el('div', { class: 'tr-entry' },
-        el('div', { class: 'grow' }, field(todays ? 'Today (saved)' : 'Today', input, { unit: 'kg' })),
+        el('div', { class: 'grow' }, field(todays ? 'Today · saved' : 'Today', input, { unit: 'kg' })),
         el('button', { class: 'btn btn-primary', type: 'button', onClick: save }, todays ? 'Update' : 'Save')),
-      el('button', { class: 'btn btn-sm btn-ghost tr-left', type: 'button', onClick: () => editSheet(null, render) }, '+ Add a past day'));
+      el('button', { class: 'btn btn-sm btn-ghost tr-left', type: 'button', onClick: () => editSheet(null, render) }, icon('plus', { size: 18 }), 'Add a past day'));
 
     if (!weights.length) {
-      body.replaceChildren(entry, el('div', { class: 'card' }, emptyState('No weigh-ins yet. Weigh yourself in the morning, after the toilet and before eating, and log it here. The trend appears from the second weigh-in.')));
+      body.replaceChildren(entry, el('div', { class: 'card' }, emptyState('No weigh-ins yet. Weigh in each morning before eating.')));
       return;
     }
 
-    // stats
-    const trendNow = trendAt(series, now);
-    const rate = weightRate(weights, now);
-    const stats = el('div', { class: 'grid-3 tr-stats' },
-      stat('Trend', trendNow === null ? '–' : `${fmtNum(trendNow, 1)}`, 'kg'),
-      stat('Per week', rate === null ? '–' : signed(rate, 2), rate === null ? 'needs 1 wk' : 'kg'),
-      stat('Latest', fmtNum(weights[weights.length - 1].kg, 1), fmtDay(weights[weights.length - 1].date)));
-
-    // chart
+    // chart card
     const range = RANGES.find((r) => r.id === rangeId);
     const from = range.days ? addDays(now, -(range.days - 1)) : (weights[0].date < addDays(now, -6) ? weights[0].date : addDays(now, -6));
     const inRange = series.filter((r) => r.date >= from);
-    const tabs = el('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Range' },
-      RANGES.map((r) => el('button', { type: 'button', role: 'tab', 'aria-selected': r.id === rangeId ? 'true' : 'false',
-        onClick: () => { rangeId = r.id; render(); } }, r.label)));
+    const trendNow = trendAt(series, now);
+    const before = series.filter((r) => r.date < from).pop();
+    const startTrend = before ? before.trend : inRange.length ? inRange[0].trend : null;
+    const seg = segmented({ small: true, ariaLabel: 'Chart range', value: rangeId,
+      options: RANGES.map((r) => ({ value: r.id, label: r.label, ariaLabel: r.name })),
+      onChange: (v) => { rangeId = v; render(); } });
+    const last = series[series.length - 1];
     const chart = inRange.length
-      ? weightChart(series, from, now)
-      : el('p', { class: 'muted small' }, 'No weigh-ins in this range.');
+      ? trendChart({
+        items: inRange.map((r) => ({ date: r.date, dot: r.kg, line: r.trend })),
+        lead: before ? before.trend : null, from, to: now, today: now, minSpan: 1,
+        ariaLabel: `Weight from ${fmtDate(from)} to ${fmtDate(now)}: dots are weigh-ins, the line is the trend`,
+        readout: (r) => (r ? `${fmtDate(r.date)} · ${fixed(r.dot, 1)} kg · trend ${fixed(r.line, 1)} kg`
+          : `Latest ${fmtDay(last.date)} · ${fixed(last.kg, 1)} kg · trend ${fixed(last.trend, 1)} kg`),
+        legend: ['Weigh-in', 'Trend'],
+      })
+      : el('p', { class: 't-sub muted' }, 'No weigh-ins in this range.');
+    const changes = trendNow === null ? [] : [7, 14, 30, 90].map((n) => {
+      const base = trendAt(series, addDays(now, -n));
+      return base === null || series[0].date > addDays(now, -n) ? null : { label: `${n} d`, value: signed(trendNow - base, 1) };
+    }).filter(Boolean);
+    const chartCard = el('section', { class: 'card tr-chart-card', 'aria-label': 'Weight trend' },
+      cardHeader('Trend', { trail: seg }),
+      figures(
+        { label: 'Trend', value: trendNow === null ? '–' : fixed(trendNow, 1), unit: 'kg' },
+        { label: `Change · ${range.label}`, value: trendNow === null || startTrend === null ? '–' : signed(trendNow - startTrend, 1), unit: 'kg' }),
+      chart,
+      changeTable(changes));
 
     // list
     const desc = [...series].reverse();
     const shown = showAll ? desc : desc.slice(0, 14);
     const list = el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
-      shown.map((r) => el('button', { type: 'button', class: 'list-item', onClick: () => editSheet(r, render) },
-        el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, fmtDay(r.date)), el('div', { class: 'li-sub num' }, `trend ${fmtNum(r.trend, 1)} kg`)),
-        el('span', { class: 'li-trail num' }, `${fmtNum(r.kg, 1)} kg`),
-        el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›'))),
+      shown.map((r) => el('button', { type: 'button', class: 'list-item', 'aria-label': `${fmtDate(r.date)}, ${fixed(r.kg, 1)} kg. Edit`, onClick: () => editSheet(r, render) },
+        el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, fmtDay(r.date)), el('div', { class: 'li-sub' }, `trend ${fixed(r.trend, 1)} kg`)),
+        el('span', { class: 'li-trail' }, `${fixed(r.kg, 1)} kg`),
+        icon('chevron-right', { class: 'li-chevron' }))),
       !showAll && desc.length > shown.length
         ? el('button', { type: 'button', class: 'list-item tr-more', onClick: () => { showAll = true; render(); } }, `Show all ${desc.length}`)
         : null));
 
-    body.replaceChildren(entry, stats,
-      el('section', { class: 'card stack' }, tabs, chart),
-      el('section', { class: 'section' }, el('h2', { class: 'section-title' }, 'Weigh-ins'), list),
-      el('p', { class: 'muted small tr-note' }, 'The trend is a moving average that smooths out day-to-day water swings. Watch the trend, not single days.'));
+    body.replaceChildren(entry, chartCard,
+      el('section', { class: 'section' }, sectionHeader('Weigh-ins', { trail: `${desc.length}` }), list));
   }
 
   await render();
-}
-
-function stat(label, value, sub) {
-  return el('div', { class: 'card tr-stat' },
-    el('div', { class: 'small muted' }, label),
-    el('div', { class: 'tr-stat-val num' }, value),
-    el('div', { class: 'small muted truncate' }, sub));
 }
 
 async function saveWeight(date, kg) {
@@ -102,7 +113,7 @@ function editSheet(row, onDone) {
   const date = el('input', { class: 'input', type: 'date', value: row ? row.date : addDays(today(), -1), max: today(), 'aria-label': 'Date' });
   if (!isNew) date.disabled = true;
   const kg = numberInput({ value: row ? row.kg : null, min: MIN_KG, max: MAX_KG, decimals: 2, ariaLabel: 'Weight' });
-  const sheet = openSheet({ title: isNew ? 'Add weigh-in' : `Weigh-in ${fmtDate(row.date)}` });
+  const sheet = openSheet({ title: isNew ? 'Add weigh-in' : `Weigh-in · ${fmtDate(row.date)}` });
   append(sheet.body, isNew ? field('Date', date) : null, field('Weight', kg, { unit: 'kg' }));
   let busy = false;
   const save = async () => {
@@ -132,7 +143,7 @@ function editSheet(row, onDone) {
     toast('Weigh-in deleted', { action: { label: 'Undo', onClick: async () => { if (old) await db.put('weights', old); onDone(); } } });
   };
   append(sheet.footer,
-    isNew ? null : el('button', { class: 'btn btn-danger', type: 'button', onClick: del }, 'Delete'),
+    isNew ? null : el('button', { class: 'btn btn-danger', type: 'button', onClick: del }, icon('trash-2', { size: 18 }), 'Delete'),
     el('div', { class: 'grow' }),
     el('button', { class: 'btn btn-primary', type: 'button', onClick: save }, 'Save'));
   setTimeout(() => kg.focus(), 50);

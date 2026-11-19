@@ -1,7 +1,9 @@
 // Hand-written inline SVG charts. Colours come from CSS classes in trends.css (shared tokens,
-// light + dark). Each chart has a readout line above it that follows pointer/tap (hover layer).
-import { el, fmtNum, fmtDate } from '../ui/index.js';
-import { addDays, daysBetween, weekday } from '../core/dates.js';
+// light + dark). One template for weight and expenditure (faint dots + an accent line, axis on the
+// right) and the daily intake bars. Each chart has a readout line above it: mouse hover follows the
+// pointer; a tap pins the nearest point until another point is tapped.
+import { el, fmtGrouped, fmtDate } from '../ui/index.js';
+import { daysBetween, weekday } from '../core/dates.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -17,7 +19,8 @@ function s(tag, attrs = {}, ...children) {
   return n;
 }
 
-const shortDate = (d) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+/** Axis date: '20 Oct'. */
+export const shortDate = (d) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
 
 /** ~count nice ticks; the domain is widened to whole steps. @returns {{ticks: number[], step: number, lo: number, hi: number}} */
 function niceTicks(lo, hi, count = 4) {
@@ -64,60 +67,82 @@ function attachHover(svg, W, xs, onPick) {
 }
 
 /**
- * Weight chart: raw weigh-ins as dots, trend as a line.
- * @param {{date: string, kg: number, trend: number}[]} rows trend series (all of it, for continuity)
- * @param {string} from first date shown
- * @param {string} to last date shown
+ * The trend chart template (weight and expenditure): faint dots, an accent line, gridlines with the
+ * axis on the right, the first date and "Today" (or the last date) under it.
+ * @param {{
+ *   items: {date: string, dot?: number|null, line?: number|null}[],  // by date, ascending (only the range)
+ *   lead?: number|null,          // line value just before `from`, so the line enters from the left edge
+ *   from: string, to: string, today?: string,
+ *   minSpan?: number,            // smallest y span (1 kg, 100 kcal)
+ *   axisDecimals?: number,
+ *   ariaLabel: string,
+ *   readout: (item: object|null) => string,  // null = the default line (nothing picked)
+ *   legend?: [string, string],   // [dots, line]
+ * }} o
  */
-export function weightChart(rows, from, to) {
-  const W = 340; const H = 200; const L = 34; const R = 8; const T = 10; const B = 26;
-  const vis = rows.filter((r) => r.date >= from && r.date <= to);
+export function trendChart(o) {
+  const W = 340; const H = 168; const L = 4; const R = 40; const T = 8; const B = 24;
+  const { items, from, to } = o;
   const days = Math.max(1, daysBetween(from, to));
   const x = (d) => L + (daysBetween(from, d) / days) * (W - L - R);
-  const vals = vis.flatMap((r) => [r.kg, r.trend]);
+  const vals = items.flatMap((r) => [r.dot, r.line]).concat(o.lead ?? []).filter((v) => typeof v === 'number' && Number.isFinite(v));
   let lo = Math.min(...vals); let hi = Math.max(...vals);
-  if (hi - lo < 1) { const m = (hi + lo) / 2; lo = m - 0.5; hi = m + 0.5; }
-  const nt = niceTicks(lo, hi, 4);
-  const { ticks, step } = nt;
+  const minSpan = o.minSpan ?? 1;
+  if (hi - lo < minSpan) { const m = (hi + lo) / 2; lo = m - minSpan / 2; hi = m + minSpan / 2; }
+  const nt = niceTicks(lo, hi, 3);
   lo = nt.lo; hi = nt.hi;
   const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const axisDec = o.axisDecimals ?? (nt.step < 1 ? 1 : 0);
 
-  const grid = ticks.map((v) => s('g', {},
+  const grid = nt.ticks.map((v) => s('g', {},
     s('line', { class: 'tr-grid', x1: L, x2: W - R, y1: y(v), y2: y(v) }),
-    s('text', { class: 'tr-axis', x: L - 4, y: y(v) + 3, 'text-anchor': 'end' }, fmtNum(v, step < 1 ? 1 : 0))));
-  const xTicks = [];
-  const nX = 4;
-  for (let i = 0; i < nX; i++) {
-    const d = addDays(from, Math.round((days * i) / (nX - 1)));
-    xTicks.push(s('text', { class: 'tr-axis', x: x(d), y: H - 6, 'text-anchor': i === 0 ? 'start' : i === nX - 1 ? 'end' : 'middle' }, shortDate(d)));
-  }
-  // include the trend point just before the range so the line enters from the left edge
-  const before = rows.filter((r) => r.date < from).pop();
-  const linePts = (before ? [{ ...before, date: from }] : []).concat(vis);
-  const path = linePts.map((r, i) => `${i ? 'L' : 'M'}${x(r.date).toFixed(1)},${y(r.trend).toFixed(1)}`).join('');
-  const dots = vis.map((r) => s('circle', { class: 'tr-dot', cx: x(r.date).toFixed(1), cy: y(r.kg).toFixed(1), r: vis.length > 60 ? 2.5 : 3.5 }));
+    s('text', { class: 'tr-axis', x: W - R + 6, y: y(v) + 4, 'text-anchor': 'start' }, fmtGrouped(v, axisDec))));
+  const xLabels = [
+    s('text', { class: 'tr-axis', x: L, y: H - 6, 'text-anchor': 'start' }, shortDate(from)),
+    s('text', { class: 'tr-axis', x: W - R, y: H - 6, 'text-anchor': 'end' }, to === o.today ? 'Today' : shortDate(to)),
+  ];
+  const linePts = (o.lead != null ? [{ date: from, line: o.lead }] : []).concat(items.filter((r) => r.line != null));
+  const path = linePts.length > 1 ? linePts.map((r, i) => `${i ? 'L' : 'M'}${x(r.date).toFixed(1)},${y(r.line).toFixed(1)}`).join('') : null;
+  const dotItems = items.filter((r) => r.dot != null);
+  const dots = dotItems.map((r) => s('circle', { class: 'tr-dot', cx: x(r.date).toFixed(1), cy: y(r.dot).toFixed(1), r: dotItems.length > 60 ? 2.25 : 3 }));
+  const single = linePts.length === 1 ? s('circle', { class: 'tr-ring', cx: x(linePts[0].date), cy: y(linePts[0].line), r: 4 }) : null;
   const cursor = s('line', { class: 'tr-cursor', x1: 0, x2: 0, y1: T, y2: H - B, visibility: 'hidden' });
   const ring = s('circle', { class: 'tr-ring', r: 5, visibility: 'hidden' });
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': o.ariaLabel },
+    grid, xLabels, dots, path ? s('path', { class: 'tr-trend', d: path }) : null, single, cursor, ring);
 
-  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Weight from ${fmtDate(from)} to ${fmtDate(to)}: dots are weigh-ins, the line is the trend` },
-    grid, xTicks, s('path', { class: 'tr-trend', d: path }), dots, cursor, ring);
-
-  const last = vis[vis.length - 1];
-  const readout = el('div', { class: 'tr-readout small num' });
-  const show = (r, isDefault) => {
-    readout.textContent = r ? `${isDefault ? 'Latest · ' : ''}${fmtDate(r.date)} · ${fmtNum(r.kg, 1)} kg · trend ${fmtNum(r.trend, 1)} kg` : '';
-  };
-  attachHover(svg, W, vis.map((r) => x(r.date)), (i) => {
-    if (i === null) { cursor.setAttribute('visibility', 'hidden'); ring.setAttribute('visibility', 'hidden'); show(last, true); return; }
-    const r = vis[i];
-    cursor.setAttribute('x1', x(r.date)); cursor.setAttribute('x2', x(r.date)); cursor.setAttribute('visibility', 'visible');
-    ring.setAttribute('cx', x(r.date)); ring.setAttribute('cy', y(r.trend)); ring.setAttribute('visibility', 'visible');
-    show(r, false);
+  const readout = el('div', { class: 't-sub tr-readout', 'aria-live': 'polite' });
+  readout.textContent = o.readout(null);
+  attachHover(svg, W, items.map((r) => x(r.date)), (i) => {
+    if (i === null) { cursor.setAttribute('visibility', 'hidden'); ring.setAttribute('visibility', 'hidden'); readout.textContent = o.readout(null); return; }
+    const r = items[i];
+    const cx = x(r.date);
+    cursor.setAttribute('x1', cx); cursor.setAttribute('x2', cx); cursor.setAttribute('visibility', 'visible');
+    const v = r.line ?? r.dot;
+    if (v != null) { ring.setAttribute('cx', cx); ring.setAttribute('cy', y(v)); ring.setAttribute('visibility', 'visible'); } else ring.setAttribute('visibility', 'hidden');
+    readout.textContent = o.readout(r);
   });
-  show(last, true);
-  const legend = el('div', { class: 'tr-legend small muted' },
-    el('span', { class: 'tr-key tr-key-dot' }), 'Weigh-in', el('span', { class: 'tr-key tr-key-line' }), 'Trend');
+  const legend = o.legend ? el('ul', { class: 'legend legend-row tr-legend' },
+    el('li', null, el('span', { class: 'tr-key tr-key-dot', 'aria-hidden': 'true' }), o.legend[0]),
+    el('li', null, el('span', { class: 'tr-key tr-key-line', 'aria-hidden': 'true' }), o.legend[1])) : null;
   return el('div', { class: 'tr-chart' }, readout, svg, legend);
+}
+
+/**
+ * Change of a value over the last 7 / 14 / 30 / 90 days. Cells without data are left out.
+ * @param {{label: string, value: string}[]} cells
+ */
+export function changeTable(cells) {
+  if (!cells.length) return null;
+  return el('dl', { class: 'tr-chg', style: { '--n': String(cells.length) } }, cells.map((c) => el('div', null,
+    el('dt', { class: 't-cap' }, c.label), el('dd', { class: 'tr-chg-val' }, c.value))));
+}
+
+/** Two header figures (caps label, number, small unit), the second one optional. */
+export function figures(...figs) {
+  return el('div', { class: 'tr-figs' }, figs.filter(Boolean).map((f) => el('div', { class: 'tr-fig' },
+    el('span', { class: 't-cap muted' }, f.label),
+    el('span', { class: 'tr-fig-val' }, f.value, f.unit ? el('small', { class: 'tr-fig-unit' }, f.unit) : null))));
 }
 
 /**
@@ -128,6 +153,7 @@ export function weightChart(rows, from, to) {
  * @param {string} todayStr today's date (drawn lighter: the day is not over)
  */
 export function intakeChart(days, target, weeks, todayStr) {
+  // Geometry is also used by week-view.js (tap a bar → that day): W 340, L 38, R 6.
   const W = 340; const H = 200; const L = 38; const R = 6; const T = 10; const B = 22;
   const n = days.length;
   const slot = (W - L - R) / n;
@@ -139,7 +165,7 @@ export function intakeChart(days, target, weeks, todayStr) {
 
   const grid = ticks.map((v) => s('g', {},
     s('line', { class: 'tr-grid', x1: L, x2: W - R, y1: y(v), y2: y(v) }),
-    s('text', { class: 'tr-axis', x: L - 4, y: y(v) + 3, 'text-anchor': 'end' }, fmtNum(v, 0))));
+    s('text', { class: 'tr-axis', x: L - 4, y: y(v) + 4, 'text-anchor': 'end' }, fmtGrouped(v))));
   const bars = days.map((d, i) => {
     if (!d.kcal) return null;
     const h = Math.max(1, y(0) - y(d.kcal));
@@ -157,27 +183,27 @@ export function intakeChart(days, target, weeks, todayStr) {
 
   const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Daily calories for the last ${n} days with target and weekly averages` },
     grid, cursor, bars, targetLine, avgs, xLabels);
-  const readout = el('div', { class: 'tr-readout small num' });
-  const def = () => { readout.textContent = target ? `Target ${fmtNum(target, 0)} kcal · tap a bar for the day` : 'Tap a bar for the day'; };
+  const readout = el('div', { class: 't-sub tr-readout', 'aria-live': 'polite' });
+  const def = () => { readout.textContent = target ? `Target ${fmtGrouped(target)} kcal · tap a bar` : 'Tap a bar'; };
   attachHover(svg, W, days.map((_, i) => x(i) + slot / 2), (i) => {
     if (i === null) { cursor.setAttribute('visibility', 'hidden'); def(); return; }
     const d = days[i];
     cursor.setAttribute('x', x(i)); cursor.setAttribute('visibility', 'visible');
     const wk = weeks.find((w) => d.date >= w.from && d.date <= w.to);
-    readout.textContent = `${fmtDate(d.date)} · ${d.kcal ? `${fmtNum(d.kcal, 0)} kcal` : 'not logged'}${d.date === todayStr ? ' (so far)' : ''}`
-      + `${wk && wk.avg ? ` · week avg ${fmtNum(wk.avg, 0)}` : ''}`;
+    readout.textContent = `${fmtDate(d.date)} · ${d.kcal ? `${fmtGrouped(d.kcal)} kcal` : 'not logged'}${d.date === todayStr ? ' so far' : ''}`
+      + `${wk && wk.avg ? ` · week avg ${fmtGrouped(wk.avg)}` : ''}`;
   });
   def();
-  const legend = el('div', { class: 'tr-legend small muted' },
-    el('span', { class: 'tr-key tr-key-bar' }), 'Day',
-    el('span', { class: 'tr-key tr-key-avg' }), 'Week average',
-    target ? [el('span', { class: 'tr-key tr-key-target' }), 'Target'] : null);
+  const legend = el('ul', { class: 'legend legend-row tr-legend' },
+    el('li', null, el('span', { class: 'tr-key tr-key-bar', 'aria-hidden': 'true' }), 'Day'),
+    el('li', null, el('span', { class: 'tr-key tr-key-avg', 'aria-hidden': 'true' }), 'Week average'),
+    target ? el('li', null, el('span', { class: 'tr-key tr-key-target', 'aria-hidden': 'true' }), 'Target') : null);
   return el('div', { class: 'tr-chart' }, readout, svg, legend);
 }
 
 /** Tiny trend sparkline for the dashboard (no axes). */
 export function sparkline(rows) {
-  const W = 120; const H = 36;
+  const W = 96; const H = 32;
   if (rows.length < 2) return null;
   const vals = rows.map((r) => r.trend);
   let lo = Math.min(...vals); let hi = Math.max(...vals);
@@ -186,3 +212,4 @@ export function sparkline(rows) {
   const path = rows.map((r, i) => `${i ? 'L' : 'M'}${(2 + (daysBetween(d0, r.date) / span) * (W - 4)).toFixed(1)},${(3 + (1 - (r.trend - lo) / (hi - lo)) * (H - 6)).toFixed(1)}`).join('');
   return s('svg', { class: 'tr-spark', viewBox: `0 0 ${W} ${H}`, 'aria-hidden': 'true' }, s('path', { class: 'tr-trend', d: path }));
 }
+

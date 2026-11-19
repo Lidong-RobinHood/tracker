@@ -13,10 +13,10 @@ test('signedAmount and signedRateText', () => {
   assert.equal(signedAmount('lose', 0.5), '−0.5');
   assert.equal(signedAmount('gain', 0.25), '+0.25');
   assert.equal(signedAmount('maintain', null), '0');
-  assert.equal(signedRateText(-0.75), '−0.75 kg per week');
-  assert.equal(signedRateText(0.25), '+0.25 kg per week');
-  assert.equal(signedRateText(0), '0 kg per week');
-  assert.equal(signedRateText(null), '0 kg per week');
+  assert.equal(signedRateText(-0.75), '−0.75 kg / week');
+  assert.equal(signedRateText(0.25), '+0.25 kg / week');
+  assert.equal(signedRateText(0), '0 kg / week');
+  assert.equal(signedRateText(null), '0 kg / week');
 });
 
 test('screen-reader text', () => {
@@ -27,8 +27,9 @@ test('screen-reader text', () => {
 });
 
 test('summary line shows the signed rate first', () => {
-  assert.equal(signedGoalSummary('lose', 0.5, { kcalDay: 550 }), '−0.5 kg per week (lose about 0.5 kg a week, about 550 kcal a day below what you burn)');
-  assert.equal(signedGoalSummary('gain', 0.25), '+0.25 kg per week (gain about 0.25 kg a week)');
-  assert.equal(signedGoalSummary('maintain', null), 'Maintain: 0 kg per week');
-  assert.equal(signedGoalSummary('lose', 2, { max: 1 }), 'Lose: enter more than 0 and at most 1 kg a week');
+  assert.equal(signedGoalSummary('lose', 0.5, { kcalDay: 550 }), '−0.5 kg / week · −550 kcal / day');
+  assert.equal(signedGoalSummary('lose', 1, { kcalDay: 1100 }), '−1 kg / week · −1\u202f100 kcal / day');
+  assert.equal(signedGoalSummary('gain', 0.25), '+0.25 kg / week');
+  assert.equal(signedGoalSummary('maintain', null), '0 kg / week');
+  assert.equal(signedGoalSummary('lose', 2, { max: 1 }), 'Max 1 kg / week');
 });

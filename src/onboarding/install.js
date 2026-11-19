@@ -1,5 +1,5 @@
 // "Install to the home screen" guidance for the current browser (welcome step and Help).
-import { el } from '../ui/index.js';
+import { el, icon } from '../ui/index.js';
 import { detectPlatform, isStandalone } from '../core/platform.js';
 
 // Chrome/Edge/Samsung on Android fire beforeinstallprompt early; keep it for the Install button.
@@ -37,23 +37,23 @@ export function installGuide(p, { compact = false } = {}) {
   const node = el('div', { class: 'stack ob-install', dataset: { install: p.install } });
   const box = { append: (...kids) => node.append(...kids.filter(Boolean)) };
   if (p.install === 'standalone' || installed) {
-    box.append(el('p', null, 'You are using the installed app. Nothing to do here.'));
+    box.append(el('p', { class: 'ob-ok' }, icon('circle-check', { size: 18 }), 'Installed.'));
     return node;
   }
   if (p.install === 'in-app') {
     const where = p.os === 'ios' ? 'Safari' : 'Chrome';
     box.append(
-      el('p', null, `This page is open inside ${p.inApp === 'another app' ? 'another app' : p.inApp}. That app’s browser cannot install apps and may delete what you enter here.`),
+      el('p', { class: 'ob-note' }, `Open inside ${p.inApp === 'another app' ? 'another app' : p.inApp}: it cannot install apps and may delete your data.`),
       steps(
-        ['Tap the ', b('⋯'), ' or ', b('share'), ' button of that app (usually at the top or bottom).'],
+        ['Tap the ', icon('ellipsis', { size: 16, label: 'More', class: 'ob-inline-ic' }), ' or ', b('share'), ' button of that app (usually at the top or bottom).'],
         ['Choose ', b(`Open in ${where}`), ' (or ', b('Open in browser'), ').'],
         `Then continue in ${where}.`),
-      el('p', { class: 'small muted' }, 'You can also copy the link and paste it into the browser.'));
+      el('p', { class: 't-sub muted' }, 'Or copy the link into your browser.'));
     return node;
   }
   if (p.install === 'ios-safari' || p.install === 'ios-other') {
     const shareWhere = p.install === 'ios-safari'
-      ? ['Tap the ', b('Share'), ' button (square with an arrow, in the toolbar; on newer iOS first tap ', b('⋯'), ').']
+      ? ['Tap the ', b('Share'), ' button (square with an arrow, in the toolbar; on newer iOS first tap the ', b('More'), ' button).']
       : ['Tap the ', b('Share'), ' button (in Chrome and Edge it is in the address bar).'];
     box.append(
       steps(
@@ -61,12 +61,11 @@ export function installGuide(p, { compact = false } = {}) {
         ['Scroll down and tap ', b('Add to Home Screen'), '.'],
         ['Tap ', b('Add'), ', then open ', b('Tracker'), ' from your home screen.']),
       p.install === 'ios-other'
-        ? el('p', { class: 'small muted' }, 'If Add to Home Screen is missing (older iOS), open this page in Safari and do it there.')
+        ? el('p', { class: 't-sub muted' }, 'Add to Home Screen missing (older iOS)? Open this page in Safari and do it there.')
         : null,
       compact ? null : el('p', { class: 'ob-note' },
-        b('Important on iPhone and iPad: '),
-        'the home-screen app keeps its own data, separate from the browser. Install first, then do this setup inside the installed app. '
-        + 'Anything you enter here in the browser stays here and does not appear in the app.'));
+        icon('triangle-exclamation-point', { size: 18 }),
+        el('span', null, b('iPhone and iPad: '), 'the installed app has separate data. Install first, then set up inside it.')));
     return node;
   }
   if (p.install === 'android') {
@@ -79,21 +78,21 @@ export function installGuide(p, { compact = false } = {}) {
         ev.prompt();
         const choice = await ev.userChoice.catch(() => null);
         btn.replaceWith(el('p', null, choice && choice.outcome === 'accepted'
-          ? 'Installed. You can open Tracker from your home screen or app drawer.'
-          : 'Not installed. You can install it later from the browser menu.'));
+          ? 'Installed. Open Tracker from your home screen.'
+          : 'Not installed. Install later from the browser menu.'));
       });
       // The welcome step already says why above the guide; Help (compact) has no such intro.
-      box.append(compact ? el('p', null, 'Install Tracker so it opens like an app, works offline and the browser is less likely to clear its data.') : null, btn);
+      box.append(compact ? el('p', null, 'Works offline, and the browser is less likely to clear data.') : null, btn);
       return node;
     }
-    const menu = p.browser === 'samsung' ? [['Tap the menu ', b('≡'), ' at the bottom.'], ['Tap ', b('Add page to'), ' → ', b('Home screen'), '.']]
-      : p.browser === 'firefox' ? [['Tap the menu ', b('⋮'), '.'], ['Tap ', b('Install'), ' (or ', b('Add to Home screen'), ').']]
-        : [['Tap the browser menu ', b('⋮'), ' (top right).'], ['Tap ', b('Install app'), ' (or ', b('Add to Home screen'), ').']];
+    const menu = p.browser === 'samsung' ? [['Tap the menu (three lines) at the bottom.'], ['Tap ', b('Add page to'), ' → ', b('Home screen'), '.']]
+      : p.browser === 'firefox' ? [['Tap the menu ', icon('ellipsis-vertical', { size: 16, label: 'three dots', class: 'ob-inline-ic' }), '.'], ['Tap ', b('Install'), ' (or ', b('Add to Home screen'), ').']]
+        : [['Tap the browser menu ', icon('ellipsis-vertical', { size: 16, label: 'three dots', class: 'ob-inline-ic' }), ' (top right).'], ['Tap ', b('Install app'), ' (or ', b('Add to Home screen'), ').']];
     box.append(steps(...menu, ['Confirm, then open ', b('Tracker'), ' from your home screen.']));
     return node;
   }
   box.append(
-    el('p', null, 'This looks like a computer. Tracker is made for phones: open the same link on your phone and install it there.'),
-    el('p', { class: 'small muted' }, 'Chrome and Edge on a computer show an install icon in the address bar. A computer and a phone never share data.'));
+    el('p', null, 'Tracker is made for phones. Open this link on your phone.'),
+    el('p', { class: 't-sub muted' }, 'A computer and a phone never share data.'));
   return node;
 }

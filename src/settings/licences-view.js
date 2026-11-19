@@ -1,19 +1,20 @@
 // Licences and data sources (#/licences): third-party code and data with their licences, linked
 // content, AI providers, and how the numbers are calculated. Keep in step with THIRD-PARTY-NOTICES.md.
 // Constants in the methods table come from src/core so the screen cannot drift from the code.
-import { el, pageHeader } from '../ui/index.js';
+import { el, pageHeader, sectionHeader, icon } from '../ui/index.js';
+import { ensureCss } from './css.js';
 import { KJ_PER_KCAL } from '../core/nutrition.js';
 import { ACTIVITY_LEVELS, KCAL_PER_KG } from '../core/adaptive.js';
 import { RECOVERY_CONFIG } from '../core/recovery.js';
 
-const ext = (url, text) => el('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, text);
+const ext = (url, text) => el('a', { class: 'lic-link', href: url, target: '_blank', rel: 'noopener noreferrer' }, text, icon('external-link', { size: 14, class: 'lic-ext' }));
 /** Licence file in this repo, relative to the app root (works under a sub-path). */
-const file = (path, text) => el('a', { href: path, target: '_blank', rel: 'noopener' }, text);
-const p = (...c) => el('p', { class: 'small' }, ...c);
+const file = (path, text) => el('a', { class: 'lic-link', href: path, target: '_blank', rel: 'noopener' }, text);
+const p = (...c) => el('p', { class: 'lic-text' }, ...c);
 const b = (t) => el('strong', null, t);
 
 function section(title, ...children) {
-  return el('section', { class: 'section' }, el('h2', { class: 'section-title' }, title), el('div', { class: 'card stack' }, children));
+  return el('section', { class: 'section' }, sectionHeader(title), el('div', { class: 'card lic-card' }, children));
 }
 
 /** 7700 → '7 700' (thin space, as in the rest of the docs). */
@@ -34,17 +35,16 @@ function methodsTable() {
     ['Body-weight change', `${KCAL_PER_KG.toLocaleString('en-GB').replace(',', ' ')} kcal per kg`, 'Common approximation'],
     ['Recovery', `${lo}–${hi} h per muscle by size, scaled by sets`, 'Rule of thumb, not a measurement'],
   ];
-  return el('table', { class: 'lic-table small' },
+  return el('table', { class: 'lic-table' },
     el('thead', null, el('tr', null, el('th', { scope: 'col' }, 'Value'), el('th', { scope: 'col' }, 'How'))),
     el('tbody', null, rows.map(([what, how, src]) => el('tr', null,
       el('th', { scope: 'row' }, what),
-      el('td', null, how, src ? el('div', { class: 'muted' }, src) : null)))));
+      el('td', null, how, src ? el('div', { class: 'muted lic-src' }, src) : null)))));
 }
 
 export function mountLicences(container) {
-  if (!document.querySelector('link[data-settings-css]')) {
-    document.head.append(el('link', { rel: 'stylesheet', href: new URL('./settings.css', import.meta.url).href, 'data-settings-css': '' }));
-  }
+  ensureCss();
+  container.classList.add('settings-view');
   container.append(
     pageHeader({ title: 'Licences and data sources', back: 'settings' }),
     section('Food data',
@@ -64,9 +64,9 @@ export function mountLicences(container) {
     section('Meal photos (optional)',
       p('With your own API key, the photo and hint go directly to the AI provider you chose, under its terms.')),
     el('section', { class: 'section', id: 'methods' },
-      el('h2', { class: 'section-title' }, 'How the numbers are calculated'),
-      el('div', { class: 'card stack' }, methodsTable(),
+      sectionHeader('How the numbers are calculated'),
+      el('div', { class: 'card lic-card' }, methodsTable(),
         p('All figures are estimates. This app is not a medical device and does not replace professional advice.'))),
-    p(el('span', { class: 'muted' }, 'Other product names are trademarks of their owners. This app is not affiliated with them.')),
+    el('p', { class: 't-sub muted lic-foot' }, 'Other product names are trademarks of their owners. This app is not affiliated with them.'),
   );
 }

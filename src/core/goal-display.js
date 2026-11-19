@@ -17,11 +17,14 @@ export function signedAmount(direction, amount) {
   return `${goalSign(direction)}${r2(Math.abs(amount))}`;
 }
 
-/** Signed rate from the stored number: −0.5 → '−0.5 kg per week'; 0/null → '0 kg per week'. */
+/** Signed rate from the stored number: −0.5 → '−0.5 kg / week'; 0/null → '0 kg / week'. */
 export function signedRateText(rate) {
-  if (typeof rate !== 'number' || !Number.isFinite(rate) || r2(rate) === 0) return '0 kg per week';
-  return `${rate < 0 ? MINUS : '+'}${r2(Math.abs(rate))} kg per week`;
+  if (typeof rate !== 'number' || !Number.isFinite(rate) || r2(rate) === 0) return '0 kg / week';
+  return `${rate < 0 ? MINUS : '+'}${r2(Math.abs(rate))} kg / week`;
 }
+
+/** 1100 → '1 100' (narrow no-break space, as fmtGrouped in src/ui/format.js). */
+const grouped = (n) => String(n).replace(/\B(?=(\d{3})+$)/g, '\u202f');
 
 /** For screen readers: 'minus 0.5 kilograms per week'. */
 export function signedRateSpeech(direction, amount) {
@@ -32,19 +35,15 @@ export function signedRateSpeech(direction, amount) {
 }
 
 /**
- * Summary line: '−0.5 kg per week (lose about 0.5 kg a week, about 550 kcal a day below what you burn)'.
- * Invalid amount → an instruction.
+ * Result line: '−0.5 kg / week · −550 kcal / day' (the kcal part is the daily gap to expenditure).
+ * Maintain → '0 kg / week'. Invalid amount → the limit, 'Max 1 kg / week' (shown as an error).
  * @param {'lose'|'maintain'|'gain'} direction
  * @param {number|null} amount positive amount as typed
  * @param {{max?: number, kcalDay?: number|null}} [opts]
  */
 export function signedGoalSummary(direction, amount, { max, kcalDay = null } = {}) {
-  if (direction === 'maintain') return 'Maintain: 0 kg per week';
-  const verb = direction === 'lose' ? 'lose' : 'gain';
-  if (!amountValid(direction, amount)) {
-    return `${direction === 'lose' ? 'Lose' : 'Gain'}: enter more than 0${max ? ` and at most ${max}` : ''} kg a week`;
-  }
-  const kcal = typeof kcalDay === 'number' && kcalDay > 0
-    ? `, about ${kcalDay} kcal a day ${direction === 'lose' ? 'below' : 'above'} what you burn` : '';
-  return `${signedAmount(direction, amount)} kg per week (${verb} about ${r2(amount)} kg a week${kcal})`;
+  if (direction === 'maintain') return '0 kg / week';
+  if (!amountValid(direction, amount)) return max ? `Max ${max} kg / week` : 'Enter kg / week';
+  const kcal = typeof kcalDay === 'number' && kcalDay > 0 ? ` · ${goalSign(direction)}${grouped(kcalDay)} kcal / day` : '';
+  return `${signedAmount(direction, amount)} kg / week${kcal}`;
 }

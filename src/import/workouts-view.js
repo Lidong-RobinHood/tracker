@@ -1,6 +1,6 @@
 // Import workouts pasted from a spreadsheet: paste → dates → preview → exercise matching → confirm.
 import * as db from '../db/db.js';
-import { el, pageHeader, toast, openSheet, href, fmtDate } from '../ui/index.js';
+import { el, pageHeader, toast, openSheet, href, fmtDate, sectionHeader, tag, icon, setBadge } from '../ui/index.js';
 import { today } from '../core/dates.js';
 import { exerciseNames, buildWorkoutRecords } from '../core/import-workouts.js';
 import { matchExercise, nameKey, confidenceLabel } from '../core/import-exercise-match.js';
@@ -46,23 +46,20 @@ export async function mountWorkoutImport(container) {
   const readBtn = el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: () => read() }, 'Show preview');
   const preview = el('div', { class: 'stack imp-preview', 'aria-live': 'polite' });
 
+  container.classList.add('imp-view');
   container.append(
-    pageHeader({ title: 'Import workouts', back: 'import' }),
-    el('section', { class: 'card stack' },
-      el('p', null, 'In your spreadsheet, select the cells of one column group (exercise names, targets, weights and reps) and copy them. Paste them below, or pick a .txt, .csv or .tsv file.'),
-      el('ul', { class: 'small muted imp-help' },
-        el('li', null, 'Exercise name on its own line, then "3 x 6" (sets x reps), then one line per set: weight in kg, then reps.'),
-        el('li', null, 'Dropsets: "Dropset 5x 80" means 5 reps at 80 kg. One number alone is a bodyweight set (reps).'),
-        el('li', null, 'A date line (12.11.2026, 2026-11-12, Mon 12 Nov) starts a new workout. A name line like "Push" names it.'),
-        el('li', null, 'Sheets with several exercises or dates side by side: copy one column group at a time.')),
-      exampleBox('Example of the expected shape', EXAMPLE),
-      textarea,
-      el('div', { class: 'row imp-row-wrap' },
-        filePicker({ label: 'Pick a file', onText: (t) => { textarea.value = t; read(); }, onError: (e) => toast(e.message, { type: 'error' }) })),
-      el('div', { class: 'field' },
-        el('label', { class: 'field-label', htmlFor: 'imp-default-date' }, 'Date for workouts without a date line'),
-        Object.assign(defaultDate, { id: 'imp-default-date' })),
-      readBtn),
+    pageHeader({ title: 'Import workouts', back: 'import', info: 'import-workouts' }),
+    el('section', { class: 'section' }, sectionHeader('1 · Paste or pick a file'),
+      el('div', { class: 'card stack' },
+        el('p', { class: 't-sub' }, 'Copy one column group from your sheet and paste it, or pick a file.'),
+        exampleBox('Example of the expected shape', EXAMPLE),
+        textarea,
+        el('div', { class: 'field' },
+          el('label', { class: 'field-label', htmlFor: 'imp-default-date' }, 'Default date'),
+          Object.assign(defaultDate, { id: 'imp-default-date' })),
+        el('div', { class: 'imp-actions' },
+          filePicker({ label: 'Pick a file', onText: (t) => { textarea.value = t; read(); }, onError: (e) => toast(e.message, { type: 'error' }) }),
+          readBtn))),
     preview);
 
   async function read() {
@@ -120,42 +117,42 @@ export async function mountWorkoutImport(container) {
     if (state.done) { preview.replaceChildren(doneCard()); return; }
     const nodes = [];
     if (p.fatal) {
-      nodes.push(el('section', { class: 'card imp-fatal', role: 'alert' }, el('div', { class: 'card-title' }, 'This paste cannot be imported'), el('p', null, p.fatal)));
+      nodes.push(el('section', { class: 'card imp-fatal', role: 'alert' }, el('div', { class: 'imp-card-head' }, icon('triangle-exclamation-point', { size: 18 }), el('h3', { class: 'card-title' }, 'This paste cannot be imported')), el('p', { class: 't-sub' }, p.fatal)));
       nodes.push(issueList(p.issues, { title: 'Lines' }));
       preview.replaceChildren(...nodes.filter(Boolean));
       return;
     }
     const setCount = p.workouts.reduce((n, w) => n + w.exercises.reduce((m, e) => m + e.sets.length, 0), 0);
-    nodes.push(el('h2', { class: 'section-title' }, 'Preview'));
-    nodes.push(el('p', { class: 'muted' }, `${plural(p.workouts.length, 'workout')}, ${plural(state.choice.size, 'different exercise')}, ${plural(setCount, 'set')}. This is exactly what will be saved.`));
+    nodes.push(sectionHeader('2 · Preview', { trail: `${plural(p.workouts.length, 'workout')} · ${plural(state.choice.size, 'exercise')} · ${plural(setCount, 'set')}` }));
 
     const errors = p.issues.filter((i) => i.level === 'error' || i.level === 'warning');
     nodes.push(issueList(p.issues, { title: errors.length ? `${plural(errors.length, 'line')} could not be used` : 'Notes' }));
 
     // Options
     const swap = el('input', { type: 'checkbox', checked: state.repsFirst, onChange: () => { state.repsFirst = swap.checked; read(); } });
-    const opts = [el('label', { class: 'imp-check' }, swap, el('span', null, 'Columns are reps, then weight (default: weight, then reps)'))];
+    const opts = [el('label', { class: 'imp-check' }, swap, el('span', null, 'Reps before weight'))];
     if (p.dateOrderAmbiguous || state.dateOrder !== 'auto') {
       const sel = el('select', { class: 'select', onChange: () => { state.dateOrder = sel.value; read(); } },
         el('option', { value: 'dmy', selected: p.dateOrder === 'dmy' }, 'Day/month (12/11 = 12 Nov)'),
         el('option', { value: 'mdy', selected: p.dateOrder === 'mdy' }, 'Month/day (11/12 = 12 Nov)'));
+      sel.setAttribute('aria-label', 'Dates like 05/06/26 are');
       opts.push(el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Dates like 05/06/26 are'), sel));
     }
     nodes.push(el('section', { class: 'card stack' }, ...opts));
 
     // Exercise matching
-    nodes.push(el('h2', { class: 'section-title' }, 'Exercises'));
+    nodes.push(sectionHeader('Exercises'));
     nodes.push(el('div', { class: 'card card-flush' }, el('div', { class: 'list' }, [...state.choice.entries()].map(([name, c]) => matchRow(name, c)))));
 
     // Workouts
-    nodes.push(el('h2', { class: 'section-title' }, 'Workouts'));
+    nodes.push(sectionHeader('Workouts'));
     p.workouts.forEach((w, i) => nodes.push(workoutCard(w, i)));
 
     const probs = problems();
     const btn = el('button', { type: 'button', class: 'btn btn-primary btn-block', disabled: probs.length > 0 || state.busy, onClick: () => confirm(btn) },
       `Import ${plural(p.workouts.length, 'workout')}`);
-    nodes.push(el('section', { class: 'card stack imp-confirm' },
-      probs.length ? el('ul', { class: 'imp-problems text-danger small' }, probs.map((x) => el('li', null, x))) : el('p', { class: 'small muted' }, 'Saved as finished workouts on these dates. You can undo the whole import from the Import page.'),
+    nodes.push(sectionHeader('3 · Import'), el('section', { class: 'card stack imp-confirm' },
+      probs.length ? el('ul', { class: 'imp-problems text-danger t-sub' }, probs.map((x) => el('li', null, x))) : el('p', { class: 't-sub muted' }, 'Undo on the Import page.'),
       btn));
     preview.replaceChildren(...nodes.filter(Boolean));
   }
@@ -167,11 +164,11 @@ export async function mountWorkoutImport(container) {
     return el('div', { class: 'list-item imp-match' },
       el('div', { class: 'li-main' },
         el('div', { class: 'li-title' }, name),
-        el('div', { class: 'li-sub' }, label ? `→ ${label}` : '→ not matched yet'),
-        el('span', { class: ['badge', warn ? 'badge-warning' : null] }, conf)),
+        el('div', { class: 'li-sub imp-wrap' }, label ? `→ ${label}` : '→ not matched yet'),
+        tag(conf, { tone: warn ? 'warn' : 'neutral' })),
       el('div', { class: 'imp-match-actions' },
-        el('button', { type: 'button', class: 'btn btn-sm', onClick: () => change(name) }, 'Change'),
-        el('button', { type: 'button', class: 'btn btn-sm btn-ghost', onClick: () => createNew(name) }, 'New')));
+        el('button', { type: 'button', class: 'btn btn-sm', 'aria-label': `Change exercise for ${name}`, onClick: () => change(name) }, 'Change'),
+        el('button', { type: 'button', class: 'btn btn-sm btn-ghost', 'aria-label': `New exercise for ${name}`, onClick: () => createNew(name) }, icon('plus', { size: 18 }), 'New')));
   }
 
   async function change(name) {
@@ -183,7 +180,7 @@ export async function mountWorkoutImport(container) {
 
   function createNew(name) {
     const form = exerciseForm({ name }, { compact: true });
-    const sheet = openSheet({ title: 'New exercise', content: [el('p', { class: 'small muted' }, 'Created when you confirm the import, and removed again if you undo it.'), form.node] });
+    const sheet = openSheet({ title: 'New exercise', content: [el('p', { class: 't-sub muted' }, 'Removed again if you undo the import.'), form.node] });
     sheet.footer.append(
       el('button', { type: 'button', class: 'btn', onClick: () => sheet.close() }, 'Cancel'),
       el('button', {
@@ -209,8 +206,8 @@ export async function mountWorkoutImport(container) {
     return el('section', { class: 'card stack imp-workout', dataset: { index: String(i) } },
       el('div', { class: 'row-between imp-row-wrap' },
         el('div', { class: 'li-main' },
-          el('div', { class: 'card-title' }, w.name || 'Workout'),
-          el('div', { class: 'small muted' }, `Workout ${i + 1} · ${fromLine}`)),
+          el('h3', { class: 'card-title' }, w.name || 'Workout'),
+          el('div', { class: 't-sub muted' }, `Workout ${i + 1} · ${fromLine}`)),
         d),
       ...w.exercises.map((e) => {
         const c = state.choice.get(e.name) || {};
@@ -219,12 +216,12 @@ export async function mountWorkoutImport(container) {
         return el('div', { class: 'imp-ex' },
           el('div', { class: 'imp-ex-head' },
             el('span', { class: 'imp-ex-name' }, label || e.name),
-            label && label !== e.name ? el('span', { class: 'small muted' }, ` (${e.name})`) : null),
-          el('div', { class: 'small muted' }, `Target ${target} · line ${e.line}`),
+            label && label !== e.name ? el('span', { class: 't-sub muted' }, ` (${e.name})`) : null),
+          el('div', { class: 't-sub muted' }, `Target ${target} · line ${e.line}`),
           el('ol', { class: 'imp-sets' }, e.sets.map((s) => el('li', { class: ['imp-set', s.type === 'dropset' ? 'is-drop' : null] },
-            s.type === 'dropset' ? el('span', { class: 'badge badge-dropset' }, 'Drop') : null,
-            el('span', { class: 'num' }, s.weight === null ? `BW × ${s.reps}` : `${formatWeight(s.weight)} kg × ${s.reps}`),
-            el('span', { class: 'small muted imp-ln' }, `line ${s.line}`)))));
+            s.type === 'dropset' ? setBadge('D', { title: 'Dropset' }) : null,
+            el('span', null, s.weight === null ? `BW × ${s.reps}` : `${formatWeight(s.weight)} kg × ${s.reps}`),
+            el('span', { class: 't-sub muted imp-ln' }, `line ${s.line}`)))));
       }));
   }
 
@@ -274,8 +271,8 @@ export async function mountWorkoutImport(container) {
 
   function doneCard() {
     return el('section', { class: 'card stack imp-done', role: 'status' },
-      el('div', { class: 'card-title' }, 'Import finished'),
-      el('p', null, `${plural(state.done.count, 'workout')} with ${plural(state.done.sets, 'set')} saved as finished workouts.`),
+      el('div', { class: 'imp-card-head imp-ok' }, icon('circle-check', { size: 18 }), el('h3', { class: 'card-title' }, 'Import finished')),
+      el('p', { class: 't-sub' }, `${plural(state.done.count, 'workout')} with ${plural(state.done.sets, 'set')} saved as finished workouts.`),
       el('div', { class: 'row imp-row-wrap' },
         el('a', { class: 'btn btn-primary', href: href('workout/history') }, 'Open history'),
         el('a', { class: 'btn', href: href('import') }, 'Import page (undo)')),

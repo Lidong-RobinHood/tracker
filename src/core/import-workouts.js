@@ -182,8 +182,8 @@ export function assemble(lines, cls, { repsFirst = false, today, dateOrder = 'dm
     for (const n of multi.slice(0, 20)) issue(n - 1, 'Several columns side by side');
     return {
       workouts: [], issues, dateOrder, dateOrderAmbiguous, lineCount: lines.length,
-      fatal: `This looks like several column groups side by side (line${multi.length > 1 ? 's' : ''} ${multi.slice(0, 8).join(', ')}${multi.length > 8 ? ', …' : ''}). `
-        + 'Copy one column group at a time (one exercise or one date column with its weight and reps columns), import it, then copy the next one.',
+      fatal: `Several column groups side by side (line${multi.length > 1 ? 's' : ''} ${multi.slice(0, 8).join(', ')}${multi.length > 8 ? ', …' : ''}). `
+        + 'Import one group at a time.',
     };
   }
 
@@ -202,7 +202,7 @@ export function assemble(lines, cls, { repsFirst = false, today, dateOrder = 'dm
   const pushSet = (i, nums, bw, type, units) => {
     const st = loaded.get(ex) || { abs: false, added: false };
     if (type === 'normal' && nums.length === 1 && !bw && !(units && units.kg && units.kg.length) && st.abs && !st.added) {
-      issue(i, `Weight without reps? "${nums[0]}" follows sets with a weight in this exercise, so it is not read as ${nums[0]} bodyweight reps. Write weight and reps ("${nums[0]} 8"), or "BW ${nums[0]}" for a bodyweight set`);
+      issue(i, `Weight without reps? Write "${nums[0]} 8", or "BW ${nums[0]}" for bodyweight reps`);
       return;
     }
     const r = readSet(nums, bw, type === 'normal' ? repsFirst : false, units);

@@ -1,6 +1,6 @@
 // Import body-weight history: paste/file → preview with flags and conflicts → confirm.
 import * as db from '../db/db.js';
-import { el, pageHeader, toast, href, fmtKg } from '../ui/index.js';
+import { el, pageHeader, toast, href, fmtKg, sectionHeader, statTile, icon } from '../ui/index.js';
 import { today } from '../core/dates.js';
 import { analyseWeights, planWeights, MIN_KG, MAX_KG } from '../core/import-weights.js';
 import { ensureCss, runParser, filePicker, exampleBox, issueList, plural, commitRun, dateY } from './shared.js';
@@ -21,18 +21,18 @@ export async function mountWeightImport(container) {
   const readBtn = el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: () => read() }, 'Show preview');
   const preview = el('div', { class: 'stack imp-preview', 'aria-live': 'polite' });
 
+  container.classList.add('imp-view');
   container.append(
-    pageHeader({ title: 'Import body weight', back: 'import' }),
-    el('section', { class: 'card stack' },
-      el('p', null, 'Copy two columns from your spreadsheet or app export: the date and your weight in kg. One weigh-in per line, in either order. Or pick a .csv/.txt file.'),
-      el('ul', { class: 'small muted imp-help' },
-        el('li', null, 'Dates like 12.11.2026, 2026-11-12, 12/11/26 or Mon 12 Nov.'),
-        el('li', null, 'Weights like 82,5 or 82.5. Kilograms only: pounds are not supported.'),
-        el('li', null, 'Columns can be separated by tab, semicolon, comma or space. A header row is fine.')),
-      exampleBox('Example of the expected shape', EXAMPLE),
-      textarea,
-      filePicker({ label: 'Pick a file', onText: (t) => { textarea.value = t; read(); }, onError: (e) => toast(e.message, { type: 'error' }) }),
-      readBtn),
+    pageHeader({ title: 'Import body weight', back: 'import', info: 'import-weights' }),
+    el('section', { class: 'section' }, sectionHeader('1 · Paste or pick a file'),
+      el('div', { class: 'card stack' },
+        el('p', { class: 't-sub' }, 'Paste date and kg, one weigh-in per line, or pick a file.'),
+        el('p', { class: 't-sub muted' }, 'Kilograms only.'),
+        exampleBox('Example of the expected shape', EXAMPLE),
+        textarea,
+        el('div', { class: 'imp-actions' },
+          filePicker({ label: 'Pick a file', onText: (t) => { textarea.value = t; read(); }, onError: (e) => toast(e.message, { type: 'error' }) }),
+          readBtn))),
     preview);
 
   async function read() {
@@ -61,26 +61,28 @@ export async function mountWeightImport(container) {
     if (!p) { preview.replaceChildren(); return; }
     if (state.done) { preview.replaceChildren(doneCard()); return; }
     if (p.fatal) {
-      preview.replaceChildren(el('section', { class: 'card imp-fatal', role: 'alert' }, el('div', { class: 'card-title' }, 'This cannot be imported'), el('p', null, p.fatal)));
+      preview.replaceChildren(el('section', { class: 'card imp-fatal', role: 'alert' }, el('div', { class: 'imp-card-head' }, icon('triangle-exclamation-point', { size: 18 }), el('h3', { class: 'card-title' }, 'This cannot be imported')), el('p', { class: 't-sub' }, p.fatal)));
       return;
     }
-    const nodes = [el('h2', { class: 'section-title' }, 'Preview')];
+    const nodes = [sectionHeader('2 · Preview')];
     nodes.push(el('section', { class: 'card stack' },
       a.count
-        ? el('dl', { class: 'imp-stats' },
-          stat('Weigh-ins', String(a.count)),
-          stat('From', dateY(a.from)), stat('To', dateY(a.to)),
-          stat('Lowest', fmtKg(a.min)), stat('Highest', fmtKg(a.max)))
+        ? [el('div', { class: 'tiles' },
+          statTile({ label: 'Weigh-ins', value: String(a.count) }),
+          statTile({ label: 'Lowest', value: fmtKg(a.min).replace(' kg', ''), unit: 'kg' }),
+          statTile({ label: 'Highest', value: fmtKg(a.max).replace(' kg', ''), unit: 'kg' })),
+        el('p', { class: 't-sub muted' }, `${dateY(a.from)} – ${dateY(a.to)}`)]
         : el('p', { class: 'text-danger' }, 'No usable weigh-in found.')));
-    for (const n of p.notes || []) nodes.push(el('p', { class: ['small', /^Guess/.test(n) ? 'text-warning' : 'muted'] }, n));
+    for (const n of p.notes || []) nodes.push(el('p', { class: ['t-sub', 'imp-note', /^Guess/.test(n) ? 'text-warning' : 'muted'] }, n));
     nodes.push(issueList(p.issues, { title: p.issues.some((i) => i.level !== 'info') ? 'Lines that could not be read' : 'Notes' }));
     if (a.flagged.length) {
-      nodes.push(issueList(a.flagged.map((f) => ({ line: f.line, text: `${f.date}  ${f.kg} kg`, message: f.reason, level: 'warning' })), { title: `${plural(a.flagged.length, 'value')} left out (plausible range ${MIN_KG}–${MAX_KG} kg, no future dates, one value per day)` }));
+      nodes.push(issueList(a.flagged.map((f) => ({ line: f.line, text: `${f.date}  ${f.kg} kg`, message: f.reason, level: 'warning' })), { title: `${plural(a.flagged.length, 'value')} left out: outside ${MIN_KG}–${MAX_KG} kg, future or repeated day` }));
     }
     if (p.dateOrderAmbiguous || state.dateOrder !== 'auto') {
       const sel = el('select', { class: 'select', onChange: () => { state.dateOrder = sel.value; read(); } },
         el('option', { value: 'dmy', selected: p.dateOrder === 'dmy' }, 'Day/month (05/06 = 5 June)'),
         el('option', { value: 'mdy', selected: p.dateOrder === 'mdy' }, 'Month/day (05/06 = 6 May)'));
+      sel.setAttribute('aria-label', 'Dates like 05/06/26 are');
       nodes.push(el('section', { class: 'card' }, el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Dates like 05/06/26 are'), sel)));
     }
     if (a.conflicts.length) {
@@ -89,19 +91,19 @@ export async function mountWeightImport(container) {
         return el('label', { class: 'imp-check' }, r, el('span', null, label));
       };
       nodes.push(el('section', { class: 'card stack imp-conflicts' },
-        el('div', { class: 'card-title' }, `${plural(a.conflicts.length, 'day')} already ${a.conflicts.length === 1 ? 'has' : 'have'} a weight`),
-        el('ul', { class: 'imp-plain small' }, a.conflicts.slice(0, 50).map((c) => el('li', { class: 'num' }, `${dateY(c.date)}: saved ${fmtKg(c.existingKg)}, file ${fmtKg(c.kg)} (line ${c.line})`))),
+        el('h3', { class: 'card-title' }, `${plural(a.conflicts.length, 'day')} already ${a.conflicts.length === 1 ? 'has' : 'have'} a weight`),
+        el('ul', { class: 'imp-plain t-sub' }, a.conflicts.slice(0, 50).map((c) => el('li', { class: 'num' }, `${dateY(c.date)}: saved ${fmtKg(c.existingKg)}, file ${fmtKg(c.kg)} (line ${c.line})`))),
         radio('keep', 'Keep my saved weights'),
-        radio('replace', 'Replace them with the file (undo puts them back)')));
+        radio('replace', 'Replace with the file')));
     }
     if (a.count) {
-      nodes.push(el('details', { class: 'card imp-all' }, el('summary', null, `All ${plural(a.count, 'weigh-in')}`),
-        el('ul', { class: 'imp-plain small num' }, a.valid.map((r) => el('li', null, `${dateY(r.date)}: ${fmtKg(r.kg)}`)))));
+      nodes.push(el('details', { class: 'card imp-all' }, el('summary', null, el('span', null, `All ${plural(a.count, 'weigh-in')}`), icon('chevron-down', { size: 18, class: 'imp-chev' })),
+        el('ul', { class: 'imp-plain t-sub' }, a.valid.map((r) => el('li', null, `${dateY(r.date)}: ${fmtKg(r.kg)}`)))));
     }
     const writes = a.count - (state.policy === 'keep' ? a.conflicts.length : 0);
     const btn = el('button', { type: 'button', class: 'btn btn-primary btn-block', disabled: writes <= 0 || state.busy, onClick: () => confirm(btn) },
       writes > 0 ? `Import ${plural(writes, 'weigh-in')}` : 'Nothing new to import');
-    nodes.push(el('section', { class: 'card stack imp-confirm' }, btn));
+    nodes.push(sectionHeader('3 · Import'), el('section', { class: 'card stack imp-confirm' }, el('p', { class: 't-sub muted' }, 'Undo on the Import page.'), btn));
     preview.replaceChildren(...nodes.filter(Boolean));
   }
 
@@ -137,14 +139,11 @@ export async function mountWeightImport(container) {
   function doneCard() {
     const d = state.done;
     return el('section', { class: 'card stack imp-done', role: 'status' },
-      el('div', { class: 'card-title' }, 'Import finished'),
-      el('p', null, `${plural(d.count, 'weigh-in')} saved${d.replaced ? `, ${d.replaced} replaced` : ''}${d.kept ? `, ${d.kept} saved days kept` : ''}.`),
+      el('div', { class: 'imp-card-head imp-ok' }, icon('circle-check', { size: 18 }), el('h3', { class: 'card-title' }, 'Import finished')),
+      el('p', { class: 't-sub' }, `${plural(d.count, 'weigh-in')} saved${d.replaced ? `, ${d.replaced} replaced` : ''}${d.kept ? `, ${d.kept} saved days kept` : ''}.`),
       el('div', { class: 'row imp-row-wrap' },
         el('a', { class: 'btn btn-primary', href: href('trends/weight') }, 'Open weight trend'),
         el('a', { class: 'btn', href: href('import') }, 'Import page (undo)')));
   }
 }
 
-function stat(label, value) {
-  return el('div', { class: 'imp-stat' }, el('dt', { class: 'small muted' }, label), el('dd', { class: 'num' }, value));
-}

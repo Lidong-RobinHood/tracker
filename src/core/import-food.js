@@ -79,7 +79,7 @@ export function guessMapping(headers) {
 export const PRESETS = Object.freeze([
   {
     id: 'mfp', label: 'MyFitnessPal – Nutrition Summary', status: 'sample',
-    note: 'One row per meal per day (MyFitnessPal does not export single foods). Premium is needed to export.',
+    note: 'One row per meal per day.',
     required: ['date', 'meal', 'calories', 'protein (g)'],
     columns: { date: 'Date', meal: 'Meal', kcal: 'Calories', fat: 'Fat (g)', satFat: 'Saturated Fat', carbs: 'Carbohydrates (g)', fibre: 'Fiber', sugars: 'Sugar', protein: 'Protein (g)', sodium: 'Sodium (mg)' },
     dateFormat: 'ymd', decimal: 'dot',
@@ -93,14 +93,14 @@ export const PRESETS = Object.freeze([
   },
   {
     id: 'cronometer-daily', label: 'Cronometer – Daily Nutrition (dailysummary.csv)', status: 'sample',
-    note: 'One row per day (or per diary group when "Include diary group rows" was ticked; "Total" rows are skipped).',
+    note: 'One row per day or diary group. Total rows skipped.',
     required: ['date', 'energy (kcal)', 'protein (g)'],
     columns: { date: 'Date', meal: 'Group', kcal: 'Energy (kcal)', protein: 'Protein (g)', carbs: 'Carbs (g)', fat: 'Fat (g)', fibre: 'Fiber (g)', sugars: 'Sugars (g)', sodium: 'Sodium (mg)' },
     dateFormat: 'ymd', decimal: 'dot',
   },
   {
     id: 'fddb', label: 'FDDB – Food diary (unconfirmed layout)', status: 'unconfirmed',
-    note: 'Layout taken from a third-party importer, not from FDDB documentation. Energy is in kJ and is converted. Check the preview carefully.',
+    note: 'Unconfirmed layout. Check the preview.',
     required: ['bezeichnung', 'kj'],
     anyOf: [['datum_tag_monat_jahr_stunde_minute', 'datum_tag_monat_jahr']],
     columns: { date: ['datum_tag_monat_jahr_stunde_minute', 'datum_tag_monat_jahr'], name: 'bezeichnung', kj: 'kj', kcal: 'kcal', fat: 'fett_g', carbs: 'kh_g', protein: 'protein_g' },
@@ -307,10 +307,10 @@ export const PLAUSIBLE_DAY_KCAL = Object.freeze({ min: 300, max: 15000 });
 function plausibilityWarnings(med) {
   if (med === null) return [];
   if (med < PLAUSIBLE_DAY_KCAL.min) {
-    return [{ code: 'median-low', message: `The median day has only ${Math.round(med)} kcal, which is very low. Check the energy column (kcal, not a percentage) and the number style: is "1.050" one thousand and fifty?` }];
+    return [{ code: 'median-low', message: `Median day only ${Math.round(med)} kcal. Check the energy column and number style.` }];
   }
   if (med > PLAUSIBLE_DAY_KCAL.max) {
-    return [{ code: 'median-high', message: `The median day has ${Math.round(med)} kcal, which is very high. Check the energy column (kJ instead of kcal?) and the number style: is "1,050" one thousand and fifty or one point zero five?` }];
+    return [{ code: 'median-high', message: `Median day ${Math.round(med)} kcal is very high. kJ instead of kcal? Check the number style.` }];
   }
   return [];
 }

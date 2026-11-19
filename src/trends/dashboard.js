@@ -1,7 +1,8 @@
-// Trends home = dashboard: today, this week, weight trend, expenditure/target, intake. Each card links
-// to its detail screen. Route: trends
+// Trends home = dashboard: today, this week, weight trend, expenditure/target, weekly reports, intake.
+// One card per topic: one big number and one line under it; each card links to its detail screen.
+// Route: trends
 import * as db from '../db/db.js';
-import { el, pageHeader, fmtNum, fmtDate, href } from '../ui/index.js';
+import { el, pageHeader, fmtGrouped, fmtNum, fmtDate, href, tag, progressBar, icon } from '../ui/index.js';
 import { addDays, weekStart } from '../core/dates.js';
 import { totals } from '../core/food-diary.js';
 import { targetStatus } from '../core/food-percent.js';
@@ -10,10 +11,11 @@ import { trendSeries, trendAt, weightRate, weeklyIntake } from '../core/adaptive
 import { sparkline } from './charts.js';
 import { isBaseline } from '../core/baseline.js';
 import { isLoggedWorkout } from '../core/workout.js';
-import { ensureCss, loadTrendsData, linkCard, signed, goalText, tdeeText, intakeHistory, CONFIDENCE_LABEL } from './data.js';
+import { fixed, ensureCss, loadTrendsData, linkCard, rateText, tdeeText, intakeHistory, confidenceText } from './data.js';
 
 export async function mountDashboard(container) {
   ensureCss();
+  container.classList.add('tr-view');
   container.append(pageHeader({ title: 'Trends' }));
   const d = await loadTrendsData();
   const ws = weekStart(d.today);
@@ -24,9 +26,8 @@ export async function mountDashboard(container) {
   ]);
   const exMap = new Map(exList.map((e) => [e.id, e]));
 
-  const banner = checkInBanner(d);
   container.append(...[
-    banner,
+    checkInBanner(d),
     todayCard(d),
     weekCard(d, workouts, exMap, volume),
     weightCard(d),
@@ -36,32 +37,37 @@ export async function mountDashboard(container) {
   ].filter(Boolean));
 }
 
+/** Big number + small unit (+ something on the right, e.g. a sparkline). */
+function value(v, unit, side = null) {
+  return el('div', { class: 'tr-value-row' },
+    el('span', { class: 'tr-value' }, v, unit ? el('small', { class: 'tr-unit' }, unit) : null),
+    side);
+}
+const line = (...c) => el('p', { class: 't-sub muted tr-line' }, ...c);
+
 function checkInBanner(d) {
   if (d.doneThisWeek || !d.checkIn.proposal) return null;
   const p = d.checkIn.proposal;
-  return el('a', { class: 'card tr-banner', href: href('trends/expenditure') },
+  return el('a', { class: 'card tr-banner', href: href('trends/expenditure'), 'aria-label': `Check-in ready: ${fmtGrouped(p.kcal)} kcal proposed. Review` },
     el('div', { class: 'grow' },
-      el('div', { class: 'small tr-kicker' }, 'Weekly check-in ready'),
-      el('div', { class: 'tr-strong' }, `Proposed ${fmtNum(p.kcal, 0)} kcal (now ${fmtNum(d.targets.kcal, 0)})`),
-      el('div', { class: 'small muted' }, `Review last week (${fmtDate(d.checkIn.reviewFrom)} – ${fmtDate(d.checkIn.reviewTo)})`)),
+      el('div', { class: 't-cap tr-kicker' }, `Check-in · ${fmtDate(d.checkIn.weekStart)}`),
+      el('div', { class: 'tr-banner-main' }, `${fmtGrouped(p.kcal)} kcal / day proposed`),
+      el('div', { class: 't-sub muted' }, `Now ${fmtGrouped(d.targets.kcal)} kcal`)),
     el('span', { class: 'btn btn-primary btn-sm' }, 'Review'));
 }
 
 function todayCard(d) {
   const entries = d.entries.filter((e) => e.date === d.today);
+  if (!entries.length) return linkCard(href('diary'), 'Today', {}, line('Nothing logged today.'));
   const t = totals(entries);
   // Same rule as the diary: eaten rounded once, left/over from the rounded value (they add up).
   const kcal = targetStatus(t.kcal, d.targets.kcal);
   const protein = targetStatus(t.protein, d.targets.protein);
-  return linkCard(href('diary'), 'Today',
-    entries.length
-      ? [el('div', { class: 'grid-3 tr-figs' },
-        fig('Eaten', fmtNum(kcal.eaten, 0), 'kcal'),
-        fig('Target', fmtNum(kcal.target, 0), 'kcal'),
-        fig(kcal.isOver ? 'Over' : 'Left', fmtNum(kcal.isOver ? kcal.over : kcal.left ?? 0, 0), 'kcal', kcal.isOver ? 'text-warning' : null)),
-      meter(kcal),
-      el('div', { class: 'small muted num' }, `Protein ${fmtNum(protein.eaten, 0)} / ${fmtNum(protein.target, 0)} g`)]
-      : el('p', { class: 'muted small' }, `Nothing logged yet today. Target ${fmtNum(d.targets.kcal, 0)} kcal, ${fmtNum(d.targets.protein, 0)} g protein.`));
+  const rest = kcal.isOver ? `${fmtGrouped(kcal.over)} over` : `${fmtGrouped(kcal.left ?? 0)} left`;
+  return linkCard(href('diary'), 'Today', {},
+    value(fmtGrouped(kcal.eaten), `/ ${fmtGrouped(kcal.target)} kcal`),
+    progressBar({ value: kcal.eaten, max: kcal.target || 1, tone: kcal.isOver ? 'warn' : 'accent', label: 'Calories eaten of target' }),
+    line(el('span', { class: kcal.isOver ? 'text-warning' : null }, rest), ` · protein ${fmtGrouped(protein.eaten)} / ${fmtGrouped(protein.target)} g`));
 }
 
 function weekCard(d, workouts, exMap, volume) {
@@ -71,87 +77,57 @@ function weekCard(d, workouts, exMap, volume) {
   const done = workouts.filter((w) => w.date >= ws && isLoggedWorkout(w) && !isBaseline(w)).length;
   const cmp = weeklyComparison(workouts, exMap, volume, d.today);
   const sets = cmp.rows.filter((r) => r.current > 0).sort((a, b) => b.current - a.current);
-  return linkCard(href('trends/intake'), `This week · from ${fmtDate(ws)}`,
-    el('div', { class: 'grid-3 tr-figs' },
-      fig('Avg intake', week.avg === null ? '–' : fmtNum(week.avg, 0), week.avg === null ? 'no full day yet' : `vs ${fmtNum(d.targets.kcal, 0)}`),
-      fig('Days logged', `${loggedDays}`, 'of 7'),
-      fig('Workouts', `${done}`, 'finished')),
-    sets.length
-      ? el('div', { class: 'tr-sets small' }, el('span', { class: 'muted' }, 'Sets: '),
-        sets.map((r, i) => el('span', { class: 'tr-set num' }, `${i ? ' · ' : ''}${r.name} ${fmtNum(r.current, 1)}`)))
-      : el('p', { class: 'small muted' }, 'No sets this week yet.'));
+  const top = sets.slice(0, 4).map((r) => `${r.name} ${fmtNum(r.current, 1)}`).join(' · ');
+  return linkCard(href('trends/intake'), 'This week', { tag: el('span', { class: 't-sub muted' }, `from ${fmtDate(ws)}`) },
+    value(week.avg === null ? '–' : fmtGrouped(week.avg), 'kcal / day avg'),
+    line(`${loggedDays} of 7 days logged · ${done} workout${done === 1 ? '' : 's'}${week.avg === null ? ' · no complete day yet' : ''}`),
+    sets.length ? el('p', { class: 't-sub muted tr-sets' }, `Sets: ${top}${sets.length > 4 ? ` · +${sets.length - 4} more` : ''}`) : null);
 }
 
 function weightCard(d) {
   const series = trendSeries(d.weights);
-  if (!series.length) {
-    return linkCard(href('trends/weight'), 'Weight',
-      el('p', { class: 'muted small' }, 'No weigh-ins yet. Log your morning weight to see your trend. Tap to add today’s weight.'));
-  }
+  if (!series.length) return linkCard(href('trends/weight'), 'Weight', {}, line('No weigh-ins yet. Tap to log one.'));
   const trend = trendAt(series, d.today);
   const rate = weightRate(d.weights, d.today);
   const recent = series.filter((r) => r.date >= addDays(d.today, -29));
-  return linkCard(href('trends/weight'), 'Weight trend',
-    el('div', { class: 'row-between' },
-      el('div', { class: 'grid-2 grow tr-figs' },
-        fig('Trend', fmtNum(trend, 1), 'kg'),
-        fig('Per week', rate === null ? '–' : signed(rate, 2), rate === null ? 'needs 1 wk of data' : 'kg')),
-      sparkline(recent)),
-    series[series.length - 1].date === d.today ? null : el('p', { class: 'small muted' }, 'No weigh-in today yet.'));
+  const noToday = series[series.length - 1].date !== d.today;
+  return linkCard(href('trends/weight'), 'Weight', {},
+    value(fixed(trend, 1), 'kg trend', sparkline(recent)),
+    line(rate === null ? 'Rate after 1 week' : rateText(rate), noToday ? ' · no weigh-in today' : ''));
 }
 
 function expenditureCard(d) {
   const e = d.estimate;
-  const p = d.checkIn.proposal;
-  const kids = [];
+  const target = `Target ${fmtGrouped(d.targets.kcal)} kcal · ${d.targets.source === 'adaptive' ? 'adaptive' : 'manual'}`;
   if (e.status === 'ok') {
-    kids.push(el('div', { class: 'grid-2 tr-figs' },
-      fig('Expenditure', tdeeText(e.tdee), CONFIDENCE_LABEL[e.confidence].replace(' confidence', '') + ' confidence'),
-      fig('Proposed target', p ? fmtNum(p.kcal, 0) : '–', `${goalText(d.goal.rateKgPerWeek).toLowerCase()}`)));
-  } else {
-    kids.push(el('p', { class: 'small' }, e.missing[0]));
-    if (e.formula) {
-      kids.push(el('div', { class: 'grid-2 tr-figs' },
-        fig('Formula estimate', tdeeText(e.formula.kcal), 'not from your data'),
-        fig('Proposed target', p ? fmtNum(p.kcal, 0) : '–', goalText(d.goal.rateKgPerWeek).toLowerCase())));
-    } else {
-      kids.push(el('p', { class: 'small muted' }, 'Log weight and food daily to unlock your expenditure estimate (about 2 weeks). Fill in your profile in Settings for a formula estimate meanwhile.'));
-    }
+    return linkCard(href('trends/expenditure'), 'Expenditure', { tag: tag(confidenceText(e)) },
+      value(tdeeText(e.tdee), 'kcal / day'), line(target));
   }
-  kids.push(el('div', { class: 'small muted' }, `Current target ${fmtNum(d.targets.kcal, 0)} kcal · ${d.targets.source === 'adaptive' ? 'adaptive' : 'set manually'}`));
-  return linkCard(href('trends/expenditure'), 'Expenditure & target', kids);
+  if (e.formula) {
+    return linkCard(href('trends/expenditure'), 'Expenditure', { tag: tag('formula') },
+      value(tdeeText(e.formula.kcal), 'kcal / day'), line(target));
+  }
+  return linkCard(href('trends/expenditure'), 'Expenditure', {}, line('Needs about 2 weeks of weight and food.'));
 }
 
 function reportsCard(d) {
   const ws = weekStart(d.today);
   // Not a linkCard: it holds several links, which must not be nested inside one <a>.
-  return el('section', { class: 'card tr-card', 'aria-label': 'Weekly reports' },
+  const go = (path, label) => el('a', { class: 'btn btn-sm', href: href(path) }, label);
+  return el('section', { class: 'card tr-card', 'aria-labelledby': 'tr-reports-title' },
     el('a', { class: 'tr-card-head tr-head-link', href: href('trends/weeks') },
-      el('span', { class: 'tr-card-title' }, 'Weekly reports'), el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›')),
-    el('p', { class: 'small muted' }, 'Each Monday–Sunday week summed up: eating vs target, weight change and training, compared with the week before.'),
-    el('div', { class: 'grid-3 tr-report-links' },
-      el('a', { class: 'btn', href: href(`trends/week/${ws}`) }, 'This week'),
-      el('a', { class: 'btn', href: href(`trends/week/${addDays(ws, -7)}`) }, 'Last week'),
-      el('a', { class: 'btn', href: href('trends/weeks') }, 'All weeks')));
+      el('h2', { class: 'card-title', id: 'tr-reports-title' }, 'Weekly reports'), el('span', { class: 'grow' }),
+      icon('chevron-right', { class: 'li-chevron' })),
+    el('div', { class: 'tr-report-links' },
+      go(`trends/week/${ws}`, 'This week'),
+      go(`trends/week/${addDays(ws, -7)}`, 'Last week'),
+      go('trends/weeks', 'All weeks')));
 }
 
 function intakeCard(d) {
   const h = intakeHistory(d);
-  return linkCard(href('trends/intake'), 'Intake history',
-    h.logged
-      ? el('p', { class: 'small muted' }, `${h.label} Daily calories against your target and weekly averages.`)
-      : el('p', { class: 'small muted' }, 'Log food in the diary to see your daily calories here.'));
-}
-
-function fig(label, value, sub, cls) {
-  return el('div', { class: 'tr-fig' },
-    el('div', { class: 'small muted' }, label),
-    el('div', { class: ['tr-fig-val num', cls] }, value),
-    sub ? el('div', { class: 'small muted truncate' }, sub) : null);
-}
-
-/** @param {{fraction: number, isOver: boolean}} x see targetStatus */
-function meter(x) {
-  const pct = Math.max(0, Math.min(1, x.fraction || 0)) * 100;
-  return el('div', { class: ['tr-meter', x.isOver ? 'is-over' : null], 'aria-hidden': 'true' }, el('div', { class: 'tr-meter-fill', style: { width: `${pct}%` } }));
+  if (!h.logged) return linkCard(href('trends/intake'), 'Intake history', {}, line('No food logged in 4 weeks.'));
+  return linkCard(href('trends/intake'), 'Intake history', {},
+    value(String(h.logged), `day${h.logged === 1 ? '' : 's'} logged`),
+    line('Last 4 weeks · today excluded'));
 }

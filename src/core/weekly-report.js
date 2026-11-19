@@ -291,7 +291,7 @@ export function compareWeeks(cur, prev) {
     row('trend', 'Trend weight', 'kg', g(w(cur), (x) => x.trendEnd), g(w(prev), (x) => x.trendEnd)),
     row('workouts', 'Workouts', '', g(t(cur), (x) => x.done), g(t(prev), (x) => x.done)),
     row('sets', 'Sets', '', g(t(cur), (x) => x.sets), g(t(prev), (x) => x.sets)),
-    row('load', 'Volume load', 'kg', g(t(cur), (x) => x.load), g(t(prev), (x) => x.load)),
+    row('load', 'Tonnage', 'kg', g(t(cur), (x) => x.load), g(t(prev), (x) => x.load)),
   ];
 }
 

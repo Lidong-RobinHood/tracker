@@ -281,10 +281,10 @@ export function estimateExpenditure({ weights, intake, asOf, profile = null, con
 
   const missing = [];
   const plural = (n, word) => `${n} more ${word}${n === 1 ? '' : 's'}`;
-  if (weighIns < cfg.minWeighIns) missing.push(`Need ${plural(cfg.minWeighIns - weighIns, 'weigh-in')} in the last ${cfg.windowDays} days.`);
-  if (loggedDays < cfg.minLoggedDays) missing.push(`Need ${plural(cfg.minLoggedDays - loggedDays, 'fully logged day')} in the last ${cfg.windowDays} days.`);
-  if (spanDays < cfg.minSpanDays) missing.push(`Need ${plural(cfg.minSpanDays - spanDays, 'day')} of history (at least ${cfg.minSpanDays} days of weights and food).`);
-  else if (lastW && daysBetween(lastW, asOf) > cfg.maxStaleDays) missing.push(`No weigh-in in the last ${cfg.maxStaleDays} days.`);
+  if (weighIns < cfg.minWeighIns) missing.push(`${plural(cfg.minWeighIns - weighIns, 'weigh-in')} (${cfg.windowDays} days)`);
+  if (loggedDays < cfg.minLoggedDays) missing.push(`${plural(cfg.minLoggedDays - loggedDays, 'complete day')} (${cfg.windowDays} days)`);
+  if (spanDays < cfg.minSpanDays) missing.push(`${plural(cfg.minSpanDays - spanDays, 'day')} of history`);
+  else if (lastW && daysBetween(lastW, asOf) > cfg.maxStaleDays) missing.push(`A weigh-in (none in ${cfg.maxStaleDays} days)`);
 
   if (missing.length) {
     return { status: 'insufficient', tdee: null, se: null, confidence: null, missing, basis, formula };

@@ -1,50 +1,71 @@
-/* Onboarding: welcome steps, help, notice strip. Mobile first, light + dark via the app tokens. */
+/* Onboarding: setup steps, help, notice strip. Tokens only (light + dark via app.css). */
 
-/* Welcome: no tab bar while setting up (Skip setup is always in the header). */
+/* Setup: no tab bar while setting up (Skip setup is always in the header). */
 html.ob-focus .tabbar { display: none; }
 html.ob-focus .app-main { padding-bottom: calc(var(--safe-bottom) + var(--s5)); }
 
-.ob-view .tabs > button { min-height: var(--tap); }
-.ob-view .chip { min-height: var(--tap); }
-.ob-title { font-size: var(--fs-xl); }
+.ob-title { margin: 0; font-size: var(--fs-title); line-height: var(--lh-title); font-weight: var(--fw-bold); }
 .ob-title:focus { outline: none; }
+.ob-title-row { display: flex; align-items: center; gap: var(--s1); }
+.ob-body { gap: var(--gap-card); }
+.ob-body > p { margin: 0; }
 .ob-list, .ob-steps { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: var(--s2); }
-.ob-key { border-color: var(--accent); }
-.ob-note { padding: var(--s3); border-radius: var(--radius-sm); background: var(--warning-soft); }
+.ob-key { background: var(--accent-soft); box-shadow: none; }
+.ob-key-ic { color: var(--accent-ink); flex: none; margin-right: var(--s1); }
+.ob-note { display: flex; gap: var(--s2); align-items: flex-start; margin: 0; padding: var(--s3); border-radius: var(--r-md); background: var(--warn-soft); }
+.ob-note > .ic { color: var(--warn-text); flex: none; margin-top: 1px; }
+.ob-ok { display: flex; align-items: center; gap: var(--s2); color: var(--ok-text); margin: 0; }
+.ob-inline-ic { vertical-align: -3px; }
 .ob-nav { margin-top: var(--s2); }
-.ob-nav .btn-ghost { min-height: var(--tap); }
-.ob-estimate .row-between strong { white-space: nowrap; }
-.ob-view .grid-3 .input-unit .input { padding-left: var(--s2); padding-right: 2.7em; }
+.ob-nav .btn-ghost { gap: 2px; }
+.ob-est-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.ob-est-row strong { white-space: nowrap; }
+.ob-est-label { display: flex; align-items: center; }
+.ob-estimate p { margin: 0; }
+.ob-foot { display: flex; align-items: center; gap: var(--s1); margin: 0; }
+.ob-wrap { white-space: normal; }
+.ob-install { gap: var(--s3); }
+.ob-install p { margin: 0; }
+.ob-view .grid-3 .input-unit .input { padding-left: var(--s2); padding-right: 2.2em; }
 .ob-view .grid-3 .input-unit .unit { right: var(--s2); }
+@media (max-width: 360px) { .ob-view .grid-3 { gap: var(--s2); } }
+.ob-view > div > .progress { margin: calc(-1 * var(--s2)) var(--s1) 0; }
 
-/* Notice strip above the view (update, backup, hints). */
+/* Notice strip above the view (update, backup, setup card, hints). */
 .ob-notices { max-width: 640px; margin: 0 auto; padding: var(--safe-top) calc(var(--s4) + var(--safe-right)) 0 calc(var(--s4) + var(--safe-left)); }
 .ob-notices:empty { display: none; }
 html.has-notices .app-main { padding-top: 0; }
 .ob-notice {
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2);
-  margin-top: var(--s2); padding: var(--s2) var(--s3);
-  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
-  font-size: var(--fs-sm);
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3);
+  margin-top: var(--s3); padding: var(--s3) var(--s4);
+  border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--card-shadow);
+  font-size: var(--fs-sub); line-height: var(--lh-sub);
 }
-.ob-notice > .grow { min-width: 12em; }
-.ob-notice-backup { border-color: var(--warning); background: var(--warning-soft); }
-.ob-notice-update { border-color: var(--accent); }
+.ob-notice-text { display: flex; align-items: center; gap: var(--s2); flex: 1 1 14em; min-width: 0; }
+.ob-notice-text .grow { flex: 1 1 auto; min-width: 0; }
+.ob-notice-text .btn-info { margin: -12px -8px; }
+.ob-notice-ic { flex: none; color: var(--accent); }
+.ob-notice-backup { background: var(--warn-soft); box-shadow: none; }
+.ob-notice-backup .ob-notice-ic { color: var(--warn-text); }
+.ob-notice-setup, .ob-notice-update { background: var(--accent-soft); box-shadow: none; }
+.ob-notice-setup .ob-notice-ic, .ob-notice-update .ob-notice-ic { color: var(--accent-ink); }
 .ob-notice-actions { display: flex; gap: var(--s2); margin-left: auto; }
-.ob-notice .btn-sm { min-height: var(--tap); }
 
-/* Help */
-.ob-help details { border-top: 1px solid var(--border); }
+/* Help: one collapsible row per topic */
+.ob-help details { border-top: 1px solid var(--line); }
 .ob-help details:first-child { border-top: 0; }
 .ob-help summary {
-  min-height: var(--tap); padding: var(--s3) var(--s4); cursor: pointer; font-weight: 600;
-  display: flex; align-items: center; justify-content: space-between; gap: var(--s2); list-style: none;
+  min-height: 52px; padding: var(--s2) var(--s4); cursor: pointer;
+  display: flex; align-items: center; gap: var(--s3); list-style: none;
 }
 .ob-help summary::-webkit-details-marker { display: none; }
-.ob-help summary::after { content: '+'; color: var(--text-muted); font-weight: 400; font-size: var(--fs-lg); }
-.ob-help details[open] > summary::after { content: '\2212'; }
-.ob-help .ob-help-body { padding: 0 var(--s4) var(--s4); display: flex; flex-direction: column; gap: var(--s2); }
+.ob-help summary .li-lead { display: flex; }
+.ob-help-title { flex: 1 1 auto; min-width: 0; }
+.ob-help-chev { color: var(--ink-3); flex: none; transition: transform var(--d-fast) var(--ease); }
+.ob-help details[open] > summary .ob-help-chev { transform: rotate(180deg); }
+.ob-help .ob-help-body { padding: 0 var(--s4) var(--s4) calc(var(--s4) + 24px + var(--s3)); display: flex; flex-direction: column; gap: var(--s2);
+  font-size: var(--fs-sub); line-height: var(--lh-sub); }
+.ob-help .ob-help-body p { margin: 0; }
 .ob-help ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: var(--s1); }
 .ob-help a { overflow-wrap: anywhere; }
-.ob-notice-setup { border-color: var(--accent); }
-.ob-view .btn-sm { min-height: var(--tap); }
+@media (max-width: 360px) { .ob-help .ob-help-body { padding-left: var(--s4); } }

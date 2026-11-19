@@ -162,6 +162,6 @@ export function matchExercise(name, exercises, saved = {}) {
 export function confidenceLabel(c) {
   return {
     saved: 'Your earlier choice', exact: 'Exact name', alias: 'Known name', high: 'Very likely',
-    medium: 'Likely – please check', low: 'Unsure – please check', none: 'No match',
+    medium: 'Likely', low: 'Unsure', none: 'No match',
   }[c] || c;
 }

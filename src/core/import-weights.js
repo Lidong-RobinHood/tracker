@@ -101,7 +101,7 @@ export function parseWeightText(text, { today, dateOrder = 'auto' } = {}) {
     if (columnMode && !/[;\t|]/.test(line)) {
       const fields = (line.slice(0, d.start) + 'D' + after).split(',').length;
       if (fields > headerCols.length) {
-        issue(i, `"${line}" is ambiguous: ${fields} comma-separated values but the header has ${headerCols.length} columns, so a decimal comma cannot be told from a column separator. Use a dot as decimal mark, or ; or a tab between columns`);
+        issue(i, `"${line}": comma is ambiguous. Use a decimal dot, or ; or tab between columns`);
         return;
       }
       if (fields === headerCols.length) { commaColumns = true; columnLines++; }
@@ -117,7 +117,7 @@ export function parseWeightText(text, { today, dateOrder = 'auto' } = {}) {
     notes.push(`Commas are read as column separators (the header has ${headerCols.length} columns: ${headerCols.join(', ')}). The first number after the date is the weight in kg${ignored.length ? `; ${ignored.map((h) => `"${h}"`).join(', ')} ${ignored.length === 1 ? 'is' : 'are'} ignored` : ''}.`);
   }
   if (guesses.length) {
-    notes.push(`Guess: with no header row, ${guesses.length === 1 ? `"${guesses[0]}" was` : `${guesses.length} values like "${guesses[0]}" were`} read with a decimal comma (${parseNumber(guesses[0], 'comma')} kg). If the number after the comma is a second column (e.g. body fat), add a header row such as "Date,Weight,BodyFat", or separate the columns with ; or a tab.`);
+    notes.push(`Guess: read "${guesses[0]}" as ${parseNumber(guesses[0], 'comma')} kg (decimal comma)${guesses.length > 1 ? `, and ${guesses.length - 1} more like it` : ''}. Two columns? Add a header row or use ; or tab.`);
   }
   const fatal = lbLines.length
     ? `Line${lbLines.length > 1 ? 's' : ''} ${lbLines.slice(0, 8).join(', ')} mention pounds (lb). Only kilograms are supported; convert the column to kg first (kg = lb × 0.4536).`

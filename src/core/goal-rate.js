@@ -40,9 +40,9 @@ export function goalToRate(direction, amount) {
   return direction === 'lose' ? -r2(amount) : r2(amount);
 }
 
-/** Plain-language summary, e.g. 'Lose 0.5 kg a week'. */
+/** Plain-language summary, e.g. 'Lose 0.5 kg / week'. */
 export function goalSummary(direction, amount) {
-  if (direction === 'maintain') return 'Maintain your weight';
+  if (direction === 'maintain') return 'Maintain';
   const verb = direction === 'lose' ? 'Lose' : 'Gain';
-  return amountValid(direction, amount) ? `${verb} ${r2(amount)} kg a week` : `${verb}: enter more than 0 and at most ${GOAL_AMOUNT_MAX[direction]} kg a week`;
+  return amountValid(direction, amount) ? `${verb} ${r2(amount)} kg / week` : `${verb}: max ${GOAL_AMOUNT_MAX[direction]} kg / week`;
 }

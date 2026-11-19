@@ -1,5 +1,5 @@
-// Import hub: the three importers and the list of past imports with "Undo this import".
-import { el, pageHeader, href, confirmDialog, toast, fmtDate } from '../ui/index.js';
+// Import hub: the three importers and the list of past imports with Undo.
+import { el, pageHeader, href, confirmDialog, toast, fmtDate, icon, sectionHeader, tag } from '../ui/index.js';
 import { fromTimestamp } from '../core/dates.js';
 import { ensureCss, loadRuns, undoRun, plural, runSummary } from './shared.js';
 
@@ -7,31 +7,31 @@ const TYPE_LABEL = { workouts: 'Workouts', weights: 'Body weight', food: 'Food d
 
 export async function mountHub(container) {
   ensureCss();
-  const runsBox = el('div', { class: 'stack' });
+  container.classList.add('imp-view');
+  const runsBox = el('div', { class: 'card card-flush' });
   container.append(
-    pageHeader({ title: 'Import data', back: 'settings' }),
-    el('p', { class: 'muted' }, 'Bring your history from a spreadsheet or another app. You always see a preview first, nothing is overwritten without asking, and every import can be undone below.'),
+    pageHeader({ title: 'Import data', subtitle: 'Preview first. Every import can be undone below.', back: 'settings' }),
     el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
-      item('import/workouts', 'Workouts from a spreadsheet', 'Paste exercise blocks: name, 3 x 6, weight and reps, dropsets.'),
-      item('import/weights', 'Body weight', 'Paste or pick a file with a date and kg on each line.'),
-      item('import/food', 'Food diary', 'A CSV file from MyFitnessPal, Cronometer, FDDB or any spreadsheet.'))),
-    el('section', { class: 'section' }, el('h2', { class: 'section-title' }, 'Past imports'), runsBox));
+      item('import/workouts', 'barbell', 'Workouts from a spreadsheet', 'Pasted sheet or a .txt / .csv file'),
+      item('import/weights', 'scale', 'Body weight', 'Date and kg per line'),
+      item('import/food', 'utensils', 'Food diary', 'CSV from MyFitnessPal, Cronometer, FDDB'))),
+    el('section', { class: 'section' }, sectionHeader('Past imports'), runsBox));
 
   async function render() {
     const runs = await loadRuns();
-    if (!runs.length) { runsBox.replaceChildren(el('p', { class: 'muted small' }, 'No imports yet.')); return; }
-    runsBox.replaceChildren(...runs.map((r) => runCard(r)));
+    if (!runs.length) { runsBox.replaceChildren(el('p', { class: 't-sub muted imp-none' }, 'No imports yet.')); return; }
+    runsBox.replaceChildren(el('div', { class: 'list' }, runs.map((r) => runRow(r))));
   }
 
-  function runCard(r) {
+  function runRow(r) {
     const when = `${fmtDate(fromTimestamp(r.createdAt))} ${new Date(r.createdAt).toTimeString().slice(0, 5)}`;
-    const status = r.status === 'undone' ? el('span', { class: 'badge' }, 'Undone')
-      : r.status === 'done' ? null : el('span', { class: 'badge badge-warning' }, 'Not finished');
+    const status = r.status === 'undone' ? tag('Undone')
+      : r.status === 'done' ? null : tag('Not finished', { tone: 'warn' });
     const btn = r.status === 'undone' ? null : el('button', {
-      type: 'button', class: 'btn btn-danger btn-sm imp-undo', onClick: async () => {
+      type: 'button', class: 'btn btn-sm btn-danger imp-undo', 'aria-label': `Undo this import: ${runSummary(r)}`, onClick: async () => {
         const ok = await confirmDialog({
           title: 'Undo this import?',
-          message: `This removes exactly what this import added (${runSummary(r)}). Entries you added yourself stay.`,
+          message: `Removes ${runSummary(r)}. Your own entries stay.`,
           confirmLabel: 'Undo import', danger: true,
         });
         if (!ok) return;
@@ -46,20 +46,20 @@ export async function mountHub(container) {
         }
         render();
       },
-    }, 'Undo this import');
-    return el('div', { class: 'card imp-run', dataset: { run: r.id } },
-      el('div', { class: 'row-between' },
-        el('div', { class: 'li-main' },
-          el('div', { class: 'li-title' }, TYPE_LABEL[r.type] || r.type, ' ', status),
-          el('div', { class: 'li-sub' }, `${when} · ${runSummary(r)}`)),
-        btn));
+    }, icon('undo-2', { size: 18 }), 'Undo');
+    return el('div', { class: 'list-item imp-run', dataset: { run: r.id } },
+      el('div', { class: 'li-main' },
+        el('div', { class: 'li-title imp-run-title' }, TYPE_LABEL[r.type] || r.type, status),
+        el('div', { class: 'li-sub imp-wrap' }, `${when} · ${runSummary(r)}`)),
+      btn);
   }
 
   await render();
 }
 
-function item(path, title, sub) {
+function item(path, iconName, title, sub) {
   return el('a', { class: 'list-item', href: href(path) },
+    el('span', { class: 'li-lead' }, icon(iconName)),
     el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, title), el('div', { class: 'li-sub' }, sub)),
-    el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›'));
+    icon('chevron-right', { class: 'li-chevron' }));
 }

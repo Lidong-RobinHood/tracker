@@ -1,24 +1,35 @@
-// Expenditure & target: TDEE estimate with status/confidence and its data basis, goal, proposed
-// target, the weekly check-in (Accept / Keep current) and the target history. Route: trends/expenditure
-import { el, replaceChildren, pageHeader, toast, fmtNum, fmtDate, href } from '../ui/index.js';
+// Expenditure: the trend chart template (line = expenditure estimate per day, dots = complete-day
+// intake), its data basis, the weekly check-in as one card (Accept / Keep current) and the target
+// history. Route: trends/expenditure
+import { el, replaceChildren, pageHeader, toast, fmtGrouped, fmtNum, fmtDate, href, cardHeader, sectionHeader, segmented, tag,
+  infoButton, icon } from '../ui/index.js';
 import { addDays } from '../core/dates.js';
-import { adaptiveConfig } from '../core/adaptive.js';
-import { ensureCss, loadTrendsData, answerCheckIn, signed, goalText, tdeeText, CONFIDENCE_LABEL } from './data.js';
+import { adaptiveConfig, estimateExpenditure, classifyIntake, displayTdee } from '../core/adaptive.js';
+import { trendChart, changeTable, figures } from './charts.js';
+import { weekRange } from './week-view.js';
+import { fixed, ensureCss, loadTrendsData, answerCheckIn, signed, goalText, tdeeText, confidenceText } from './data.js';
+
+const RANGES = [{ id: '1m', label: '1M', days: 28, name: '4 weeks' }, { id: '3m', label: '3M', days: 91, name: '3 months' }];
+let rangeId = '1m';
 
 export async function mountExpenditure(container) {
   ensureCss();
-  container.append(pageHeader({ title: 'Expenditure & target', back: 'trends' }));
-  const body = el('div', { class: 'stack' });
+  container.classList.add('tr-view');
+  container.append(pageHeader({ title: 'Expenditure', back: 'trends', info: 'expenditure' }));
+  const body = el('div', { class: 'tr-stack' });
   container.append(body);
+  let series = null; // estimates per day, computed once per mount (same function as today's estimate)
 
   async function render() {
     const d = await loadTrendsData();
+    if (!series) series = estimateSeries(d);
     replaceChildren(body,
-      estimateCard(d),
-      checkInSection(d, async (decision) => {
+      estimateCard(d, series, render),
+      basisCard(d),
+      checkInCard(d, async (decision) => {
         try {
           const rec = await answerCheckIn(d.checkIn, decision);
-          toast(decision === 'accepted' ? `New target: ${fmtNum(rec.history.kcalTarget, 0)} kcal a day` : 'Kept your current targets', { type: 'success' });
+          toast(decision === 'accepted' ? `New target: ${fmtGrouped(rec.history.kcalTarget)} kcal / day` : 'Kept your current targets', { type: 'success' });
         } catch (err) {
           console.error(err);
           toast(`Could not save: ${err.message}`, { type: 'error' });
@@ -30,110 +41,148 @@ export async function mountExpenditure(container) {
   await render();
 }
 
-// ---------------------------------------------------------------- estimate
-
-function estimateCard(d) {
-  const e = d.estimate;
-  const b = e.basis;
-  const head = el('div', { class: 'card-header' }, el('h2', { class: 'card-title' }, 'Expenditure (TDEE)'),
-    e.status === 'ok'
-      ? el('span', { class: ['badge', e.confidence === 'low' ? 'badge-warning' : null] }, CONFIDENCE_LABEL[e.confidence])
-      : el('span', { class: 'badge badge-warning' }, 'Not enough data'));
-  const items = [head];
-  if (e.status === 'ok') {
-    items.push(
-      el('div', { class: 'tr-big' }, el('span', { class: 'num' }, tdeeText(e.tdee)), el('span', { class: 'muted' }, ' kcal / day')),
-      el('p', { class: 'small muted' }, `Estimated from your data, ± ${fmtNum(Math.round(e.se / 10) * 10, 0)} kcal. Calories you burn per day on average, including training.`));
-  } else {
-    items.push(
-      el('p', 'An estimate from your own data needs a little more logging:'),
-      el('ul', { class: 'tr-missing' }, e.missing.map((m) => el('li', m))));
-    if (e.formula) {
-      items.push(el('div', { class: 'tr-formula' },
-        el('div', { class: 'small muted' }, 'Formula estimate (Mifflin-St Jeor × activity) — not based on your data'),
-        el('div', { class: 'tr-big' }, el('span', { class: 'num' }, tdeeText(e.formula.kcal)), el('span', { class: 'muted' }, ' kcal / day'))));
-    } else {
-      items.push(el('p', { class: 'small muted' }, 'Until then: fill in sex, birth year, height and activity in ',
-        el('a', { href: href('settings') }, 'Settings'), ' for a formula estimate.'));
-    }
+/** Expenditure estimate for each of the last 91 days (display only: the same estimate as on that day). */
+function estimateSeries(d) {
+  const out = [];
+  for (let i = 90; i >= 0; i--) {
+    const asOf = addDays(d.today, -i);
+    const e = i === 0 ? d.estimate : estimateExpenditure({ weights: d.weights, intake: d.intake, asOf, profile: d.profile, config: d.config });
+    if (e.status === 'ok') out.push({ date: asOf, tdee: e.tdee });
   }
-  items.push(el('div', { class: 'list tr-basis' },
-    row('Weigh-ins (last 28 days)', `${b.weighIns}`),
-    row('Fully logged days (last 28 days)', `${b.loggedDays}${b.incompleteDays ? ` (+${b.incompleteDays} ignored as incomplete)` : ''}`),
-    row('Average intake on those days', b.meanIntake === null ? '–' : `${fmtNum(b.meanIntake, 0)} kcal`),
-    row('Trend weight', b.trendKg === null ? '–' : `${fmtNum(b.trendKg, 1)} kg`),
-    row('Weight change', b.rateKgPerWeek === null ? '–' : `${signed(b.rateKgPerWeek, 2)} kg / week`)));
-  items.push(el('p', { class: 'small muted' }, 'Today is not counted (the day is not over). Logged days under half of your usual intake count as incomplete and are left out.'));
-  return el('section', { class: 'card stack' }, items);
+  return out;
 }
 
-function row(label, value) {
-  return el('div', { class: 'list-item' }, el('span', { class: 'li-main small' }, label), el('span', { class: 'li-trail small' }, value));
+// ---------------------------------------------------------------- estimate
+
+function estimateCard(d, series, rerender) {
+  const e = d.estimate;
+  const seg = segmented({ small: true, ariaLabel: 'Chart range', value: rangeId,
+    options: RANGES.map((r) => ({ value: r.id, label: r.label, ariaLabel: r.name })),
+    onChange: (v) => { rangeId = v; rerender(); } });
+
+  if (e.status !== 'ok') {
+    const kids = [cardHeader('Estimate', { tag: e.formula ? 'Formula estimate' : null })];
+    if (e.formula) {
+      kids.push(figures({ label: 'Expenditure · not from your data', value: tdeeText(e.formula.kcal), unit: 'kcal / day' }));
+    }
+    kids.push(el('p', { class: 't-sub strong tr-needed' }, 'Still needed:'),
+      el('ul', { class: 'tr-missing t-sub' }, e.missing.map((m) => el('li', null, m))));
+    if (!e.formula) {
+      kids.push(el('p', { class: 't-sub muted' }, 'Add your profile in ', el('a', { href: href('settings/goal') }, 'Settings'), ' for a formula estimate.'));
+    }
+    return el('section', { class: 'card tr-chart-card', 'aria-label': 'Expenditure estimate' }, kids);
+  }
+
+  const range = RANGES.find((r) => r.id === rangeId);
+  const from = addDays(d.today, -(range.days - 1));
+  const valid = new Map(classifyIntake(d.intake, d.today, d.config).filter((r) => r.valid).map((r) => [r.date, r.kcal]));
+  const est = new Map(series.map((r) => [r.date, r.tdee]));
+  const dates = [...new Set([...est.keys(), ...valid.keys()])].filter((x) => x >= from && x <= d.today).sort();
+  const items = dates.map((date) => ({ date, dot: valid.get(date) ?? null, line: est.has(date) ? displayTdee(est.get(date)) : null }));
+  const now = displayTdee(e.tdee);
+  const changes = [7, 14, 30, 90].map((n) => {
+    const base = est.get(addDays(d.today, -n));
+    return base === undefined ? null : { label: `${n} d`, value: signed(now - displayTdee(base), 0) };
+  }).filter(Boolean);
+  const intakeAvg = e.basis.meanIntake;
+  return el('section', { class: 'card tr-chart-card', 'aria-label': 'Expenditure estimate' },
+    cardHeader('Estimate', { trail: seg }),
+    figures(
+      { label: 'Expenditure', value: tdeeText(e.tdee), unit: 'kcal / day' },
+      { label: 'Intake avg', value: intakeAvg === null ? '–' : fmtGrouped(intakeAvg), unit: 'kcal' }),
+    el('div', { class: 'tr-tagrow' }, tag(confidenceText(e), { tone: e.confidence === 'low' ? 'warn' : 'neutral' }),
+      e.confidence === 'low' ? el('span', { class: 't-sub muted' }, 'low confidence') : null),
+    items.some((r) => r.line !== null)
+      ? trendChart({
+        items, from, to: d.today, today: d.today, minSpan: 100, axisDecimals: 0,
+        ariaLabel: `Expenditure from ${fmtDate(from)} to ${fmtDate(d.today)}: the line is the estimate, dots are complete-day intake`,
+        readout: (r) => (r
+          ? [fmtDate(r.date), r.line !== null ? `expenditure ${fmtGrouped(r.line)}` : null, r.dot !== null ? `intake ${fmtGrouped(r.dot)} kcal` : 'no complete day'].filter(Boolean).join(' · ')
+          : `Today · ${tdeeText(e.tdee)} kcal / day`),
+        legend: ['Intake, complete days', 'Expenditure'],
+      })
+      : null,
+    changeTable(changes));
+}
+
+function basisCard(d) {
+  const b = d.estimate.basis;
+  const row = (label, value, info) => el('div', { class: 'tr-row' },
+    el('span', { class: 'tr-row-label' }, label, info || null), el('span', { class: 'tr-row-value' }, value));
+  return el('section', { class: 'card tr-basis', 'aria-label': 'Data basis, last 28 days' },
+    cardHeader('Basis', { trail: el('span', { class: 't-sub muted' }, 'last 28 days') }),
+    row('Weigh-ins', `${b.weighIns}`),
+    row('Complete days', `${b.loggedDays}${b.incompleteDays ? ` (+${b.incompleteDays} incomplete)` : ''}`, infoButton('complete')),
+    row('Average intake', b.meanIntake === null ? '–' : `${fmtGrouped(b.meanIntake)} kcal`),
+    row('Trend weight', b.trendKg === null ? '–' : `${fixed(b.trendKg, 1)} kg`),
+    row('Weight change', b.rateKgPerWeek === null ? '–' : `${signed(b.rateKgPerWeek, 2)} kg / week`));
 }
 
 // ---------------------------------------------------------------- check-in
 
-function checkInSection(d, answer) {
+function checkInCard(d, answer) {
   const ci = d.checkIn;
   const done = d.doneThisWeek;
-  const title = el('h2', { class: 'section-title' }, `Weekly check-in · week of ${fmtDate(ci.weekStart)}`);
-  const goal = el('div', { class: 'row-between' },
-    el('div', null, el('div', { class: 'small muted' }, 'Goal'), el('div', { class: 'tr-strong' }, goalText(d.goal.rateKgPerWeek))),
-    el('a', { class: 'btn btn-sm', href: href('settings') }, 'Change'));
+  const head = cardHeader(`Check-in · ${fmtDate(ci.weekStart)}`, { info: 'checkin' });
+  const fig = (label, v) => el('div', { class: 'tr-row' }, el('span', { class: 'tr-row-label' }, label), el('span', { class: 'tr-row-value' }, v));
+  const review = el('div', { class: 'tr-review' },
+    el('div', { class: 't-cap muted' }, `Last week · ${weekRange(ci.reviewFrom)}`),
+    fig('Average intake', ci.avgIntake === null ? 'nothing logged' : `${fmtGrouped(ci.avgIntake)} kcal · ${ci.daysLogged} day${ci.daysLogged === 1 ? '' : 's'}`),
+    fig('Trend change', ci.trendChange === null ? '–' : `${signed(ci.trendChange, 1)} kg`),
+    fig(ci.basisKind === 'formula' ? 'Expenditure (formula)' : 'Expenditure', ci.tdee === null ? 'not available' : `${tdeeText(ci.tdee)} kcal`),
+    el('div', { class: 'tr-row' }, el('span', { class: 'tr-row-label' }, 'Goal'),
+      el('span', { class: 'tr-row-value' }, goalText(d.goal.rateKgPerWeek)),
+      el('a', { class: 'btn btn-sm btn-ghost tr-row-action', href: href('settings/goal'), 'aria-label': 'Change goal in Settings' }, 'Change')));
 
-  const review = el('div', { class: 'list tr-basis' },
-    row(`Last week (${fmtDate(ci.reviewFrom)} – ${fmtDate(ci.reviewTo)})`, ''),
-    row('Average intake', ci.avgIntake === null ? 'nothing logged' : `${fmtNum(ci.avgIntake, 0)} kcal (${ci.daysLogged} day${ci.daysLogged === 1 ? '' : 's'})`),
-    row('Trend weight change', ci.trendChange === null ? '–' : `${signed(ci.trendChange, 2)} kg`),
-    row(ci.basisKind === 'formula' ? 'Expenditure (formula)' : `Expenditure as of ${fmtDate(ci.weekStart)}`,
-      ci.tdee === null ? 'not available' : `${tdeeText(ci.tdee)} kcal`));
-
-  const cards = [goal, review];
   if (!ci.proposal) {
-    cards.push(el('p', { class: 'muted small' }, ci.noProposal === 'no-weight'
-      ? 'No weigh-in logged yet. Log your weight to get a proposed target.'
-      : 'No proposal yet: the estimate from your data needs more logging (see above). Fill in sex, birth year, height and activity in Settings for a formula-based proposal meanwhile.'));
-    return el('section', { class: 'section' }, title, el('div', { class: 'card stack' }, cards));
+    return el('section', { class: 'card tr-checkin', id: 'checkin', 'aria-label': 'Weekly check-in' }, head, review,
+      el('p', { class: 't-sub muted' }, ci.noProposal === 'no-weight'
+        ? 'Log a weigh-in to get a proposal.'
+        : ['No proposal yet. Add your profile in ', el('a', { href: href('settings/goal') }, 'Settings'), ' for a formula-based one.']));
   }
 
   const p = ci.proposal;
   const t = d.targets;
-  const cmp = el('table', { class: 'tr-table num' },
-    el('thead', el('tr', el('th', ''), el('th', 'Current'), el('th', 'Proposed'))),
+  const diff = p.kcal - t.kcal;
+  const hero = el('div', { class: 'tr-hero' },
+    el('span', { class: 't-hero' }, fmtGrouped(p.kcal)), el('span', { class: 't-sub muted' }, 'kcal / day'),
+    diff ? tag(`${signed(diff, 0)} kcal`) : tag('no change'));
+  const cmp = el('table', { class: 'tr-table' },
+    el('thead', el('tr', el('th', { scope: 'col' }, el('span', { class: 'vh' }, 'Target')), el('th', { scope: 'col' }, 'Current'), el('th', { scope: 'col' }, 'Proposed'))),
     el('tbody',
       [['Calories', 'kcal', 'kcal'], ['Protein', 'protein', 'g'], ['Carbs', 'carbs', 'g'], ['Fat', 'fat', 'g']].map(([label, k, unit]) => el('tr',
-        el('th', label),
-        el('td', `${fmtNum(t[k], 0)} ${unit}`),
-        el('td', { class: p[k] !== t[k] ? 'tr-changed' : null }, `${fmtNum(p[k], 0)} ${unit}`)))));
-  cards.push(cmp);
+        el('th', { scope: 'row' }, label),
+        el('td', `${fmtGrouped(t[k])} ${unit}`),
+        el('td', { class: p[k] !== t[k] ? 'tr-changed' : null }, `${fmtGrouped(p[k])} ${unit}`)))));
+  const raw = fmtGrouped(Math.round(p.rawKcal / 10) * 10);
   const notes = [];
-  if (ci.basisKind === 'formula') notes.push('Based on the formula estimate, not yet on your data.');
-  if (p.limitedBy === 'change') notes.push(`Limited to ${fmtNum(adaptiveConfig(d.config).maxWeeklyChange, 0)} kcal change per week (unlimited would be ${fmtNum(Math.round(p.rawKcal / 10) * 10, 0)} kcal).`);
-  if (p.limitedBy === 'floor') notes.push(`Raised to your calorie floor (unlimited would be ${fmtNum(Math.round(p.rawKcal / 10) * 10, 0)} kcal).`);
-  if (p.proteinLimited && p.split !== 'percent') notes.push(`Protein capped at ${fmtNum(p.protein, 0)} g so the macros fit the calories (your per-kg setting would be ${fmtNum(p.proteinWanted, 0)} g).`);
-  if (p.split === 'percent' && t.pct) notes.push(`Macros follow your split of ${fmtNum(t.pct.protein)} % protein, ${fmtNum(t.pct.carbs)} % carbs, ${fmtNum(t.pct.fat)} % fat (set in Settings); only the calories adapt.`);
-  if (t.source !== 'adaptive') notes.push('Your targets are set manually. Accepting switches them to adaptive.');
-  if (notes.length) cards.push(el('div', { class: 'stack tr-notes' }, notes.map((n) => el('p', { class: 'small muted' }, n))));
+  if (ci.basisKind === 'formula') notes.push('Formula-based, not from your data.');
+  if (p.limitedBy === 'change') notes.push(`Capped at ±${fmtGrouped(adaptiveConfig(d.config).maxWeeklyChange)} kcal / week (uncapped ${raw} kcal).`);
+  if (p.limitedBy === 'floor') notes.push(`Raised to calorie floor (uncapped ${raw} kcal).`);
+  if (p.proteinLimited && p.split !== 'percent') notes.push(`Protein capped at ${fmtGrouped(p.protein)} g to fit calories (setting: ${fmtGrouped(p.proteinWanted)} g).`);
+  if (p.split === 'percent' && t.pct) notes.push(`Split ${fmtNum(t.pct.protein)} / ${fmtNum(t.pct.carbs)} / ${fmtNum(t.pct.fat)} % kept; only calories change.`);
+  if (t.source !== 'adaptive') notes.push('Accepting switches targets to adaptive.');
 
+  const kids = [head, review, hero, cmp, notes.length ? el('ul', { class: 'tr-notes t-sub muted' }, notes.map((n) => el('li', null, n))) : null];
   if (done) {
-    cards.push(el('p', { class: 'tr-done small' },
-      done.decision === 'accepted' ? `Done: you accepted ${fmtNum(done.kcalTarget, 0)} kcal for this week.` : 'Done: you kept your current targets this week.',
-      ` Next check-in on ${fmtDate(addDays(ci.weekStart, 7))}.`));
-    if (done.decision === 'kept') cards.push(el('button', { class: 'btn btn-sm btn-block', type: 'button', onClick: () => answer('accepted') }, 'Accept the proposal instead'));
+    kids.push(el('p', { class: 'tr-done t-sub', role: 'status' }, icon('check', { size: 18 }),
+      el('span', null, done.decision === 'accepted' ? `Accepted ${fmtGrouped(done.kcalTarget)} kcal.` : 'Kept current targets.',
+        ` Next check-in ${fmtDate(addDays(ci.weekStart, 7))}.`)));
+    if (done.decision === 'kept') kids.push(el('button', { class: 'btn btn-block', type: 'button', onClick: () => answer('accepted') }, 'Accept the proposal instead'));
   } else {
-    cards.push(el('div', { class: 'row' },
-      el('button', { class: 'btn grow', type: 'button', onClick: () => answer('kept') }, 'Keep current'),
-      el('button', { class: 'btn btn-primary grow', type: 'button', onClick: () => answer('accepted') }, 'Accept')));
+    kids.push(el('div', { class: 'tr-actions' },
+      el('button', { class: 'btn btn-primary', type: 'button', onClick: () => answer('accepted') }, 'Accept'),
+      el('button', { class: 'btn', type: 'button', onClick: () => answer('kept') }, 'Keep current')));
   }
-  return el('section', { class: 'section', id: 'checkin' }, title, el('div', { class: 'card stack' }, cards));
+  return el('section', { class: 'card tr-checkin', id: 'checkin', 'aria-label': 'Weekly check-in' }, kids);
 }
 
 function historySection(history) {
   if (!history.length) return null;
-  return el('section', { class: 'section' }, el('h2', { class: 'section-title' }, 'Target history'),
-    el('div', { class: 'card card-flush' }, el('div', { class: 'list' }, history.slice(0, 26).map((h) => el('div', { class: 'list-item' },
+  return el('section', { class: 'section' }, sectionHeader('Target history'),
+    el('div', { class: 'card card-flush' }, el('div', { class: 'list' }, history.slice(0, 26).map((h) => el('div', { class: 'list-item tr-week-row' },
       el('div', { class: 'li-main' },
         el('div', { class: 'li-title' }, `Week of ${fmtDate(h.weekStart)}`),
-        el('div', { class: 'li-sub' }, `${h.decision === 'kept' ? 'Kept' : 'Accepted'} · TDEE ${tdeeText(h.tdee)}${h.basis === 'formula' ? ' (formula)' : ''} · ${h.daysLogged} days logged`)),
-      el('span', { class: 'li-trail num' }, `${fmtNum(h.kcalTarget, 0)} kcal`))))));
+        el('div', { class: 'li-sub' }, `${h.decision === 'kept' ? 'Kept' : 'Accepted'} · expenditure ${tdeeText(h.tdee)} kcal${h.basis === 'formula' ? ' (formula)' : ''} · ${h.daysLogged} days`)),
+      el('span', { class: 'li-trail' }, `${fmtGrouped(h.kcalTarget)} kcal`))))));
 }
