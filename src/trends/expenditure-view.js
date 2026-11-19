@@ -110,6 +110,7 @@ function checkInSection(d, answer) {
   if (ci.basisKind === 'formula') notes.push('Based on the formula estimate, not yet on your data.');
   if (p.limitedBy === 'change') notes.push(`Limited to ${fmtNum(adaptiveConfig(d.config).maxWeeklyChange, 0)} kcal change per week (unlimited would be ${fmtNum(Math.round(p.rawKcal / 10) * 10, 0)} kcal).`);
   if (p.limitedBy === 'floor') notes.push(`Raised to your calorie floor (unlimited would be ${fmtNum(Math.round(p.rawKcal / 10) * 10, 0)} kcal).`);
+  if (p.proteinLimited && p.split !== 'percent') notes.push(`Protein capped at ${fmtNum(p.protein, 0)} g so the macros fit the calories (your per-kg setting would be ${fmtNum(p.proteinWanted, 0)} g).`);
   if (p.split === 'percent' && t.pct) notes.push(`Macros follow your split of ${fmtNum(t.pct.protein)} % protein, ${fmtNum(t.pct.carbs)} % carbs, ${fmtNum(t.pct.fat)} % fat (set in Settings); only the calories adapt.`);
   if (t.source !== 'adaptive') notes.push('Your targets are set manually. Accepting switches them to adaptive.');
   if (notes.length) cards.push(el('div', { class: 'stack tr-notes' }, notes.map((n) => el('p', { class: 'small muted' }, n))));

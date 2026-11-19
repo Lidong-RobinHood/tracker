@@ -220,3 +220,16 @@ test('photoMealTotals sums edited items, rounds like the review, skips items wit
   assert.deepEqual(photoMealTotals(items), { kcal: 521, protein: 37.9, carbs: 56, fat: 14.2 });
   assert.deepEqual(photoMealTotals([]), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
 });
+
+test('item 8: toNumber reads a comma before exactly three digits as thousands; tiny amounts become null', async () => {
+  const { toNumber, sanitiseItem } = await import('../src/core/meal-photo.js');
+  assert.equal(toNumber('1,234 g'), 1234);
+  assert.equal(toNumber('1,234.5'), 1234.5);
+  assert.equal(toNumber('1.234,5 g'), 1234.5);
+  assert.equal(toNumber('82,5 g'), 82.5);
+  assert.equal(toNumber('0,125'), 0.125);
+  assert.equal(toNumber('1.234'), 1.234);
+  const it = sanitiseItem({ name: 'Salt', amount: 0.04, per100: { kcal: 0 } });
+  assert.equal(it.amount, null);
+  assert.ok(it.fixes.some((f) => /amount/i.test(f)));
+});

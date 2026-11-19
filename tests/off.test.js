@@ -85,3 +85,11 @@ test('rate limit delay uses a sliding window', () => {
   assert.equal(rateLimitDelay(times, 3000, { max: 3, windowMs: 60000 }), 57000);
   assert.equal(rateLimitDelay(times, 61000, { max: 3, windowMs: 60000 }), 0);
 });
+
+test('item 8: a multipack quantity gives the whole pack and the single unit as servings', () => {
+  const { food } = offProductToFood({ code: '9', product_name: 'Cola', quantity: '6 x 330 ml', nutriments: { 'energy-kcal_100g': 42 } });
+  assert.equal(food.basis, 'ml');
+  assert.deepEqual(food.servings, [{ label: '1 of 6', amount: 330 }, { label: 'Whole pack', amount: 1980 }]);
+  const { food: f2 } = offProductToFood({ code: '8', product_name: 'Big', quantity: '1.234,5 g', nutriments: { 'energy-kcal_100g': 42 } });
+  assert.deepEqual(f2.servings, [{ label: 'Whole pack', amount: 1234.5 }]);
+});

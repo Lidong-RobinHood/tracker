@@ -64,6 +64,7 @@ export const ADAPTIVE_DEFAULTS = Object.freeze({
   // targets
   proteinPerKg: 2.0,             // g protein per kg trend weight
   fatPerKg: 0.8,                 // minimum g fat per kg trend weight
+  minFatG: 20,                   // fat never goes below this when protein has to be capped to fit the kcal
   kcalFloor: null,               // null = by sex (floors below)
   floors: { male: 1500, female: 1200, unknown: 1350 },
   maxWeeklyChange: 150,          // kcal change vs the previous adaptive target
@@ -339,31 +340,49 @@ export function kcalFloor(sex, config) {
 
 /**
  * Daily target for the coming week.
- *   kcal = TDEE + rate × 7700 / 7, rounded to roundTo; limited to previousKcal ± maxWeeklyChange
- *   (when there is a previous adaptive target); never below the floor.
+ *   kcal = TDEE + rate × 7700 / 7, rounded to roundTo; then limited to previousKcal ± maxWeeklyChange
+ *   (when there is a previous adaptive target). The limited value is rounded toward the previous
+ *   target so it never moves more than the limit (2005 → at most 2150, not 2160); when that is
+ *   impossible it is the exact limit (not a multiple of roundTo). Never below the floor (the floor
+ *   wins over the change limit).
  *   protein = proteinPerKg × weight; fat = fatPerKg × weight (lowered only if kcal cannot fit it);
- *   carbs = the rest (≥ 0).
+ *   carbs = the rest (≥ 0). If protein plus minFatG would exceed the kcal, protein is capped so that
+ *   protein + minFatG fit and proteinLimited is true (proteinWanted = the per-kg amount). Macros
+ *   therefore never add up to more than kcal + a few kcal of rounding drift.
  * @param {{tdee: number, rateKgPerWeek: number, weightKg: number, sex?: string|null,
  *          previousKcal?: number|null, config?: object}} a
  * @returns {{kcal: number, protein: number, carbs: number, fat: number, rawKcal: number,
- *            limitedBy: 'floor'|'change'|null}}
+ *            limitedBy: 'floor'|'change'|null, proteinLimited: boolean, proteinWanted: number}}
  */
 export function weeklyTarget({ tdee, rateKgPerWeek = 0, weightKg, sex = null, previousKcal = null, config }) {
   const cfg = adaptiveConfig(config);
-  const rnd = (v) => Math.round(v / cfg.roundTo) * cfg.roundTo;
+  const step = cfg.roundTo;
+  const rnd = (v) => Math.round(v / step) * step;
   const rawKcal = tdee + (rateKgPerWeek * cfg.kcalPerKg) / 7;
   let kcal = rnd(rawKcal);
   let limitedBy = null;
   if (isNum(previousKcal) && previousKcal > 0) {
     const lo = previousKcal - cfg.maxWeeklyChange; const hi = previousKcal + cfg.maxWeeklyChange;
-    if (kcal < lo || kcal > hi) { kcal = rnd(Math.min(hi, Math.max(lo, kcal))); limitedBy = 'change'; }
+    if (kcal < lo || kcal > hi) {
+      const edge = kcal > hi ? hi : lo;
+      const towardPrev = kcal > hi ? Math.floor(edge / step) * step : Math.ceil(edge / step) * step;
+      kcal = towardPrev >= lo && towardPrev <= hi ? towardPrev : edge;
+      limitedBy = 'change';
+    }
   }
   const floor = kcalFloor(sex, cfg);
   if (kcal < floor) { kcal = floor; limitedBy = 'floor'; }
-  const protein = Math.round(cfg.proteinPerKg * weightKg);
+  const proteinWanted = Math.round(cfg.proteinPerKg * weightKg);
+  const fatFloor = Math.max(0, Math.min(Math.round(cfg.fatPerKg * weightKg), cfg.minFatG));
+  let protein = proteinWanted;
+  let proteinLimited = false;
+  if (protein * 4 + fatFloor * 9 > kcal) {
+    protein = Math.max(0, Math.floor((kcal - fatFloor * 9) / 4));
+    proteinLimited = true;
+  }
   const fat = Math.max(0, Math.min(Math.round(cfg.fatPerKg * weightKg), Math.floor((kcal - protein * 4) / 9)));
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
-  return { kcal, protein, carbs, fat, rawKcal, limitedBy };
+  return { kcal, protein, carbs, fat, rawKcal, limitedBy, proteinLimited, proteinWanted };
 }
 
 // ---------------------------------------------------------------- weekly check-in

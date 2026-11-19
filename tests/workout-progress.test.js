@@ -235,3 +235,10 @@ test('weekly targets: sanitise and percentage reached', () => {
   assert.equal(targetProgress(5, 0), null);
   assert.equal(targetProgress(5, undefined), null);
 });
+
+test('item 4: pctChange and targetProgress round exact halves away from zero', () => {
+  assert.equal(p.pctChange(103, 80), 28.8);
+  assert.equal(p.pctChange(57, 80), -28.8);
+  assert.equal(targetProgress(11.5, 20).pct, 58);
+  assert.equal(targetProgress(20.5, 20).pct, 103);
+});

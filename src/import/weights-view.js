@@ -72,6 +72,7 @@ export async function mountWeightImport(container) {
           stat('From', dateY(a.from)), stat('To', dateY(a.to)),
           stat('Lowest', fmtKg(a.min)), stat('Highest', fmtKg(a.max)))
         : el('p', { class: 'text-danger' }, 'No usable weigh-in found.')));
+    for (const n of p.notes || []) nodes.push(el('p', { class: ['small', /^Guess/.test(n) ? 'text-warning' : 'muted'] }, n));
     nodes.push(issueList(p.issues, { title: p.issues.some((i) => i.level !== 'info') ? 'Lines that could not be read' : 'Notes' }));
     if (a.flagged.length) {
       nodes.push(issueList(a.flagged.map((f) => ({ line: f.line, text: `${f.date}  ${f.kg} kg`, message: f.reason, level: 'warning' })), { title: `${plural(a.flagged.length, 'value')} left out (plausible range ${MIN_KG}–${MAX_KG} kg, no future dates, one value per day)` }));

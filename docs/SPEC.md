@@ -134,15 +134,17 @@ reader see plain data and no new store is needed. At most one exists (the editor
 Bodyweight exercises store `weight: null`. The best set is stored only when it differs from the
 working set. Every consumer decides via `isBaseline(workout)`; real workouts never have `kind`.
 - **Used:** session pre-fill (working sets only) and the "Last:" line (shown as "Starting point");
-  progression (working sets, judged against the session card's target); "vs last time"
-  (working sets); personal records on the exercise screen, in the post-workout analysis and in the
+  "vs last time" (working sets); personal records on the exercise screen, in the post-workout analysis and in the
   weekly report (best set included), labelled "starting point" with its date; picker "Recent".
 - **Ignored:** weekly sets per muscle (+ direct/partial breakdown, set targets), muscle recovery,
   workout counts and tonnage totals, routine sessions and their % changes, session tonnage / total
   reps records, month statistics, trend and progress charts, weekly report training section and week
-  summaries. It is never a record-setting session itself.
+  summaries; the **progression suggestion** (only a real logged session can trigger it: when the
+  starting point is the most recent entry for an exercise, no chip is shown). It is never a
+  record-setting session itself.
 - On the same date a real session counts as newer than the starting point (`byRecent`), so a real
-  session on or after its date always wins for pre-fill, "Last:" and progression.
+  session on or after its date always wins for pre-fill, "Last:" and records (`byRecent` is the
+  only chronological order used by the workout modules).
 - History shows it as one "Starting point" item; opening it (or its id in session/history/analysis
   routes) goes to the editor.
 
@@ -207,11 +209,14 @@ Dropset 5x 80    5 reps at 80 kg
   Add set, add dropset, delete set (swipe or long-press menu), per-exercise note.
   Entering a weight in set 1 offers to copy it down to the untouched sets below.
 - **Dropset:** a set row tagged `dropset`, visually distinct. Excluded from progression.
-- **Progression** (`src/core/progression.js`): look at the most recent finished session
-  containing the exercise; take its `normal`, `done` sets. If there are at least
-  `targetSets` of them and every one has `reps >= (targetRepsMax ?? targetReps)` at the
-  same top weight, suggest `weight + exercise.increment`. Shown as a chip
-  ("↑ 102.5 kg — all sets hit target"); applying it is one tap, never automatic.
+- **Progression** (`src/core/progression.js`): look at the most recent finished real session
+  containing the exercise (never the starting point); take its `normal`, `done` sets and the
+  HIGHEST weight among them (the top weight). If at least `targetSets` sets were done at the top
+  weight and every set at that weight has `reps >= (targetRepsMax ?? targetReps)`, suggest
+  `top weight + exercise.increment`. Lighter sets (warm-ups, back-off sets) are ignored; dropsets
+  never count. Example for 3 x 6: 60×10, 100×8, 100×8, 100×8 → 102.5; 100×6, 100×6, 100×6, 102.5×3
+  → none (one set at 102.5). Shown as a chip ("↑ 102.5 kg — 3 sets at 100 kg hit target"); applying
+  it (to the pending sets at the old top weight) is one tap, never automatic.
 - **Autosave** on every change; an unfinished workout survives reload and is resumed.
 - **Weekly volume** (`src/core/volume.js`): for the Mon–Sun week, each done `normal` set
   adds `volume.primary` to every primary muscle and `volume.secondary` to every secondary
@@ -220,6 +225,10 @@ Dropset 5x 80    5 reps at 80 kg
 - **Library:** searchable list, edit muscles/equipment/increment, add custom, archive.
 - **Routines:** create/edit/reorder; "save this workout as routine".
 - **History:** past sessions by date; per-exercise history.
+- **Muscle recovery** (`src/core/recovery.js`): a rule-of-thumb window (hours) per muscle after a
+  session, scaled by the session's weighted sets and a personal pace, with carry-over between close
+  sessions; shown as recovering / likely ready / recovered with a range, never as a measurement. The
+  model, its parameters and edge cases are documented in the module's header comment.
 
 ## 6. Adaptive targets and Trends (step 4)
 
@@ -247,16 +256,26 @@ scale noise sd 0.5 kg, missing/under-logged days, step changes, outliers).
 - **Formula fallback**: Mifflin-St Jeor (`10·kg + 6.25·cm − 5·age + 5 | −161 | −78 other`) × activity
   factor (1.2 / 1.375 / 1.55 / 1.725 / 1.9), trend weight; reported separately as `formula`, labelled
   "not based on your data"; `null` if the profile is incomplete.
-- **Weekly target**: `kcal = TDEE + goal.rateKgPerWeek × 7700 / 7`, rounded to 10; clamped to the
-  previous adaptive target ± 150 kcal (only when `targets.source === 'adaptive'`); never below the
-  floor (`adaptive.kcalFloor`, else 1500 male / 1200 female / 1350 other). Protein = 2.0 g/kg trend
-  weight, fat = 0.8 g/kg (lowered only if kcal cannot fit it), carbs = the rest.
+- **Weekly target**: `kcal = TDEE + goal.rateKgPerWeek × 7700 / 7`, rounded to 10; then clamped to
+  the previous adaptive target ± 150 kcal (only when `targets.source === 'adaptive'`), rounding
+  toward the previous target so the change never exceeds 150 (previous 2005 → at most 2150; the
+  exact limit when no multiple of 10 fits); never below the floor (`adaptive.kcalFloor`, else 1500
+  male / 1200 female / 1350 other; the floor wins over the change limit). Protein = 2.0 g/kg trend
+  weight, fat = 0.8 g/kg (lowered only if kcal cannot fit it), carbs = the rest. If protein plus a
+  small fat floor (`minFatG`, 20 g) would exceed the calories, protein is capped to fit and the
+  result says so (`proteinLimited`, `proteinWanted`), so macros never add up to more than the
+  calorie target (apart from a few kcal of rounding).
 - **Weekly check-in** (`buildCheckIn`): available from Monday for the week starting that Monday,
   reviews the previous Mon–Sun week (average complete intake, trend change, TDEE as of Monday) and
   proposes kcal/protein/carbs/fat; uses the formula estimate (labelled) while data are insufficient.
   Targets change only on **Accept**: one transaction writes `settings.targets` (`source:'adaptive'`)
   and `targetHistory`. **Keep current** changes no targets; it writes a `targetHistory` record with
   `decision:'kept'` so the check-in counts as done (it can still be accepted later that week).
+
+- **Weekly report** (`src/core/weekly-report.js`): one Monday–Sunday week of eating (complete days,
+  averages, percent of target, macro split, on-target days), body weight (trend change vs the
+  previous Sunday) and training (workouts, sets, volume load, sets per muscle, records). Definitions
+  are in the module's header comment and repeated in the report's footnotes.
 
 ### Settings keys added
 `profile.activity` (`sedentary|light|moderate|active|extra`), `profile.sex` may be `'other'`;
@@ -276,9 +295,24 @@ scale noise sd 0.5 kg, missing/under-logged days, step changes, outliers).
 
 ### Known limits
 Accuracy depends on honest, complete logging: days that are skipped *because* they were big are
-imputed as average days and bias TDEE low. A logged-but-not-eaten 5000 kcal typo shifts the
-estimate by ~90 kcal for a few weeks. Real TDEE changes take ~5 weeks to be tracked (by design).
+imputed as average days and bias TDEE low. A logged-but-not-eaten 5000 kcal typo (one day) raises
+the estimate by about +105 kcal after 7 days, about +145 kcal after 14–21 days, +118 after 28, +60
+after 42 and +19 after 56 days (measured with the simulator); fix such entries in the diary. Real TDEE changes take ~5 weeks to be tracked (by design).
 
-## 7. Out of scope for now
-Meal-photo logging (needs a paid/keyed AI service — to be proposed separately), accounts,
-sync, micronutrients, imperial units.
+## 7. History import
+`#/import` reads workout history pasted from a sheet, body-weight lines and food-diary CSV exports
+(MyFitnessPal, Cronometer, FDDB presets or a column mapping), always with a full preview and
+plausibility checks before anything is saved, and every run can be undone. Accepted formats,
+ambiguity rules (decimal commas vs column separators, thousands groups, units deciding weight vs
+reps) and the run bookkeeping are in docs/IMPORT-FORMATS.md and the header comments of
+`src/core/import-*.js`.
+
+## 8. Meal-photo logging
+Built (Quick add → "Scan meal photo", `src/core/meal-photo.js`, `src/core/photo-*.js`). The user
+brings their own API key and chooses the provider (Anthropic, Gemini, OpenAI or an OpenAI-compatible
+endpoint); the key stays in this browser's localStorage, never in the export. The model's estimate
+(items, amounts, per-100 values, confidence) is sanitised and shown for review and editing; nothing
+is logged until the user confirms.
+
+## 9. Out of scope for now
+Accounts, sync, micronutrients, imperial units.

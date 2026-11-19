@@ -324,3 +324,35 @@ test('weeklyIntake: Mon-Sun averages of complete days, today and incomplete days
   assert.deepEqual(w[0], { from: dayDate(0), to: dayDate(6), avg: 2200, days: 3, incomplete: 1 });
   assert.deepEqual(w[1], { from: dayDate(7), to: dayDate(13), avg: 1800, days: 1, incomplete: 0 });
 });
+
+test('item 5: weekly target never moves more than the change limit from the previous target', () => {
+  const t = weeklyTarget({ tdee: 2500, rateKgPerWeek: 0, weightKg: 80, previousKcal: 2005 });
+  assert.ok(Math.abs(t.kcal - 2005) <= 150, `got ${t.kcal}`);
+  assert.equal(t.kcal, 2150); // rounded toward the previous target
+  assert.equal(t.limitedBy, 'change');
+  const d = weeklyTarget({ tdee: 1500, rateKgPerWeek: 0, weightKg: 80, sex: 'male', previousKcal: 2005, config: { floors: { male: 1000 } } });
+  assert.equal(d.kcal, 1860); // 1855 rounded toward 2005
+  for (let prev = 1500; prev <= 3000; prev += 7) {
+    for (const tdee of [1000, 2000, 2500, 4000]) {
+      const r = weeklyTarget({ tdee, rateKgPerWeek: 0, weightKg: 80, sex: 'male', previousKcal: prev, config: { floors: { male: 1000 } } });
+      assert.ok(Math.abs(r.kcal - prev) <= 150 || r.limitedBy === 'floor', `prev ${prev} tdee ${tdee} → ${r.kcal}`);
+    }
+  }
+  // the floor still wins over the change limit
+  assert.equal(weeklyTarget({ tdee: 1000, rateKgPerWeek: 0, weightKg: 60, sex: 'male', previousKcal: 1900 }).kcal, 1750);
+  assert.equal(weeklyTarget({ tdee: 1000, rateKgPerWeek: 0, weightKg: 60, sex: 'male', previousKcal: 1600 }).kcal, 1500);
+});
+
+test('item 6: macros never exceed the calorie target; protein is capped and flagged', () => {
+  const t = weeklyTarget({ tdee: 1300, rateKgPerWeek: -1, weightKg: 160, sex: 'female' });
+  assert.equal(t.kcal, 1200);
+  assert.ok(t.protein * 4 + t.fat * 9 + t.carbs * 4 <= t.kcal + 5, JSON.stringify(t));
+  assert.ok(t.fat > 0, 'a small fat floor is kept');
+  assert.equal(t.proteinLimited, true);
+  assert.equal(t.proteinWanted, 320);
+  assert.ok(t.protein < 320);
+  // normal case: no flag
+  const n = weeklyTarget({ tdee: 2600, rateKgPerWeek: -0.5, weightKg: 80, sex: 'male' });
+  assert.equal(n.proteinLimited, false);
+  assert.equal(n.protein, 160);
+});

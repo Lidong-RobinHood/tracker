@@ -3,7 +3,7 @@
 // docs/IMPORT-FORMATS.md. Each row becomes one quick-add style diary entry (amount 100, per100 =
 // the row's totals, foodId null), exactly like the app's Quick add.
 import {
-  stripBom, parseDelimited, detectDelimiter, detectHeader, detectDecimal, detectDateOrder,
+  stripBom, parseDelimited, detectDelimiter, detectHeader, detectNumberStyle, detectDateOrder,
   parseDateOnly, findDate, parseNumber, normHeader, median, trimTrailingEmpty,
 } from './import-common.js';
 import { quickAddEntry, isMeal } from './food-diary.js';
@@ -146,15 +146,27 @@ export function readTable(text, { delimiter = null, hasHeader = null } = {}) {
   return { delimiter: d, hasHeader: header, headers, rows: header ? recs.slice(1) : recs, columnCount };
 }
 
-/** Detect the date order and decimal style for a mapping. */
+/**
+ * Detect the date order and the number style for a mapping (import-common.detectNumberStyle: decimal
+ * marks, columns of three-digit groups read as thousands, and the energy column's plausibility).
+ * @returns {{dateOrder: 'dmy'|'mdy', dateOrderAmbiguous: boolean, decimal: 'comma'|'dot',
+ *   decimalConfidence: 'high'|'medium'|'low', decimalReason: string}}
+ */
 export function detectFormats(table, mapping) {
   const dates = mapping.date === undefined ? [] : table.rows.map((r) => r.cells[mapping.date] || '');
   const order = detectDateOrder(dates);
-  const numCols = ['kcal', 'kj', 'protein', 'carbs', 'fat', 'sugars', 'fibre', 'satFat', 'salt', 'sodium', 'amount']
-    .filter((f) => mapping[f] !== undefined).map((f) => mapping[f]);
-  const values = [];
-  for (const r of table.rows.slice(0, 500)) for (const c of numCols) values.push(r.cells[c] || '');
-  return { dateOrder: order.order, dateOrderAmbiguous: order.ambiguous, decimal: table.delimiter === ',' && !values.some((v) => /,/.test(v)) ? 'dot' : detectDecimal(values) };
+  const rows = table.rows.slice(0, 500);
+  const columns = ['kcal', 'kj', 'protein', 'carbs', 'fat', 'sugars', 'fibre', 'satFat', 'salt', 'sodium', 'amount']
+    .filter((f) => mapping[f] !== undefined)
+    .map((f) => ({
+      values: rows.map((r) => r.cells[mapping[f]] || ''),
+      kcalPerUnit: f === 'kcal' ? 1 : f === 'kj' ? 1 / 4.184 : undefined,
+    }));
+  const style = detectNumberStyle(columns, { delimiter: table.delimiter });
+  return {
+    dateOrder: order.order, dateOrderAmbiguous: order.ambiguous,
+    decimal: style.decimal, decimalConfidence: style.confidence, decimalReason: style.reason,
+  };
 }
 
 /** Distinct non-empty values of the meal column, with counts, in order of appearance. */
@@ -266,7 +278,7 @@ export function buildFoodRows(table, { mapping, dateOrder, decimal, mealMap = {}
 }
 
 /**
- * Preview numbers.
+ * Preview numbers. `warnings` flags an implausible median day (below PLAUSIBLE_DAY_KCAL.min or above .max).
  * @param {object[]} entries from buildFoodRows
  * @param {Set<string>|string[]} [existingDays] days that already have diary entries
  */
@@ -284,7 +296,23 @@ export function summariseFood(entries, existingDays = []) {
     kcalMax: kcals.length ? Math.max(...kcals) : null,
     conflictDays: days.filter((d) => ex.has(d)),
     perDay,
+    warnings: plausibilityWarnings(median(kcals)),
   };
+}
+
+/** Median day energy outside this range (kcal) gets a warning in the preview. */
+export const PLAUSIBLE_DAY_KCAL = Object.freeze({ min: 300, max: 15000 });
+
+/** Warnings for an implausible median day (wrong column, kJ as kcal, or the wrong number style). */
+function plausibilityWarnings(med) {
+  if (med === null) return [];
+  if (med < PLAUSIBLE_DAY_KCAL.min) {
+    return [{ code: 'median-low', message: `The median day has only ${Math.round(med)} kcal, which is very low. Check the energy column (kcal, not a percentage) and the number style: is "1.050" one thousand and fifty?` }];
+  }
+  if (med > PLAUSIBLE_DAY_KCAL.max) {
+    return [{ code: 'median-high', message: `The median day has ${Math.round(med)} kcal, which is very high. Check the energy column (kJ instead of kcal?) and the number style: is "1,050" one thousand and fifty or one point zero five?` }];
+  }
+  return [];
 }
 
 /**

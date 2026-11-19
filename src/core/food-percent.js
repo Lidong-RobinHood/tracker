@@ -1,9 +1,11 @@
 // Percent of daily targets and each meal's share of the day. Pure, no DOM.
 
+import { percent } from './numbers.js';
+
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
 /**
- * Whole-number percent of a target that has been reached.
+ * Whole-number percent of a target that has been reached (half away from zero, see numbers.percent).
  * Target missing, 0 or negative (or consumed not a number) → null. Never NaN/Infinity.
  * @param {number|null|undefined} consumed @param {number|null|undefined} target
  * @returns {number|null} e.g. 62, 112
@@ -11,7 +13,7 @@ const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 export function percentOfTarget(consumed, target) {
   if (!isNum(target) || target <= 0) return null;
   const c = isNum(consumed) ? Math.max(0, consumed) : 0;
-  return Math.round((c / target) * 100);
+  return percent(c, target);
 }
 
 /**
@@ -19,13 +21,15 @@ export function percentOfTarget(consumed, target) {
  * @param {Record<string, number|null>} consumed day totals
  * @param {Record<string, number|null>} targets
  * @returns {Record<'kcal'|'protein'|'carbs'|'fat', {pct: number|null, over: boolean}>}
- *   over = strictly more than 100 % (rounded value)
+ *   over = eaten strictly more than the target (raw values, not the rounded percentage)
  */
 export function targetPercents(consumed, targets) {
   const out = {};
   for (const k of ['kcal', 'protein', 'carbs', 'fat']) {
-    const pct = percentOfTarget(consumed ? consumed[k] : null, targets ? targets[k] : null);
-    out[k] = { pct, over: pct !== null && pct > 100 };
+    const c = consumed ? consumed[k] : null;
+    const t = targets ? targets[k] : null;
+    const pct = percentOfTarget(c, t);
+    out[k] = { pct, over: pct !== null && isNum(c) && c > t };
   }
   return out;
 }
@@ -38,7 +42,7 @@ export function targetPercents(consumed, targets) {
 export function shareOfDay(part, whole) {
   if (!isNum(whole) || whole <= 0) return null;
   const p = isNum(part) ? Math.max(0, part) : 0;
-  return Math.round((p / whole) * 100);
+  return percent(p, whole);
 }
 
 /** 62 → '62 %' (no-break space), null → ''. */

@@ -96,3 +96,33 @@ test('a year of daily weights stays fast', () => {
   parse(lines.join('\n'));
   assert.ok(Date.now() - t0 < 1500);
 });
+
+test('item 2: comma file with an extra integer column is read by its header, never merged', () => {
+  const r = parse('Date,Weight,BodyFat\n10.11.2026,82,18\n11.11.2026,81,17');
+  assert.deepEqual(r.rows.map((x) => [x.date, x.kg]), [['2026-11-10', 82], ['2026-11-11', 81]]);
+  assert.ok(r.notes.some((n) => /column/i.test(n) && /BodyFat/.test(n)), JSON.stringify(r.notes));
+  assert.ok(r.issues.some((i) => i.line === 2 && /ignored|first one/i.test(i.message)));
+  // a header with two columns: the comma inside the value is a decimal comma
+  assert.deepEqual(rows('Datum,Gewicht\n12.11.2026,82,5\n13.11.2026,82,1'), [['2026-11-12', 82.5], ['2026-11-13', 82.1]]);
+  // header says 3 columns but a line has 4 comma fields: explicit ambiguity, not a guess
+  const m = parse('Date,Weight,BodyFat\n10.11.2026,82,5,18\n11.11.2026,81,17');
+  assert.deepEqual(m.rows.map((x) => x.kg), [81]);
+  assert.match(m.issues.find((i) => i.line === 2).message, /ambiguous/);
+});
+
+test('item 2: without a header — documented single lines keep working, a two-digit decimal is a flagged guess', () => {
+  assert.deepEqual(rows('82,5;12.11.2026'), [['2026-11-12', 82.5]]);
+  assert.deepEqual(rows('12.11.2026,82,5'), [['2026-11-12', 82.5]]);
+  const g = parse('12.11.2026,82,18');
+  assert.deepEqual(g.rows.map((x) => x.kg), [82.18]);
+  assert.ok(g.notes.some((n) => /82,18/.test(n) && /guess/i.test(n)), JSON.stringify(g.notes));
+  assert.deepEqual(parse('12.11.2026,82,5').notes, []);
+});
+
+test('item 8: ISO timestamps use the local date', () => {
+  assert.deepEqual(rows('2026-11-12T07:30;82.5'), [['2026-11-12', 82.5]]);
+  assert.deepEqual(rows('2026-11-12T07:30:15;82,5'), [['2026-11-12', 82.5]]);
+  const z = new Date('2026-11-12T23:30:00Z');
+  const local = `${z.getFullYear()}-${String(z.getMonth() + 1).padStart(2, '0')}-${String(z.getDate()).padStart(2, '0')}`;
+  assert.deepEqual(rows('2026-11-12T23:30:00Z;82.5'), [[local, 82.5]]);
+});

@@ -1,11 +1,13 @@
 // Progression suggestion (SPEC §5). Pure, no DOM / IndexedDB.
 //
 // Rule: take the most recent FINISHED session containing the exercise (an entry with at least one
-// done set; see lastEntryFor). Consider only its sets with type 'normal' and done: true. Suggest
-// `weight + increment` when
-//   - there are at least `targetSets` such sets,
-//   - they ALL share the same weight (mixed weights -> no suggestion, we do not guess a "top" weight),
-//   - every one has reps >= (targetRepsMax ?? targetReps).
+// done set; see lastEntryFor). Consider only its sets with type 'normal' and done: true, and of
+// those only the sets at the HIGHEST weight (the top weight). Suggest `top weight + increment` when
+//   - at least `targetSets` sets were done at the top weight,
+//   - every set at the top weight has reps >= (targetRepsMax ?? targetReps).
+// Lighter normal sets (warm-ups, back-off sets) are ignored, neither for nor against.
+// Example (3 x 6): 60×10, 100×8, 100×8, 100×8 -> 102.5; 100×6, 100×6, 100×6, 102.5×3 -> none
+// (only one set at the top weight 102.5); 100×6, 100×5, 90×8 -> none.
 // Dropsets never count, neither for nor against.
 //
 // Edge cases (decided here, covered by tests/progression.test.js):
@@ -17,7 +19,7 @@
 //     strapping on weight.
 //   - increment 0 or negative                     -> null (the user switched suggestions off).
 //     Missing/invalid increment                    -> 2.5 kg (the SPEC default).
-//   - more done normal sets than targetSets       -> all of them must hit the target at one weight.
+//   - more sets at the top weight than targetSets  -> all of them must hit the target.
 //   - result rounded to 2 decimals (avoids 102.49999).
 //   - starting point (baseline.js) as the most recent "session": never a suggestion. It only
 //     describes where the user starts; only a real logged session can trigger the chip.
@@ -35,6 +37,7 @@ const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
  * @param {number|null|undefined} increment exercise.increment
  * @param {{targetSets?: number, targetReps?: number|null, targetRepsMax?: number|null}} [fallbackTarget]
  * @returns {{weight: number, from: number, increment: number, sets: number, repsTarget: number}|null}
+ *   from = the top weight, sets = number of done normal sets at it
  */
 export function evaluateEntry(entry, increment, fallbackTarget = {}) {
   if (!entry || !Array.isArray(entry.sets)) return null;
@@ -46,12 +49,12 @@ export function evaluateEntry(entry, increment, fallbackTarget = {}) {
   if (!isNum(t.targetSets) || t.targetSets < 1 || !isNum(t.targetReps)) return null;
   const repsTarget = isNum(t.targetRepsMax) && t.targetRepsMax > t.targetReps ? t.targetRepsMax : t.targetReps;
 
-  const sets = entry.sets.filter((s) => s && s.done && s.type === 'normal');
+  const normal = entry.sets.filter((s) => s && s.done && s.type === 'normal');
+  const weights = normal.map((s) => s.weight).filter((w) => isNum(w) && w > 0);
+  if (!weights.length) return null; // bodyweight only
+  const w = Math.max(...weights);
+  const sets = normal.filter((s) => s.weight === w);
   if (sets.length < t.targetSets) return null;
-
-  const w = sets[0].weight;
-  if (!isNum(w) || w <= 0) return null;
-  if (!sets.every((s) => s.weight === w)) return null;
   if (!sets.every((s) => isNum(s.reps) && s.reps >= repsTarget)) return null;
 
   return { weight: round(w + inc, 2), from: w, increment: inc, sets: sets.length, repsTarget };
@@ -74,4 +77,18 @@ export function suggestProgression(workouts, exercise, { excludeId = null, targe
   const r = evaluateEntry(last.entry, exercise.increment, target);
   if (!r) return null;
   return { ...r, workoutId: last.workout.id, date: last.workout.date };
+}
+
+/**
+ * Indices of the sets the progression chip changes: the pending (not done) normal sets that are at
+ * the old top weight `from` or still have no weight. Warm-up / back-off rows keep their weight.
+ * When no pending set matches, every pending normal set (the earlier behaviour).
+ * @param {object[]} sets @param {number} from
+ * @returns {number[]}
+ */
+export function setsForSuggestion(sets, from) {
+  const pending = [];
+  (sets || []).forEach((s, i) => { if (s && s.type === 'normal' && !s.done) pending.push(i); });
+  const top = pending.filter((i) => sets[i].weight === from || !isNum(sets[i].weight));
+  return top.length ? top : pending;
 }

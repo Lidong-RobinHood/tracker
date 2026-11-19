@@ -22,8 +22,8 @@ test('targetPercents flags over target only above 100 %', () => {
   assert.deepEqual(p.protein, { pct: 100, over: false });
   assert.deepEqual(p.carbs, { pct: null, over: false });
   assert.deepEqual(p.fat, { pct: 14, over: false });
-  // 100.4 % rounds to 100 → not shown as over
-  assert.equal(targetPercents({ kcal: 2008 }, { kcal: 2000 }).kcal.over, false);
+  // item 4: over is decided from the raw values (2008 > 2000), even though 100.4 % displays as 100 %
+  assert.equal(targetPercents({ kcal: 2008 }, { kcal: 2000 }).kcal.over, true);
   assert.deepEqual(targetPercents(null, null).kcal, { pct: null, over: false });
 });
 
@@ -39,4 +39,16 @@ test('meal share of the day', () => {
 test('formatting', () => {
   assert.equal(fmtPercent(62), '62 %');
   assert.equal(fmtPercent(null), '');
+});
+
+test('item 4: percent of target and meal share round exact halves up; over from raw values', () => {
+  assert.equal(percentOfTarget(2010, 2000), 101);
+  assert.deepEqual(targetPercents({ kcal: 2010 }, { kcal: 2000 }).kcal, { pct: 101, over: true });
+  assert.equal(percentOfTarget(290, 2000), 15);
+  assert.equal(percentOfTarget(1130, 2000), 57);
+  assert.equal(shareOfDay(290, 2000), 15);
+  assert.equal(shareOfDay(1130, 2000), 57);
+  // over is decided from eaten > target, not from the rounded percentage
+  assert.deepEqual(targetPercents({ kcal: 2008 }, { kcal: 2000 }).kcal, { pct: 100, over: true });
+  assert.deepEqual(targetPercents({ kcal: 2000 }, { kcal: 2000 }).kcal, { pct: 100, over: false });
 });

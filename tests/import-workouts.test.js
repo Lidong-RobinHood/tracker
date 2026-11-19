@@ -257,3 +257,34 @@ test('similarity basics', () => {
   assert.equal(similarity('', 'abc'), 0);
   assert.ok(similarity('Benchpres', 'Bench Press') > 0.8);
 });
+
+test('item 3: an explicit kg / reps unit decides which number is the weight', () => {
+  const r = parse('Bench\n3x6\n8 x 80 kg\n5 x 100kg\n80 kg x 8\n8 reps 80kg\n80kg 8\n100 kg x 7\n7 reps x 100');
+  assert.deepEqual(sets(r.workouts[0].exercises[0]), [
+    [80, 8, 'normal'], [100, 5, 'normal'], [80, 8, 'normal'], [80, 8, 'normal'], [80, 8, 'normal'], [100, 7, 'normal'], [100, 7, 'normal'],
+  ]);
+  assert.deepEqual(r.issues, []);
+  // the unit also wins over the reps-then-weight switch
+  const s = parse('Bench\n3x6\n80 kg x 8\n8 x 80 kg', { repsFirst: true });
+  assert.deepEqual(sets(s.workouts[0].exercises[0]), [[80, 8, 'normal'], [80, 8, 'normal']]);
+  // without units the owner's format is unchanged
+  const o = parse('Bench\n3x6\n100\t7\nDropset 5x 80');
+  assert.deepEqual(sets(o.workouts[0].exercises[0]), [[100, 7, 'normal'], [80, 5, 'dropset']]);
+  // two kg units: an error, not a guess
+  const k = parse('Bench\n3x6\n80 kg x 8 kg\n100 7');
+  assert.match(k.issues.find((i) => i.line === 3).message, /kg/);
+});
+
+test('item 3: a single number after weighted sets is flagged "weight without reps?"', () => {
+  const r = parse('Bench\n3x6\n100 7\n100 6\n100');
+  assert.deepEqual(sets(r.workouts[0].exercises[0]), [[100, 7, 'normal'], [100, 6, 'normal']]);
+  const issue = r.issues.find((i) => i.line === 5);
+  assert.match(issue.message, /weight without reps\?/i);
+  // no weighted sets in the exercise: a single number stays a bodyweight set
+  const d = parse('Dips\n3x10\n12\n10');
+  assert.deepEqual(sets(d.workouts[0].exercises[0]), [[null, 12, 'normal'], [null, 10, 'normal']]);
+  // "BW 12" is explicit; added weight ("+10 6") marks a bodyweight exercise, so "6" after it stays bodyweight
+  const p = parse('Pullups\n3x6\n+10 6\n6\n20 8\nBW 12');
+  assert.deepEqual(sets(p.workouts[0].exercises[0]), [[10, 6, 'normal'], [null, 6, 'normal'], [20, 8, 'normal'], [null, 12, 'normal']]);
+  assert.deepEqual(p.issues, []);
+});

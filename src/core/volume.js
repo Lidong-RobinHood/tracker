@@ -10,7 +10,7 @@
 import { MUSCLES } from './muscles.js';
 import { isBaseline } from './baseline.js';
 import { weekStart, addDays } from './dates.js';
-import { round } from './numbers.js';
+import { round, percent } from './numbers.js';
 
 export const DEFAULT_VOLUME = Object.freeze({ primary: 1, secondary: 0.5, dropset: 0 });
 
@@ -183,5 +183,5 @@ export function sanitiseTargets(value) {
 export function targetProgress(done, target) {
   if (typeof target !== 'number' || !Number.isFinite(target) || target <= 0) return null;
   const d = typeof done === 'number' && Number.isFinite(done) && done > 0 ? done : 0;
-  return { done: d, target, pct: round((d / target) * 100, 0), fraction: Math.min(1, d / target), reached: d >= target };
+  return { done: d, target, pct: percent(d, target), fraction: Math.min(1, d / target), reached: d >= target };
 }

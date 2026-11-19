@@ -18,5 +18,17 @@ export function round(n, decimals = 0) {
   if (!Number.isFinite(n)) return n;
   if (String(n).includes('e')) return Math.round(n * 10 ** decimals) / 10 ** decimals;
   const r = Number(Math.round(Number(`${Math.abs(n)}e${decimals}`)) + `e-${decimals}`);
-  return n < 0 ? -r : r;
+  return n < 0 && r !== 0 ? -r : r; // never -0
+}
+
+/**
+ * part / whole × 100, rounded to `decimals` half away from zero. The quotient is snapped to 12
+ * significant digits first, so exact halves that floating point lands just below
+ * (2010 / 2000 × 100 = 100.49999999999999) still round up. null when whole ≤ 0 or not a number.
+ * @param {number} part @param {number} whole @param {number} [decimals=0]
+ * @returns {number|null}
+ */
+export function percent(part, whole, decimals = 0) {
+  if (!Number.isFinite(part) || !Number.isFinite(whole) || whole <= 0) return null;
+  return round(Number(((part * 100) / whole).toPrecision(12)), decimals);
 }

@@ -69,6 +69,8 @@ export function offProductToFood(p) {
   const serving = servingFromText(p.serving_size, num(p.serving_quantity));
   if (serving) servings.push(serving);
   const pack = parseAmountText(quantity);
+  // Multipack ("6 x 330 ml"): the single unit is a serving, the whole pack is the total.
+  if (pack && pack.count > 1 && pack.each > 0) servings.push({ label: `1 of ${pack.count}`, amount: pack.each });
   if (pack && pack.amount <= 5000) servings.push({ label: PACK_LABEL, amount: pack.amount });
 
   const brands = String(p.brands ?? '').split(',').map((s) => s.trim()).filter(Boolean);

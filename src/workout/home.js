@@ -1,4 +1,5 @@
-// Workout home: resume banner, start, muscle recovery, this week's sets per muscle, links. Route: workout
+// Workout home ("Train"): resume banner, start, starting point, muscle recovery, this week's sets per
+// muscle, links. Looking back (history, routine progress, records) lives in Analysis / History. Route: workout
 import * as db from '../db/db.js';
 import { el, pageHeader, fmtTime, fmtNum, href } from '../ui/index.js';
 import { today } from '../core/dates.js';
@@ -7,10 +8,9 @@ import { sessionStats, LIVE_WINDOW_MS } from '../core/workout.js';
 import { breakdownText, breakdownAria, splitFill, breakdownCaption } from './volume-ui.js';
 import { logPastWorkout } from './datetime.js';
 import { MUSCLES } from '../core/muscles.js';
-import { routineProgress } from '../core/workout-progress.js';
 import { isBaseline, findBaseline } from '../core/baseline.js';
 import { loadTargets } from './targets.js';
-import { pctBadge, pctWords } from './progress-ui.js';
+import { workoutNav } from './subnav.js';
 import { recoverySection, loadRecoverySetting } from './recovery.js';
 import { ensureCss, loadExercises, loadWorkouts, loadRoutines, findUnfinished, startWorkout, shortDate } from './data.js';
 
@@ -27,7 +27,7 @@ export async function mountHome(container) {
   const baseline = findBaseline(workouts);
   const finishedCount = workouts.filter((w) => w.finishedAt && !isBaseline(w)).length;
 
-  container.append(pageHeader({ title: 'Workout' }));
+  container.append(pageHeader({ title: 'Workout' }), workoutNav('train'));
 
   if (open) {
     const st = sessionStats(open);
@@ -94,19 +94,11 @@ export async function mountHome(container) {
         el('a', { href: href('settings') }, 'Change weights'), ' · ',
         el('a', { href: href('workout/targets') }, hasTargets ? 'Edit targets' : 'Set targets')))));
 
-  // Routine progress
-  if (routines.length) {
-    container.append(el('section', { class: 'section' },
-      el('h2', { class: 'section-title' }, 'Routine progress'),
-      el('div', { class: 'card card-flush' }, el('div', { class: 'list' }, routines.map((r) => routineProgressItem(r, workouts))))));
-  }
-
   // Links
   const activeEx = [...exMap.values()].filter((e) => !e.archived).length;
   container.append(el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
     link('workout/routines', 'Routines', `${routines.length}`),
     link('workout/exercises', 'Exercise library', `${activeEx}`),
-    link('workout/history', 'History', `${finishedCount}`),
     link('workout/starting-point', 'Starting point', baseline ? shortDate(baseline.date) : 'not set'),
     link('workout/targets', 'Weekly set targets', hasTargets ? `${Object.keys(targets).length}` : 'off'))));
 }
@@ -156,19 +148,4 @@ function volumeRow(r, target, max, b, weights) {
   el('span', { class: 'wk-vol-num num' }, `${fmtNum(r.current, 2)}/${fmtNum(tp.target, 1)}`),
   el('span', { class: ['wk-vol-last', 'num', 'small', tp.reached ? 'text-success' : 'muted'] }, `${tp.reached ? '✓' : ''}${tp.pct}%`),
   parts);
-}
-
-function routineProgressItem(r, workouts) {
-  const rp = routineProgress(workouts, r);
-  const last = rp.sessions[0];
-  const sub = last
-    ? `${rp.sessions.length} session${rp.sessions.length === 1 ? '' : 's'} · last ${shortDate(last.workout.date)}`
-    : 'Not done yet';
-  return el('a', {
-    class: 'list-item', href: href(`workout/routines/${encodeURIComponent(r.id)}/progress`),
-    'aria-label': `${r.name} progress: ${sub}${last && last.prev ? `, ${pctWords(last.pct)} volume versus the time before` : ''}`,
-  },
-  el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, r.name), el('div', { class: 'li-sub' }, sub)),
-  last && last.prev ? el('span', { class: 'li-trail' }, pctBadge(last.pct)) : null,
-  el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›'));
 }

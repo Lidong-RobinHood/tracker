@@ -9,6 +9,11 @@
 //   target         3 x 6 | 3x6 | 3 × 6 | 3 x 6-8  (sets x reps, optional rep range) – first line of a block
 //   set            "100  7" = weight kg, reps (or reps then weight with the switch); "100 kg x 7";
 //                  "82,5 8"; one number = reps of a bodyweight set ("12", "BW 12")
+//                  an explicit unit decides which number is the weight, also over the switch:
+//                  "80 kg x 8", "8 x 80 kg", "8 reps 80kg", "80kg 8" = 80 kg × 8 reps
+//                  one number after sets with an absolute weight in the same exercise ("100" after
+//                  "100 7") is listed as "weight without reps?" and left out; after added-weight sets
+//                  ("+10 6") or with no weighted sets it stays a bodyweight set
 //                  after the target or a set, "80 x 8" is a set (weight x reps), never a second target
 //   dropset        Dropset 5x 80 | Drop 5 x 80 | DS 5x80 | Dropset: 5 x 80 kg  (reps x weight, always)
 //   header         "kg  reps", "Gewicht Wdh" … ignored
@@ -36,20 +41,24 @@ function cellsOf(raw) {
 
 /**
  * Classify a set-like text: 1 or 2 numbers, optional kg / reps / x / bw words.
- * @returns {{nums: string[], bw: boolean, hasX: boolean}|null}
+ * kg / reps record which number (index into nums) a unit word directly follows.
+ * @returns {{nums: string[], bw: boolean, hasX: boolean, kg: number[], reps: number[]}|null}
  */
 function setTokens(text) {
   const t = text.toLowerCase().replace(/(\d)\s*(kg|reps?|wdh\.?)(?![a-z])/g, '$1 $2').replace(/[x×*]/g, ' x ').split(/\s+/).filter(Boolean);
   const nums = [];
+  const kg = []; const reps = [];
   let bw = false; let hasX = false;
+  let prevNum = -1;
   for (const tok of t) {
-    if (/^\+?\d+([.,]\d+)?$/.test(tok)) nums.push(tok);
-    else if (tok === 'x') hasX = true;
-    else if (tok === 'kg' || tok === 'reps' || tok === 'rep' || tok === 'wdh' || tok === 'wdh.' || tok === '@') { /* unit words */ } else if (tok === 'bw' || tok === 'kg-bw' || tok === 'körpergewicht' || tok === 'bodyweight') bw = true;
+    if (/^\+?\d+([.,]\d+)?$/.test(tok)) { nums.push(tok); prevNum = nums.length - 1; continue; }
+    if (tok === 'x') hasX = true;
+    else if (tok === 'kg') { if (prevNum >= 0) kg.push(prevNum); } else if (tok === 'reps' || tok === 'rep' || tok === 'wdh' || tok === 'wdh.') { if (prevNum >= 0) reps.push(prevNum); } else if (tok === '@') { /* unit word */ } else if (tok === 'bw' || tok === 'kg-bw' || tok === 'körpergewicht' || tok === 'bodyweight') bw = true;
     else return null;
+    prevNum = -1;
   }
   if (!nums.length || nums.length > 2) return null;
-  return { nums, bw, hasX };
+  return { nums, bw, hasX, kg, reps };
 }
 
 /**
@@ -76,7 +85,7 @@ export function classifyLine(raw, dateOpts) {
   if (tgt) return { kind: 'target', text, sets: +tgt[1], reps: +tgt[2], repsMax: tgt[3] ? +tgt[3] : null, setLike: !tgt[3] ? { a: tgt[1], b: tgt[2] } : null };
 
   const st = setTokens(text);
-  if (st) return { kind: 'set', text, nums: st.nums, bw: st.bw };
+  if (st) return { kind: 'set', text, nums: st.nums, bw: st.bw, kg: st.kg, reps: st.reps };
 
   const d = findDate(text, dateOpts);
   if (d) {
@@ -109,14 +118,19 @@ export function classifyLine(raw, dateOpts) {
  * Read a set from numbers.
  * @returns {{ok: true, set: {weight: number|null, reps: number}}|{ok: false, error: string}}
  */
-function readSet(nums, bw, repsFirst) {
+function readSet(nums, bw, repsFirst, units = {}) {
+  const kg = units.kg || []; const reps = units.reps || [];
   if (nums.length === 1 || bw) {
     if (nums.length !== 1) return { ok: false, error: 'Bodyweight set with two numbers' };
+    if (kg.length && !bw) return { ok: false, error: `Weight without reps? "${nums[0]} kg" has no reps. Write weight and reps, e.g. "${nums[0]} kg x 8"` };
     return checkSet(null, parseNumber(nums[0]));
   }
   const a = parseNumber(nums[0]);
   const b = parseNumber(nums[1]);
-  return repsFirst ? checkSet(b, a) : checkSet(a, b);
+  if (kg.length > 1 || reps.length > 1 || (kg.length && reps.length && kg[0] === reps[0])) return { ok: false, error: 'Both numbers carry the same unit (kg or reps); which one is the weight?' };
+  // An explicit unit decides; without one the column order (and the switch) does.
+  const weightIdx = kg.length ? kg[0] : reps.length ? 1 - reps[0] : repsFirst ? 1 : 0;
+  return weightIdx === 0 ? checkSet(a, b) : checkSet(b, a);
 }
 
 function checkSet(weight, reps) {
@@ -183,10 +197,21 @@ export function assemble(lines, cls, { repsFirst = false, today, dateOrder = 'dm
     ex = null;
     return cur;
   };
-  const pushSet = (i, nums, bw, type) => {
-    const r = readSet(nums, bw, type === 'normal' ? repsFirst : false);
+  // Per exercise: has a normal set with an absolute weight ("100 7") / with added weight ("+10 6").
+  const loaded = new WeakMap();
+  const pushSet = (i, nums, bw, type, units) => {
+    const st = loaded.get(ex) || { abs: false, added: false };
+    if (type === 'normal' && nums.length === 1 && !bw && !(units && units.kg && units.kg.length) && st.abs && !st.added) {
+      issue(i, `Weight without reps? "${nums[0]}" follows sets with a weight in this exercise, so it is not read as ${nums[0]} bodyweight reps. Write weight and reps ("${nums[0]} 8"), or "BW ${nums[0]}" for a bodyweight set`);
+      return;
+    }
+    const r = readSet(nums, bw, type === 'normal' ? repsFirst : false, units);
     if (!r.ok) { issue(i, r.error); return; }
     ex.sets.push({ weight: r.set.weight, reps: r.set.reps, type, line: i + 1 });
+    if (type === 'normal' && r.set.weight !== null) {
+      if (nums.some((n) => n.startsWith('+'))) st.added = true; else st.abs = true;
+      loaded.set(ex, st);
+    }
   };
 
   cls.forEach((c, i) => {
@@ -231,7 +256,7 @@ export function assemble(lines, cls, { repsFirst = false, today, dateOrder = 'dm
       }
       case 'set': {
         if (!ex) { issue(i, 'Numbers without an exercise name above them'); return; }
-        pushSet(i, c.nums, c.bw, 'normal');
+        pushSet(i, c.nums, c.bw, 'normal', { kg: c.kg, reps: c.reps });
         return;
       }
       case 'dropset': {

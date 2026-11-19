@@ -146,3 +146,24 @@ test('small helpers', () => {
   assert.equal(stripWeekdays('Mo 82,5').trim(), '82,5');
   assert.equal(stripWeekdays('Montag, 82,5').trim(), '82,5');
 });
+
+test('item 1: detectDecimal treats columns of exactly-three-digit groups as thousands', () => {
+  assert.equal(detectDecimal(['1.050', '1.250', '980']), 'comma');
+  assert.equal(detectDecimal(['1,050', '1,250', '980']), 'dot');
+  assert.equal(detectDecimal(['1.050', '980.5']), 'dot'); // another pattern in the column: decimal dot
+  assert.equal(detectDecimal(['0.125', '0.250']), 'dot'); // a leading 0 is never a thousands group
+});
+
+test('item 8: findDate "29.02." without a year is the most recent 29 February', () => {
+  const r = findDate('29.02.', { today: '2026-11-19' });
+  assert.equal(r.error, null);
+  assert.equal(r.date, '2024-02-29');
+  assert.equal(findDate('29.02.', { today: '2028-03-01' }).date, '2028-02-29');
+  assert.equal(findDate('12.11.', { today: '2026-11-19' }).date, '2026-11-12');
+  assert.equal(findDate('31.02.', { today: '2026-11-19' }).date, null);
+});
+
+test('item 8: parseNumber and its doc agree — units are not part of a number', () => {
+  assert.equal(parseNumber('82,5 kg'), null);
+  assert.equal(parseNumber('82,5'), 82.5);
+});

@@ -1,4 +1,4 @@
-// History: finished sessions by date, and a session detail (view, edit, delete).
+// History: finished sessions by month (each row: detail + direct link to its analysis), and a session detail (view, edit, delete).
 // Routes: workout/history, workout/history/:id
 import * as db from '../db/db.js';
 import { el, pageHeader, href, emptyState, confirmDialog, toast, navigate, fmtDate, fmtDuration, fmtTime, fmtNum } from '../ui/index.js';
@@ -10,6 +10,7 @@ import { changeDateTime, logPastWorkout } from './datetime.js';
 import { compareSession } from '../core/workout-progress.js';
 import { comparisonBlock } from './progress-ui.js';
 import { isBaseline, findBaseline } from '../core/baseline.js';
+import { workoutNav } from './subnav.js';
 
 export async function mountHistory(container) {
   ensureCss();
@@ -18,10 +19,14 @@ export async function mountHistory(container) {
   const baseline = findBaseline(workouts);
   const done = workouts.filter((w) => w.finishedAt && (!isBaseline(w) || w === baseline));
   container.append(pageHeader({
-    title: 'History', back: 'workout',
+    title: 'Workout',
     actions: [el('button', { type: 'button', class: 'btn btn-sm', onClick: () => logPastWorkout(routines) }, 'Log past')],
-  }));
-  if (!done.length) { container.append(emptyState('No finished workouts yet.')); return; }
+  }), workoutNav('history'));
+  if (!done.length) {
+    container.append(emptyState('No finished workouts yet. Finished workouts are listed here by month; “Log past” adds one you did without the app.',
+      el('a', { class: 'btn', href: href('workout') }, 'Go to Train')));
+    return;
+  }
 
   // Group by month.
   const groups = new Map();
@@ -39,12 +44,17 @@ export async function mountHistory(container) {
         if (isBaseline(w)) return baselineItem(w, exMap);
         const st = sessionStats(w);
         const names = w.exercises.filter((e) => doneSets(e).length).map((e) => exName(exMap, e.exerciseId));
-        return el('a', { class: 'list-item', href: href(`workout/history/${encodeURIComponent(w.id)}`) },
-          el('div', { class: 'li-main' },
-            el('div', { class: 'li-title' }, w.name),
-            el('div', { class: 'li-sub' }, `${fmtDate(w.date)} · ${fmtDuration(st.durationMs)} · ${st.setsDone} sets`),
-            names.length ? el('div', { class: 'li-sub' }, names.join(', ')) : null),
-          el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›'));
+        // Two targets per row: the workout's detail (main area) and its analysis (trailing link).
+        return el('div', { class: 'list-item wk-hrow' },
+          el('a', { class: 'wk-hrow-main', href: href(`workout/history/${encodeURIComponent(w.id)}`) },
+            el('div', { class: 'li-main' },
+              el('div', { class: 'li-title' }, w.name),
+              el('div', { class: 'li-sub' }, `${fmtDate(w.date)} · ${fmtDuration(st.durationMs)} · ${st.setsDone} sets`),
+              names.length ? el('div', { class: 'li-sub' }, names.join(', ')) : null)),
+          el('a', {
+            class: 'wk-hrow-an', href: href(`workout/summary/${encodeURIComponent(w.id)}`),
+            'aria-label': `Analysis of ${w.name}, ${fmtDate(w.date)}`,
+          }, 'Analysis ›'));
       })))));
   }
 }

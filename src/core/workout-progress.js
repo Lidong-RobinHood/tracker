@@ -25,7 +25,7 @@
 //     a routine session, never a chart point, never itself a record-setting session.
 import { doneSets, byRecent, e1rm } from './workout.js';
 import { isBaseline, isBestSet, workingEntry } from './baseline.js';
-import { round } from './numbers.js';
+import { round, percent } from './numbers.js';
 import { addDays } from './dates.js';
 
 const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
@@ -95,7 +95,7 @@ export function entryMetrics(entry) {
  */
 export function pctChange(cur, prev) {
   if (!isNum(cur) || !isNum(prev) || prev <= 0) return null;
-  const p = round(((cur - prev) / prev) * 100, 1);
+  const p = percent(cur - prev, prev, 1);
   return p === 0 ? 0 : p;
 }
 

@@ -99,6 +99,7 @@ export async function mountWelcome(container) {
       el('div', { class: 'row-between' }, el('span', null, 'Suggested target'), el('strong', { class: 'num' }, `${fmtNum(p.target.kcal, 0)} kcal`)),
       el('div', { class: 'small muted num' }, `Protein ${p.target.protein} g · carbs ${p.target.carbs} g · fat ${p.target.fat} g`),
       p.target.limitedBy === 'floor' ? el('p', { class: 'small text-warning' }, `Raised to the lowest target the app proposes (${fmtNum(p.target.kcal, 0)} kcal).`) : null,
+      p.target.proteinLimited ? el('p', { class: 'small text-warning' }, `Protein capped at ${p.target.protein} g so the macros fit the calories (your per-kg setting would be ${p.target.proteinWanted} g).`) : null,
       el('p', { class: 'small muted' }, 'Formula estimate from your profile (Mifflin-St Jeor × activity), not yet based on your data.'),
     ].filter(Boolean));
     applyProposal(false);

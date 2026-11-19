@@ -263,3 +263,16 @@ test('unfinished workout analysed against finished history; other unfinished wor
   assert.equal(st(r, 'bench', 'heaviest').status, 'pr');
   assert.equal(st(r, 'bench', 'heaviest').prevAll.weight, 100);
 });
+
+test('item 7: scopeBests — starting point is older than a real session on the same date even without startedAt', () => {
+  const midnight = new Date(2026, 8, 30).getTime();
+  const base = { id: 'base', kind: 'baseline', date: '2026-09-30', routineId: null, name: 'Starting point',
+    startedAt: midnight, finishedAt: midnight, exercises: [E('bench', [S(100, 5), S(100, 5), S(100, 5), S(120, 1)])] };
+  const real = { id: 'real', date: '2026-09-30', routineId: 'push', name: 'Push', finishedAt: midnight + 7200000,
+    exercises: [E('bench', [S(120, 1)])] };
+  for (const order of [[base, real], [real, base]]) {
+    const best = a.scopeBests(order.map((w) => ({ workout: w, entry: w.exercises[0] })));
+    assert.equal(best.heaviest.workoutId, 'base');
+    assert.equal(best.heaviest.baseline, true);
+  }
+});

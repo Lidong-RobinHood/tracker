@@ -106,8 +106,11 @@ export function findDate(text, { order = 'dmy', today = todayStr() } = {}) {
     const ambiguous = g.fixed === null && g.a <= 12 && g.b <= 12 && g.a !== g.b;
     let y = g.y;
     if (y === null) {
+      // The most recent such day on or before today (29.02. goes back to the last leap year).
       const ty = +today.slice(0, 4);
       y = `${ty}-${pad(mo)}-${pad(d)}` > today ? ty - 1 : ty;
+      for (let k = 0; k < 8 && !isValidDate(`${y}-${pad(mo)}-${pad(d)}`); k++) y--;
+      if (!isValidDate(`${y}-${pad(mo)}-${pad(d)}`)) y = ty;
     }
     const date = `${y}-${pad(mo)}-${pad(d)}`;
     const base = { start: m.index, end: m.index + m[0].length, ambiguous };
@@ -158,7 +161,8 @@ export function detectDateOrder(texts) {
 
 /**
  * Parse a number as written in a file or paste.
- * @param {string|number|null|undefined} text e.g. '82,5', '82.5', '1.234,5', '1,234.5', '2 100', '82,5 kg'
+ * @param {string|number|null|undefined} text e.g. '82,5', '82.5', '1.234,5', '1,234.5', '2 100'. Units are
+ *   not part of a number ('82,5 kg' → null); callers strip the units they accept first
  * @param {'auto'|'comma'|'dot'} [decimal] 'auto': a lone ',' is a decimal comma (German); with both
  *   separators the last one is the decimal mark
  * @returns {number|null}
@@ -303,18 +307,99 @@ export function detectHeader(records) {
 }
 
 /**
- * Guess the decimal style of numeric columns.
+ * Classify one cell for decimal-style detection.
+ *   'comma' / 'dot'   the separator can only be a decimal mark ("82,5", "1.234,5", "0,125", "1234,567")
+ *   'comma3' / 'dot3' every separator is followed by exactly three digits and the first group is
+ *                     1–3 digits without a leading 0 ("1,050", "1.250", "12.345.678"): thousands or decimal
+ *   null              no separator / not a number
+ */
+function decimalClass(v) {
+  const s = String(v ?? '').trim().replace(/\s*(kcal|kj|g|mg|ml)$/i, '').replace(/^[+-]/, '');
+  if (/^\d{1,3}(\.\d{3})+,\d+$/.test(s)) return 'comma';
+  if (/^\d{1,3}(,\d{3})+\.\d+$/.test(s)) return 'dot';
+  if (/^[1-9]\d{0,2}(,\d{3})+$/.test(s)) return 'comma3';
+  if (/^[1-9]\d{0,2}(\.\d{3})+$/.test(s)) return 'dot3';
+  if (/^\d+,\d+$/.test(s)) return 'comma';
+  if (/^\d+\.\d+$/.test(s)) return 'dot';
+  return null;
+}
+
+/** Plausible energy per row (one food or one day), kcal. Used as evidence for the number style. */
+export const PLAUSIBLE_ROW_KCAL = Object.freeze({ min: 20, max: 10000 });
+
+/**
+ * Decide the number style ("1.234,5" = 'comma', "1,234.5" = 'dot') of a file's numeric columns.
+ * Per column:
+ *   - values whose separator can only be a decimal mark vote for that style (decimal evidence);
+ *     a column with both kinds is a conflict;
+ *   - a column whose separated values ALL have exactly three digits after the separator (and none
+ *     has another pattern) reads as thousands-grouped: "1.050" votes 'comma', "1,050" votes 'dot'
+ *     (pattern evidence; ignored in a comma-separated file without commas in the values, where the
+ *     dot can hardly be a thousands separator);
+ *   - an energy column (kcalPerUnit given) is checked under both styles: a median below
+ *     PLAUSIBLE_ROW_KCAL.min or a value above .max is implausible, and the plausible reading wins
+ *     (meaning evidence, counts like decimal evidence).
+ * Confidence: 'high' = decimal/meaning evidence for one style only, or no separators at all (the
+ * style does not matter); 'medium' = only pattern evidence, or strong evidence with a weak
+ * counter-vote; 'low' = strong evidence for both styles or contradictory patterns.
+ * @param {{values: string[], kcalPerUnit?: number}[]} columns
+ * @param {{delimiter?: string}} [opts]
+ * @returns {{decimal: 'comma'|'dot', confidence: 'high'|'medium'|'low', reason: string}}
+ */
+export function detectNumberStyle(columns, { delimiter = null } = {}) {
+  const strong = { comma: 0, dot: 0 };
+  const weak = { comma: 0, dot: 0 };
+  const reasons = [];
+  let anySeparator = false;
+  let undecided = false;
+  const anyCommaValue = columns.some((c) => c.values.some((v) => /,/.test(String(v ?? ''))));
+  const ignoreDotGroups = delimiter === ',' && !anyCommaValue;
+  for (const col of columns) {
+    const n = { comma: 0, dot: 0, comma3: 0, dot3: 0 };
+    for (const v of col.values) { const k = decimalClass(v); if (k) n[k]++; }
+    if (n.comma + n.dot + n.comma3 + n.dot3 === 0) continue;
+    anySeparator = true;
+    let vote = null; let kind = null; let weight = 0;
+    if (n.comma && n.dot) { strong.comma += n.comma; strong.dot += n.dot; reasons.push('a column has both decimal commas and decimal dots'); continue; }
+    if (n.comma) { vote = 'comma'; kind = 'strong'; weight = n.comma; } else if (n.dot) { vote = 'dot'; kind = 'strong'; weight = n.dot; } else if (n.dot3 && !n.comma3) {
+      if (!ignoreDotGroups) { vote = 'comma'; kind = 'weak'; weight = n.dot3; }
+    } else if (n.comma3 && !n.dot3) { vote = 'dot'; kind = 'weak'; weight = n.comma3; } else undecided = true;
+    if (kind !== 'strong' && col.kcalPerUnit > 0) {
+      const ok = (style) => {
+        const nums = col.values.map((v) => parseNumber(String(v ?? '').replace(/\s*(kcal|kj)$/i, ''), style)).filter((x) => x !== null).map((x) => x * col.kcalPerUnit);
+        if (!nums.length) return false;
+        return median(nums) >= PLAUSIBLE_ROW_KCAL.min && Math.max(...nums) <= PLAUSIBLE_ROW_KCAL.max;
+      };
+      const okComma = ok('comma'); const okDot = ok('dot');
+      if (okComma !== okDot) {
+        vote = okComma ? 'comma' : 'dot'; kind = 'strong'; weight = Math.max(weight, 1);
+        reasons.push(`the energy column is only plausible read as ${okComma ? '1.234,5' : '1,234.5'}`);
+      }
+    }
+    if (!vote) continue;
+    if (kind === 'strong') strong[vote] += weight; else weak[vote] += weight;
+    if (kind === 'weak') reasons.push(`a column has only three-digit groups (${vote === 'comma' ? '1.050' : '1,050'}), read as thousands`);
+  }
+  const pick = (a) => (a.comma > a.dot ? 'comma' : 'dot');
+  if (!anySeparator) return { decimal: 'dot', confidence: 'high', reason: 'no decimal or thousands separators' };
+  if (strong.comma && strong.dot) return { decimal: pick(strong), confidence: 'low', reason: 'the file has numbers in both styles' };
+  if (strong.comma || strong.dot) {
+    const d = pick(strong);
+    const other = d === 'comma' ? 'dot' : 'comma';
+    return { decimal: d, confidence: weak[other] || undecided ? 'medium' : 'high', reason: reasons.join('; ') || 'decimal marks in the values' };
+  }
+  if (weak.comma && weak.dot) return { decimal: pick(weak), confidence: 'low', reason: 'three-digit groups with both separators' };
+  if (weak.comma || weak.dot) return { decimal: pick(weak), confidence: 'medium', reason: reasons.join('; ') };
+  return { decimal: 'dot', confidence: 'low', reason: 'separators could not be told apart' };
+}
+
+/**
+ * Guess the decimal style of numeric values (one column; see detectNumberStyle for the rules).
  * @param {string[]} values cells from numeric columns
  * @returns {'comma'|'dot'}
  */
 export function detectDecimal(values) {
-  let comma = 0; let dot = 0;
-  for (const v of values) {
-    const s = String(v ?? '').trim();
-    if (/^-?\d{1,3}(\.\d{3})+,\d+$/.test(s) || /^-?\d+,\d{1,2}$/.test(s) || /^-?\d+,\d{4,}$/.test(s)) comma++;
-    else if (/^-?\d{1,3}(,\d{3})+\.\d+$/.test(s) || /^-?\d+\.\d{1,2}$/.test(s) || /^-?\d+\.\d{4,}$/.test(s)) dot++;
-  }
-  return comma > dot ? 'comma' : 'dot';
+  return detectNumberStyle([{ values }]).decimal;
 }
 
 /** Normalised header text for matching: lower case, no BOM/quotes, single spaces. */

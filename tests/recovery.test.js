@@ -249,3 +249,9 @@ test('muscleRecovery uses overrides for that muscle only and marks it custom', (
   const slow = run(w, { base: { chest: [12, 16] }, factor: 1.25 });
   assert.deepEqual([get(slow, 'chest').minHours, get(slow, 'chest').maxHours], [15, 20]);
 });
+
+test('item 4: recovery progress rounds exact halves up', () => {
+  const at = (h) => get(run([W(h, { bench: S(4) })]), 'chest'); // chest 4 sets → [48, 72]
+  assert.equal(at(41.4).progress, 58); // 57.5 %
+  assert.equal(at(0.36).progress, 1); // 0.5 %
+});

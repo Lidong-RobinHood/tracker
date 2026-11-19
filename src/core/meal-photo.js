@@ -175,7 +175,14 @@ const MAX_AMOUNT = 5000;
 export function toNumber(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   if (typeof v !== 'string') return null;
-  const m = v.trim().match(/^[-+]?\d+(?:[.,]\d+)?/);
+  const t = v.trim();
+  // Thousands groups (as in the food import): a comma before exactly three digits ("1,234 g",
+  // "1,234.5"), or dots as groups before a decimal comma ("1.234,5"). A leading 0 is never a group.
+  const g = t.match(/^([-+]?)([1-9]\d{0,2}(?:,\d{3})+)(\.\d+)?(?![\d.,])/);
+  if (g) return Number(`${g[1]}${g[2].replace(/,/g, '')}${g[3] || ''}`);
+  const d = t.match(/^([-+]?)([1-9]\d{0,2}(?:\.\d{3})+),(\d+)(?![\d.,])/);
+  if (d) return Number(`${d[1]}${d[2].replace(/\./g, '')}.${d[3]}`);
+  const m = t.match(/^[-+]?\d+(?:[.,]\d+)?/);
   return m ? parseDecimal(m[0]) : null;
 }
 
@@ -243,6 +250,7 @@ export function sanitiseItem(raw) {
   let amount = toNumber(r.amount ?? r.grams ?? r.amount_g);
   if (amount !== null && (amount <= 0 || amount > MAX_AMOUNT)) { fixes.push(`An implausible amount (${amount}) was removed.`); amount = null; }
   if (amount !== null) amount = round(amount, 1);
+  if (amount === 0) { fixes.push('An amount below 0.05 was removed.'); amount = null; }
 
   const src = r.per100 && typeof r.per100 === 'object' ? r.per100 : r;
   const per100 = {};

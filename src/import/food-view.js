@@ -15,6 +15,10 @@ const EXAMPLE = `Date;Meal;Food;Amount;kcal;Protein;Carbs;Fat
 12.11.2026;Lunch;Pasta;350;620;24;98;12
 13.11.2026;Dinner;"Pizza; salami";;850;35;90;38`;
 
+/** Number styles: the value is the decimal mark (import-common.parseNumber). */
+const NUMBER_STYLES = [['comma', '1.234,5 (decimal comma)'], ['dot', '1,234.5 (decimal dot)']];
+const styleLabel = (d) => (d === 'comma' ? '"1.234,5"' : '"1,234.5"');
+
 const DELIMS = [[',', 'Comma'], [';', 'Semicolon'], ['\t', 'Tab'], ['|', 'Pipe']];
 
 export async function mountFoodImport(container) {
@@ -22,7 +26,7 @@ export async function mountFoodImport(container) {
   const now = today();
   const state = {
     text: '', table: null, delimiter: null, hasHeader: null, presetId: 'auto', preset: null,
-    mapping: {}, dateOrder: 'dmy', dateOrderAmbiguous: false, decimal: 'dot', energy: null, sodiumToSalt: true,
+    mapping: {}, dateOrder: 'dmy', dateOrderAmbiguous: false, decimal: 'dot', decimalConfidence: 'high', decimalReason: '', energy: null, sodiumToSalt: true,
     mealMap: {}, defaultMeal: 'snack', result: null, summary: null, policy: 'skip', busy: false, done: null,
   };
 
@@ -74,6 +78,8 @@ export async function mountFoodImport(container) {
     state.dateOrder = f.dateOrder;
     state.dateOrderAmbiguous = f.dateOrderAmbiguous;
     state.decimal = f.decimal;
+    state.decimalConfidence = f.decimalConfidence;
+    state.decimalReason = f.decimalReason;
     state.energy = state.mapping.kcal !== undefined ? 'kcal' : state.mapping.kj !== undefined ? 'kj' : null;
     resetMeals();
   }
@@ -112,14 +118,15 @@ export async function mountFoodImport(container) {
             select(DELIMS, state.delimiter, (v) => { state.delimiter = v; load(state.text, true); }, 'Column separator')),
           el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'First row'),
             select([['1', 'Column names'], ['0', 'Data']], state.hasHeader ? '1' : '0', (v) => { state.hasHeader = v === '1'; load(state.text, true); }, 'First row')),
-          el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Decimal mark'),
-            select([['dot', 'Dot (82.5)'], ['comma', 'Comma (82,5)']], state.decimal, (v) => { state.decimal = v; invalidate(); }, 'Decimal mark')),
+          el('div', { class: 'field' }, el('span', { class: 'field-label' }, `Numbers${state.decimalConfidence !== 'high' ? ' (please check)' : ''}`),
+            select(NUMBER_STYLES, state.decimal, (v) => { state.decimal = v; state.decimalConfidence = 'high'; invalidate(); }, 'Number style')),
           el('div', { class: 'field' }, el('span', { class: 'field-label' }, `Dates${state.dateOrderAmbiguous ? ' (please check)' : ''}`),
             select([['dmy', 'Day first (12/11)'], ['mdy', 'Month first (11/12)']], state.dateOrder, (v) => { state.dateOrder = v; invalidate(); }, 'Date order'))),
         el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'App layout'),
           select([['auto', 'Recognise automatically'], ['none', 'None (map columns myself)'], ...PRESETS.map((p) => [p.id, `${p.label}${p.status === 'unconfirmed' ? ' – unconfirmed' : ''}`])],
             state.presetId, (v) => { state.presetId = v; applyPreset(); renderSetup(); preview.replaceChildren(); }, 'App layout')),
-        presetNote),
+        presetNote,
+        state.decimalConfidence !== 'high' ? el('p', { class: 'small text-warning' }, `Number style detected as ${styleLabel(state.decimal)} with ${state.decimalConfidence} confidence${state.decimalReason ? ` (${state.decimalReason})` : ''}. Check it in the preview.`) : null),
       el('h2', { class: 'section-title' }, 'Columns'),
       el('section', { class: 'card stack imp-mapping' }, FOOD_FIELDS.map((f) => el('div', { class: ['field', f.required && state.mapping[f.id] === undefined && !(f.id === 'kcal' && state.mapping.kj !== undefined) ? 'is-missing' : null] },
         el('span', { class: 'field-label' }, `${f.label}${f.required ? (f.id === 'kcal' ? ' (required, or kJ)' : ' (required)') : ''}`),
@@ -175,9 +182,8 @@ export async function mountFoodImport(container) {
     preview.replaceChildren();
   }
 
-  async function buildPreview(btn) {
-    btn.disabled = true;
-    btn.textContent = 'Reading…';
+  async function buildPreview(btn = null) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Reading…'; }
     try {
       state.result = await runParser('buildFoodRows', state.table, {
         mapping: state.mapping, dateOrder: state.dateOrder, decimal: state.decimal, mealMap: state.mealMap,
@@ -189,13 +195,12 @@ export async function mountFoodImport(container) {
         : new Set();
       state.summary = summariseFood(state.result.entries, existingDays);
       renderPreview();
-      preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (btn) preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (err) {
       console.error(err);
       toast(`Could not build the preview: ${err.message}`, { type: 'error' });
     } finally {
-      btn.disabled = false;
-      btn.textContent = 'Show preview';
+      if (btn) { btn.disabled = false; btn.textContent = 'Show preview'; }
     }
   }
 
@@ -211,7 +216,14 @@ export async function mountFoodImport(container) {
         st('From', dateY(s.from)), st('To', dateY(s.to)),
         st('kcal/day min', fmtNum(s.kcalMin, 0)), st('median', fmtNum(s.kcalMedian, 0)), st('max', fmtNum(s.kcalMax, 0)))
       : el('p', { class: 'text-danger' }, 'No row could be used. Check the column mapping and the date and decimal settings.')));
-    if (s.entries && s.kcalMedian !== null && s.kcalMedian < 300) nodes.push(el('p', { class: 'small text-warning' }, 'The median day is very low. Is the energy column right (kcal, not kJ or a percentage)?'));
+    for (const w of s.warnings || []) nodes.push(el('p', { class: 'small text-warning' }, w.message));
+    // Number style can be switched here and the file is read again (ambiguous files: "1.050" / "1,050").
+    nodes.push(el('section', { class: 'card stack' },
+      el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Numbers in the file are written as'),
+        select(NUMBER_STYLES, state.decimal, (v) => { state.decimal = v; state.decimalConfidence = 'high'; renderSetup(); buildPreview(); }, 'Number style')),
+      el('p', { class: 'small muted' }, state.decimal === 'comma'
+        ? 'Read as 1.234,5: "1.050" is one thousand and fifty, "9,5" is nine and a half.'
+        : 'Read as 1,234.5: "1,050" is one thousand and fifty, "9.5" is nine and a half.')));
     nodes.push(issueList(r.skipped.map((x) => ({ line: x.line, message: x.reason, level: 'error' })), { title: `${plural(r.skipped.length, 'row')} skipped` }));
 
     if (s.conflictDays.length) {

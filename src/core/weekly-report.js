@@ -33,7 +33,7 @@ import { classifyIntake, trendSeries, trendAt } from './adaptive.js';
 import { muscleVolume, sanitiseTargets, targetProgress } from './volume.js';
 import { sessionTotals, pctChange, exerciseHistory, recordSessions, doneEntries } from './workout-progress.js';
 import { MUSCLES } from './muscles.js';
-import { round } from './numbers.js';
+import { round, percent } from './numbers.js';
 
 export const ON_TARGET_TOLERANCE = 0.1;
 const MACRO_KCAL = { protein: 4, carbs: 4, fat: 9 };
@@ -197,7 +197,7 @@ function weightFor({ ws, today, weights, series, goalRate }) {
   const trendEnd = end >= ws ? trendAt(series, end) : null;
   const prevTrend = trendAt(series, addDays(ws, -1));
   const change = trendEnd !== null && prevTrend !== null ? trendEnd - prevTrend : null;
-  const changePct = change !== null && prevTrend > 0 ? round((change / prevTrend) * 100, 2) : null;
+  const changePct = change !== null && prevTrend > 0 ? percent(change, prevTrend, 2) : null;
   const rate = isNum(goalRate) && goalRate !== 0 ? goalRate : null;
   const spanDays = end >= ws ? daysBetween(addDays(ws, -1), end) : 0;
   const expected = rate !== null ? (rate * spanDays) / 7 : null;

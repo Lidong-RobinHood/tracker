@@ -86,7 +86,11 @@ One item per line; cells are tab separated (copied from a sheet) or space separa
 - exercise: a text line followed by a target, set or dropset line; `Benchpress 3x6` on one line works.
 - target: `3 x 6`, `3x6`, `3 × 6`, `3 x 6-8` (first line of a block).
 - set: `100  7` = weight kg then reps (switch "reps then weight" in the preview); `82,5 8`;
-  `100 kg x 7`; one number = bodyweight reps; `BW 12`; `+10 6` (added weight).
+  `100 kg x 7`; one number = bodyweight reps; `BW 12`; `+10 6` (added weight). An explicit unit
+  decides which number is the weight, also over the switch: `80 kg x 8`, `8 x 80 kg`, `8 reps 80kg`,
+  `80kg 8` = 80 kg × 8 reps. One number after sets with an absolute weight in the same exercise
+  (`100` after `100 7`) is listed as "weight without reps?" and left out (write `BW 12` for a
+  bodyweight set); after added-weight sets (`+10 6`) it stays a bodyweight set.
 - dropset: `Dropset 5x 80`, `Drop 5 x 80`, `DS 5x80`, `Dropset: 5 x 80 kg` = 5 reps at 80 kg.
 - ignored: blank lines, header lines (`kg reps`, `Gewicht Wdh`).
 - **rejected (whole paste):** several column groups side by side (two exercise names or dates in one
@@ -97,13 +101,23 @@ One item per line; cells are tab separated (copied from a sheet) or space separa
 
 ### Body weight (`src/core/import-weights.js`)
 Date first found anywhere in the line, then the rest is the weight: `82,5;12.11.2026`,
-`12.11.2026,82,5`, `2026-11-12 82.5 kg`, `Mo 12.11.2026<TAB>82,5`. Optional header row. Lines that
+`12.11.2026,82,5`, `2026-11-12 82.5 kg`, `Mo 12.11.2026<TAB>82,5`, `2026-11-12T07:30;82.5` (ISO
+timestamp: its local date). Optional header row. Commas: a comma-separated header with 3 or more
+columns (`Date,Weight,BodyFat`) makes commas column separators (`10.11.2026,82,18` = 82 kg, the
+extra column is ignored with a note); a line with more comma fields than the header is an
+"ambiguous" error. Without such a header a comma after the weight's digits is a decimal comma
+(`12.11.2026,82,5` = 82.5); with two digits (`12.11.2026,82,18` = 82.18) the preview says it guessed. Lines that
 mention lb/lbs/pounds stop the import (metric only). Values outside 30–300 kg, future dates and
 repeated days (the later line wins) are flagged and left out.
 
 ### Food CSV (`src/core/import-food.js`)
 Delimiter (`,` `;` tab `|`), Excel-style quotes (embedded separators, line breaks, `""`), BOM, CRLF,
-header row, decimal mark and day/month order are detected and can be changed. Columns are mapped to
+header row, number style and day/month order are detected and can be changed. Number style
+(`1.234,5` or `1,234.5`): decimal marks decide; a column whose values all have exactly three digits
+after the separator (`1.050`, `1,250`) reads as thousands; an energy column must be plausible (median
+row ≥ 20 kcal, no row above 10 000 kcal). The detection reports a confidence; when it is not high the
+setup says "please check", and the preview has a switch that reads the file again. The preview warns
+when the median day is below 300 or above 15 000 kcal. Columns are mapped to
 date (required), meal, food name, amount (g/ml), kcal or kJ (required), protein, carbs, fat, sugars,
 fibre, saturated fat, salt, sodium (mg → salt g × 2.5 ÷ 1000). Each row becomes one quick-add
 diary entry (`amount: 100`, `per100` = the row's totals, `foodId: null`; an amount is appended to

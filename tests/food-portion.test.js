@@ -49,3 +49,14 @@ test('basis from pack quantity', () => {
   assert.equal(basisFromQuantity('400 g'), 'g');
   assert.equal(basisFromQuantity(''), 'g');
 });
+
+test('item 8: parseAmountText — thousands groups and multipacks', () => {
+  assert.deepEqual(parseAmountText('1.234,5 g'), { amount: 1234.5, unit: 'g' });
+  assert.deepEqual(parseAmountText('1,234.5 g'), { amount: 1234.5, unit: 'g' });
+  assert.deepEqual(parseAmountText('1.500 g'), { amount: 1500, unit: 'g' }); // three digits after the mark in grams: thousands
+  assert.deepEqual(parseAmountText('1,5 kg'), { amount: 1500, unit: 'g' });
+  assert.deepEqual(parseAmountText('1,250 kg'), { amount: 1250, unit: 'g' }); // in kg / l a decimal mark
+  assert.deepEqual(parseAmountText('6 x 330 ml'), { amount: 1980, unit: 'ml', count: 6, each: 330 });
+  assert.deepEqual(parseAmountText('4×125g'), { amount: 500, unit: 'g', count: 4, each: 125 });
+  assert.deepEqual(parseAmountText('2 x 125 g (250 g)'), { amount: 250, unit: 'g' });
+});

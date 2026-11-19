@@ -10,14 +10,39 @@ const UNITS = {
   ml: ['ml', 1], cl: ['ml', 10], dl: ['ml', 100], l: ['ml', 1000], lt: ['ml', 1000], liter: ['ml', 1000], litre: ['ml', 1000],
   oz: ['g', 28.3495],
 };
-const NUM = String.raw`(\d+(?:[.,]\d+)?)`;
+// A number, optionally with thousands groups ("1.234,5", "1,234.5").
+const NUM = String.raw`(\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)`;
 const UNIT_RE = new RegExp(String.raw`${NUM}\s*(kg|mg|gr|grams?|gramm|g|ml|cl|dl|l|lt|lit(?:er|re)|oz)\b`, 'gi');
+const MULTI_RE = /(\d{1,2})\s*[x×*]\s*$/i; // "6 x " right before an amount: a multipack
 
 /**
- * Find a metric amount in free text like "30 g", "1 slice (30 g)", "250ml", "1 cup (240 mL)", "0,5 l".
+ * Number text of an amount. Both marks: the last one is the decimal mark ("1.234,5", "1,234.5").
+ * One mark followed by exactly three digits ("1.500", "1,500"): thousands for the small units g / ml
+ * / mg (milligram precision is implausible on a label), a decimal mark for kg, l, cl, dl and oz
+ * ("1,250 kg" = 1.25 kg). Otherwise ',' or '.' is the decimal mark.
+ */
+function amountNumber(text, unit) {
+  const s = String(text);
+  const lc = s.lastIndexOf(','); const ld = s.lastIndexOf('.');
+  if (lc >= 0 && ld >= 0) {
+    const at = Math.max(lc, ld);
+    const int = s.slice(0, at);
+    if (int.includes(s[at]) || !/^\d{1,3}([.,]\d{3})+$/.test(int)) return null;
+    return Number(`${int.replace(/[.,]/g, '')}.${s.slice(at + 1)}`);
+  }
+  if ((s.match(/[.,]/g) || []).length > 1) return /^\d{1,3}([.,]\d{3})+$/.test(s) ? Number(s.replace(/[.,]/g, '')) : null;
+  if (/^[1-9]\d{0,2}[.,]\d{3}$/.test(s) && ['g', 'gr', 'gram', 'grams', 'gramm', 'ml', 'mg'].includes(unit)) return Number(s.replace(/[.,]/, ''));
+  return parseDecimal(s);
+}
+
+/**
+ * Find a metric amount in free text like "30 g", "1 slice (30 g)", "250ml", "1 cup (240 mL)", "0,5 l",
+ * "1.234,5 g" (see amountNumber for thousands groups).
  * A value in parentheses wins (it is usually the metric equivalent of a household measure).
+ * A multipack written as "6 x 330 ml" (and no value in parentheses) gives the total (1980 ml) plus
+ * count and each (the single unit, 330 ml).
  * @param {string|null|undefined} text
- * @returns {{amount: number, unit: 'g'|'ml'} | null}
+ * @returns {{amount: number, unit: 'g'|'ml', count?: number, each?: number} | null}
  */
 export function parseAmountText(text) {
   const s = String(text ?? '');
@@ -29,10 +54,15 @@ export function parseAmountText(text) {
     return before.lastIndexOf('(') > before.lastIndexOf(')');
   });
   const m = inParens || matches[0];
-  const n = parseDecimal(m[1]);
-  const def = UNITS[m[2].toLowerCase()];
-  if (n === null || !def || n <= 0) return null;
-  return { amount: round(n * def[1], 1), unit: /** @type {'g'|'ml'} */ (def[0]) };
+  const u = m[2].toLowerCase();
+  const n = amountNumber(m[1], u);
+  const def = UNITS[u];
+  if (n === null || !Number.isFinite(n) || !def || n <= 0) return null;
+  const each = round(n * def[1], 1);
+  const multi = inParens ? null : MULTI_RE.exec(s.slice(0, m.index));
+  const count = multi ? Number(multi[1]) : 1;
+  if (count > 1) return { amount: round(each * count, 1), unit: /** @type {'g'|'ml'} */ (def[0]), count, each };
+  return { amount: each, unit: /** @type {'g'|'ml'} */ (def[0]) };
 }
 
 /**

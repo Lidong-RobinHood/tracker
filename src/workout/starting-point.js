@@ -200,7 +200,7 @@ export async function mountStartingPoint(container) {
   const routineCount = new Set(routines.flatMap((r) => (r.items || []).map((i) => i.exerciseId))).size;
   container.append(...[header,
     el('p', { class: 'small muted wk-pad-x' },
-      'Your current working weight × reps × sets per exercise, and your best set if it differs. Used to pre-fill sessions, for progression and for records; never counted as a workout.'),
+      'Your current working weight × reps × sets per exercise, and your best set if it differs. Used to pre-fill sessions and for records (not for the progression suggestion, which needs a real session); never counted as a workout.'),
     restored ? el('p', { class: 'small text-warning wk-pad-x' }, 'Unsaved changes restored.') : null,
     el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'As of'), dateIn),
     listEl,

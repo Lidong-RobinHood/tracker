@@ -8,11 +8,11 @@ import {
 } from '../ui/index.js';
 import {
   buildEntry, byRecent, lastEntryFor, formatSets, formatTarget, normaliseTarget, fillDownTargets,
-  pendingNormalSets, sessionStats, routineItemsFromWorkout, finishTime, applySchedule, targetCheck,
+  sessionStats, routineItemsFromWorkout, finishTime, applySchedule, targetCheck,
   LIVE_WINDOW_MS, MAX_TARGET_WEIGHT,
 } from '../core/workout.js';
 import { changeDateTime } from './datetime.js';
-import { suggestProgression } from '../core/progression.js';
+import { suggestProgression, setsForSuggestion } from '../core/progression.js';
 import { workoutVolume } from '../core/volume.js';
 import { MUSCLES } from '../core/muscles.js';
 import {
@@ -145,7 +145,7 @@ export async function mountSession(container, { id }) {
         type: 'button', class: 'chip wk-prog',
         onClick: () => {
           if (chip.classList.contains('is-active')) return;
-          const idx = pendingNormalSets(entry.sets);
+          const idx = setsForSuggestion(entry.sets, suggestion.from);
           for (const i of idx) {
             entry.sets[i].weight = suggestion.weight;
             touched.add(entry.sets[i]);
@@ -164,7 +164,7 @@ export async function mountSession(container, { id }) {
           updateTarget();
           save();
         },
-      }, `↑ ${fmtNum(suggestion.weight, 2)} kg — all sets hit target`);
+      }, `↑ ${fmtNum(suggestion.weight, 2)} kg — ${suggestion.sets} set${suggestion.sets === 1 ? '' : 's'} at ${fmtNum(suggestion.from, 2)} kg hit target`);
       progRow = el('div', { class: 'wk-prog-row' }, chip);
     }
 
@@ -311,7 +311,7 @@ export async function mountSession(container, { id }) {
       content: [
         el('div', { class: 'grid-3' }, field('Sets', sets), field('Reps', reps), field('Max reps', max)),
         field('Weight', wt, { unit: 'kg', hint: 'Optional. Leave empty for bodyweight or no weight target.' }),
-        el('p', { class: 'field-hint' }, 'A range like 3 x 6–8 progresses once every set reaches the max.'),
+        el('p', { class: 'field-hint' }, 'A range like 3 x 6–8 progresses once every set at the top weight reaches the max.'),
       ],
     });
     s.footer.append(

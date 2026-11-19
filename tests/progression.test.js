@@ -93,3 +93,35 @@ test('fallback target when the entry has none; no reps target -> null', () => {
   assert.equal(evaluateEntry(entry, 2.5, {}), null);
   assert.equal(evaluateEntry({ targetSets: 2, targetReps: null, sets: entry.sets }, 2.5), null);
 });
+
+test('item 9: top weight rule — warm-ups and back-off sets are ignored', () => {
+  // warm-up logged as a normal set
+  const warm = suggestProgression([wo('2026-11-12', [S(60, 10), S(100, 8), S(100, 8), S(100, 8)])], bench);
+  assert.equal(warm.weight, 102.5);
+  assert.equal(warm.from, 100);
+  assert.equal(warm.sets, 3);
+  // only 2 sets at the top weight and one of them missed
+  assert.equal(suggestProgression([wo('2026-11-12', [S(100, 6), S(100, 5), S(90, 8)])], bench), null);
+  // top weight 102.5 has a single set
+  assert.equal(suggestProgression([wo('2026-11-12', [S(100, 6), S(100, 6), S(100, 6), S(102.5, 3)])], bench), null);
+  // plain 3 × 6 at 100 as before
+  assert.equal(suggestProgression([wo('2026-11-12', [S(100, 6), S(100, 6), S(100, 6)])], bench).weight, 102.5);
+  // back-off set after the top sets does not block
+  assert.equal(suggestProgression([wo('2026-11-12', [S(100, 6), S(100, 6), S(100, 6), S(80, 3)])], bench).weight, 102.5);
+  // dropsets still never count
+  assert.equal(suggestProgression([wo('2026-11-12', [S(100, 6), S(100, 6), S(110, 9, 'dropset')])], bench), null);
+});
+
+test('item 9: the starting point never triggers a suggestion, even with warm-up rows', () => {
+  const base = { id: 'b', kind: 'baseline', date: '2026-11-12', routineId: null, name: 'Starting point', startedAt: 1, finishedAt: 1,
+    exercises: [{ exerciseId: bench.id, targetSets: 3, targetReps: 6, targetRepsMax: null, sets: [S(60, 10), S(100, 8), S(100, 8), S(100, 8)], note: '' }] };
+  assert.equal(suggestProgression([base], bench), null);
+});
+
+test('item 9: the chip applies the new weight to the pending top-weight sets, not to warm-ups', async () => {
+  const { setsForSuggestion } = await import('../src/core/progression.js');
+  const sets = [S(60, 10, 'normal', false), S(100, 6, 'normal', false), S(100, 6, 'normal', false), S(null, null, 'normal', false), S(80, 5, 'dropset', false), S(100, 6)];
+  assert.deepEqual(setsForSuggestion(sets, 100), [1, 2, 3]);
+  // no pending set at the old top weight → every pending normal set (previous behaviour)
+  assert.deepEqual(setsForSuggestion([S(60, 10, 'normal', false), S(70, 10, 'normal', false)], 100), [0, 1]);
+});

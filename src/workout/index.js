@@ -9,6 +9,7 @@ import { mountTargets } from './targets.js';
 import { mountRecovery } from './recovery.js';
 import { mountAnalytics } from './analytics.js';
 import { mountStartingPoint } from './starting-point.js';
+import { mountAnalysisHub } from './analysis-hub.js';
 
 /** @type {import('../types.js').Route[]} */
 export const routes = [
@@ -25,5 +26,6 @@ export const routes = [
   { path: 'workout/history', title: 'History', mount: mountHistory },
   { path: 'workout/history/:id', title: 'Workout', mount: mountHistoryDetail },
   { path: 'workout/summary/:id', title: 'Workout analysis', mount: mountAnalytics },
+  { path: 'workout/analysis', title: 'Analysis', mount: mountAnalysisHub },
   { path: 'workout/starting-point', title: 'Starting point', mount: mountStartingPoint },
 ];

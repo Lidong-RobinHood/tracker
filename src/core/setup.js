@@ -65,13 +65,14 @@ export function buildTargets(current, input) {
  * Formula estimate (Mifflin-St Jeor × activity) and the targets the weekly check-in would propose
  * from it. Both null while the profile or weight is incomplete.
  * @param {{profile: object, weightKg: number|null, rateKgPerWeek: number, adaptive?: object, asOf: string}} a
- * @returns {{tdee: number|null, target: {kcal: number, protein: number, carbs: number, fat: number, limitedBy: string|null}|null}}
+ * @returns {{tdee: number|null, target: {kcal: number, protein: number, carbs: number, fat: number, limitedBy: string|null,
+ *   proteinLimited: boolean, proteinWanted: number}|null}}
  */
 export function proposeTargets({ profile, weightKg, rateKgPerWeek, adaptive = {}, asOf }) {
   const f = formulaTdee(profile, weightKg, asOf);
   if (!f) return { tdee: null, target: null };
   const t = weeklyTarget({ tdee: f.kcal, rateKgPerWeek: isNum(rateKgPerWeek) ? rateKgPerWeek : 0, weightKg, sex: profile.sex, config: adaptive || {} });
-  return { tdee: Math.round(f.kcal / 10) * 10, target: { kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat, limitedBy: t.limitedBy } };
+  return { tdee: Math.round(f.kcal / 10) * 10, target: { kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat, limitedBy: t.limitedBy, proteinLimited: t.proteinLimited, proteinWanted: t.proteinWanted } };
 }
 
 /**

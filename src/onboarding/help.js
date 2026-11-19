@@ -72,7 +72,7 @@ export async function mountHelp(container, params, ctx) {
       ul(['Each set row is pre-filled with the weight and reps of the last session of that exercise, so an unchanged set is one tap on done.'],
         ['“+ Dropset” adds a dropset row; the set menu turns a row into a dropset or back. Dropsets do not count for progression.'],
         ['Tap the target (e.g. 3 x 6) to change sets, reps, an optional rep range (3 x 6–8) and an optional target weight.'],
-        ['Progression: when every normal set of the last session reached the target reps at the same weight, a chip suggests the next weight (weight + the exercise’s step). One tap applies it; nothing changes on its own. If it goes past your target weight, a second chip offers to make it the new target.'],
+        ['Progression: when the last real session had at least the target number of normal sets at its heaviest weight and every set at that weight reached the target reps, a chip suggests the next weight (that weight + the exercise’s step). Lighter warm-up or back-off sets are ignored; the starting point never triggers it. One tap applies it; nothing changes on its own. If it goes past your target weight, a second chip offers to make it the new target.'],
         ['Everything saves as you type; an unfinished workout is waiting on the Workout tab after a reload.'],
         ['The workout ⋯ menu changes its date and time (also after finishing), so a forgotten workout can be backdated.'])),
 

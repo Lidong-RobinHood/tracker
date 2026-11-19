@@ -55,8 +55,10 @@ export const REPS_METRICS = Object.freeze(['bwReps', 'bwTotal']);
 /** 'YYYY-MM' of a date string. */
 export const monthOf = (date) => String(date || '').slice(0, 7);
 
-/** Chronological order (oldest first), by date then start time. */
+/** Chronological order (oldest first) of workouts, by byRecent (date, starting point first, start time). */
 const chrono = (list) => [...list].sort((a, b) => byRecent(b, a));
+/** The same order for {workout, entry} pairs (sorted by their workout, so `kind` is seen). */
+const chronoHistory = (list) => [...list].sort((a, b) => byRecent(b.workout, a.workout));
 
 // ---------------------------------------------------------------- per session
 
@@ -106,7 +108,7 @@ export function compareBest(metric, a, b) {
  */
 export function scopeBests(history) {
   const out = Object.fromEntries(Object.keys(METRICS).map((k) => [k, null]));
-  for (const { workout, entry } of chrono(history.map((h) => ({ ...h, date: h.workout.date, startedAt: h.workout.startedAt })))) {
+  for (const { workout, entry } of chronoHistory(history)) {
     const b = sessionBests(entry);
     const base = isBaseline(workout);
     for (const k of Object.keys(METRICS)) {

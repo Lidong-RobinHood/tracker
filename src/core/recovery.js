@@ -35,7 +35,7 @@ import { MUSCLES } from './muscles.js';
 import { isBaseline } from './baseline.js';
 import { parseDate, isValidDate } from './dates.js';
 import { workoutVolume } from './volume.js';
-import { round } from './numbers.js';
+import { round, percent } from './numbers.js';
 
 const H = 3600000;
 
@@ -239,7 +239,7 @@ export function muscleRecovery(workouts, exercises, weights, { now, factor = 1, 
       muscle: m.id, name: m.name, custom: !!own, status, trained: true, lastAt: ep.at, hoursSince: round(h, 2),
       lastDose: ep.lastDose, dose: ep.dose, minHours: ep.min, maxHours: ep.max,
       readyAt: ep.at + ep.min * H, fullAt: ep.at + ep.max * H,
-      progress: round(clamp((h / ep.max) * 100, 0, 100), 0), sessions: ep.list.slice().reverse(),
+      progress: clamp(percent(h, ep.max), 0, 100), sessions: ep.list.slice().reverse(),
     };
   });
 }

@@ -222,3 +222,58 @@ test('import runs: newRun, upsertRun cap, ownership, removable exercises, pruned
   assert.deepEqual(removableExercises(['c1', 'c2'], [{ exercises: [{ exerciseId: 'c2' }] }], [{ items: [] }]), { remove: ['c1'], keep: ['c2'] });
   assert.deepEqual(pruneMappings({ bench: 'c1', squat: 'seed:x' }, ['c1']), { squat: 'seed:x' });
 });
+
+test('item 1: German thousands separators in the energy column are not read as decimals', () => {
+  const csv = 'Datum;Kalorien;Eiweiß\n12.11.2026;1.050;44\n13.11.2026;1.250;50\n14.11.2026;980;40\n';
+  const table = readTable(csv);
+  const mapping = guessMapping(table.headers);
+  const f = detectFormats(table, mapping);
+  assert.equal(f.decimal, 'comma');
+  assert.ok(['high', 'medium', 'low'].includes(f.decimalConfidence));
+  const { entries } = buildFoodRows(table, { mapping, dateOrder: f.dateOrder, decimal: f.decimal, defaultMeal: 'snack', today: T });
+  assert.deepEqual(entries.map((e) => e.kcal), [1050, 1250, 980]);
+  assert.deepEqual(summariseFood(entries).warnings, []);
+});
+
+test('item 1: mirror case — "1,050" in a dot-decimal file is thousands, not 1.05', () => {
+  const csv = 'Date;Calories;Protein\n2026-11-12;1,050;44.5\n2026-11-13;1,250;50\n2026-11-14;980;40\n';
+  const table = readTable(csv);
+  const mapping = guessMapping(table.headers);
+  const f = detectFormats(table, mapping);
+  assert.equal(f.decimal, 'dot');
+  const { entries } = buildFoodRows(table, { mapping, dateOrder: f.dateOrder, decimal: f.decimal, defaultMeal: 'snack', today: T });
+  assert.deepEqual(entries.map((e) => [e.kcal, e.protein]), [[1050, 44.5], [1250, 50], [980, 40]]);
+  // without other evidence the energy meaning decides too
+  const t2 = readTable('Datum\tKalorien\n12.11.2026\t1,050\n13.11.2026\t1,250\n14.11.2026\t2,005\n');
+  const f2 = detectFormats(t2, guessMapping(t2.headers));
+  assert.equal(f2.decimal, 'dot');
+});
+
+test('item 1: decimal detection reports a confidence; three-digit groups alone are only a pattern', () => {
+  // only an amount column with "1.000" style values: thousands by pattern, medium confidence
+  const t = readTable('Datum;Menge;kcal\n12.11.2026;1.000;500\n13.11.2026;2.500;600\n');
+  const f = detectFormats(t, { date: 0, amount: 1, kcal: 2 });
+  assert.deepEqual([f.decimal, f.decimalConfidence], ['comma', 'medium']);
+  // clear decimal commas: high
+  const g = detectFormats(readTable('Datum;kcal\n12.11.2026;380,5\n13.11.2026;620\n'), { date: 0, kcal: 1 });
+  assert.deepEqual([g.decimal, g.decimalConfidence], ['comma', 'high']);
+  // conflicting evidence: low
+  const h = detectFormats(readTable('Datum;kcal;Fett\n12.11.2026;380,5;9.5\n13.11.2026;620,5;12.5\n'), { date: 0, kcal: 1, fat: 2 });
+  assert.equal(h.decimalConfidence, 'low');
+  // no separators at all: style does not matter
+  const k = detectFormats(readTable('Datum;kcal\n12.11.2026;380\n13.11.2026;620\n'), { date: 0, kcal: 1 });
+  assert.deepEqual([k.decimal, k.decimalConfidence], ['dot', 'high']);
+  // existing rule: a comma-separated file without commas in the values stays dot, "105.000" kcal would be implausible as thousands
+  const m = detectFormats(readTable('Date,Calories\n2026-11-12,105.000\n2026-11-13,98.500\n'), { date: 0, kcal: 1 });
+  assert.equal(m.decimal, 'dot');
+});
+
+test('item 1: plausibility warning when the median day energy looks wrong', () => {
+  const low = summariseFood([{ date: '2026-11-12', kcal: 1.1 }, { date: '2026-11-13', kcal: 1.3 }, { date: '2026-11-14', kcal: 980 }]);
+  assert.equal(low.warnings.length, 1);
+  assert.match(low.warnings[0].message, /low/);
+  assert.equal(low.warnings[0].code, 'median-low');
+  const high = summariseFood([{ date: '2026-11-12', kcal: 9000 }, { date: '2026-11-12', kcal: 9000 }]);
+  assert.equal(high.warnings[0].code, 'median-high');
+  assert.deepEqual(summariseFood([]).warnings, []);
+});
