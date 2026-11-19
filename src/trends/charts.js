@@ -32,19 +32,35 @@ function niceTicks(lo, hi, count = 4) {
   return { ticks, step, lo: a, hi: b };
 }
 
-/** Pointer → nearest index along x. Works for mouse hover and touch tap/drag. */
+/**
+ * Pointer → nearest index along x. Mouse: the readout follows the hover and goes back to the default
+ * when the pointer leaves. Touch/pen: a tap (or drag) selects the nearest point and it stays selected
+ * after the finger lifts, until another point is tapped; a tap away from every point clears it.
+ */
 function attachHover(svg, W, xs, onPick) {
-  const pick = (ev) => {
+  let pinned = null;
+  const gaps = xs.slice(1).map((v, i) => v - xs[i]);
+  const reach = Math.max(14, gaps.length ? (Math.max(...gaps) * 0.6) : 40); // viewBox units
+  const nearest = (ev) => {
     const r = svg.getBoundingClientRect();
-    if (!r.width) return;
+    if (!r.width || !xs.length) return null;
     const x = ((ev.clientX - r.left) / r.width) * W;
     let best = 0;
     for (let i = 1; i < xs.length; i++) if (Math.abs(xs[i] - x) < Math.abs(xs[best] - x)) best = i;
-    onPick(best);
+    return Math.abs(xs[best] - x) <= reach ? best : null;
   };
-  svg.addEventListener('pointermove', pick);
-  svg.addEventListener('pointerdown', pick);
-  svg.addEventListener('pointerleave', () => onPick(null));
+  svg.addEventListener('pointerdown', (ev) => {
+    if (ev.pointerType === 'mouse') return;
+    pinned = nearest(ev);
+    onPick(pinned);
+  });
+  svg.addEventListener('pointermove', (ev) => {
+    if (ev.pointerType === 'mouse') { onPick(nearest(ev) ?? pinned); return; }
+    if (!ev.buttons && ev.pressure === 0) return; // pen hovering
+    const i = nearest(ev);
+    if (i !== null) { pinned = i; onPick(i); }
+  });
+  svg.addEventListener('pointerleave', (ev) => { if (ev.pointerType === 'mouse') onPick(pinned); });
 }
 
 /**

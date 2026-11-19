@@ -12,9 +12,11 @@ export const mealKcal = (meal) => sumEntries(meal.items).kcal;
 
 /**
  * Log a saved meal: items with editable amounts, meal + date, confirm.
+ * @param {{date: string, meal: string, onChange?: () => void}} opts onChange: the saved meals changed
+ *   later (Undo after a delete), so a list showing them must be redrawn
  * @returns {Promise<'logged'|'changed'|null>} 'changed' if the meal was edited/deleted
  */
-export function openLogMeal(meal, { date, meal: mealId }) {
+export function openLogMeal(meal, { date, meal: mealId, onChange }) {
   const rows = meal.items.map((item) => {
     const amount = numberInput({ value: item.amount, min: 0, max: 10000, decimals: 1, ariaLabel: `Amount of ${item.name}`, onInput: update });
     const kcal = el('span', { class: 'num small muted' });
@@ -67,7 +69,7 @@ export function openLogMeal(meal, { date, meal: mealId }) {
     }
   }
   async function edit() {
-    const r = await openEditMeal(meal);
+    const r = await openEditMeal(meal, { onChange });
     if (r) sheet.close('changed');
   }
   update();
@@ -76,9 +78,10 @@ export function openLogMeal(meal, { date, meal: mealId }) {
 
 /**
  * Rename / change amounts / remove items / delete a saved meal.
+ * @param {{onChange?: () => void}} [opts] onChange runs after Undo restored a deleted meal
  * @returns {Promise<'saved'|'deleted'|null>}
  */
-export function openEditMeal(meal) {
+export function openEditMeal(meal, { onChange } = {}) {
   const name = el('input', { class: 'input', type: 'text', value: meal.name, maxlength: '80', 'aria-label': 'Meal name' });
   const rows = meal.items.map((item) => {
     const amount = numberInput({ value: item.amount, min: 0.1, max: 10000, decimals: 1, ariaLabel: `Amount of ${item.name}` });
@@ -116,7 +119,13 @@ export function openEditMeal(meal) {
     if (!ok) return;
     await removeMeal(meal.id);
     sheet.close('deleted');
-    toast('Meal deleted', { action: { label: 'Undo', onClick: () => putMeal(meal).then(() => toast('Meal restored')) } });
+    toast('Meal deleted', {
+      action: {
+        label: 'Undo',
+        onClick: () => putMeal(meal).then(() => { toast('Meal restored'); if (onChange) onChange(); })
+          .catch((err) => { console.error(err); toast(`Could not restore: ${err.message || err}`, { type: 'error' }); }),
+      },
+    });
   }
   return sheet.closed.then((r) => r || null);
 }

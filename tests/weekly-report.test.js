@@ -272,3 +272,13 @@ test('weekSummaries: weeks with data plus the current one, newest first', () => 
   assert.equal(empty.length, 1);
   assert.equal(empty[0].hasData, false);
 });
+
+test('training: a finished workout without a done set is not counted', () => {
+  const workouts = [
+    WO('w1', '2026-11-10', 'seed:bench-press', [S(100, 5), S(100, 5)]),
+    WO('empty', '2026-11-11', 'seed:bench-press', [S(100, 5, 'normal', false)]),
+  ];
+  const t = report({ weekStart: '2026-11-09', workouts }).training;
+  assert.deepEqual(t.workouts.map((w) => w.id), ['w1']);
+  assert.equal(t.done, 1);
+});

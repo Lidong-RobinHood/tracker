@@ -2,12 +2,33 @@
 
 const PROPS = new Set(['value', 'checked', 'selected', 'disabled', 'hidden', 'readOnly', 'htmlFor', 'textContent']);
 
+/** Primary buttons whose async click handler is still running. */
+const running = new WeakSet();
+
+/**
+ * Click handler wrapper: a primary button (`btn-primary`) ignores further clicks while the promise
+ * returned by its handler is pending, so a quick double tap cannot save twice.
+ */
+function guardClick(node, fn) {
+  return function onClick(e) {
+    const primary = node.classList.contains('btn-primary');
+    if (primary && running.has(node)) { e.preventDefault(); e.stopImmediatePropagation(); return undefined; }
+    const r = fn.call(this, e);
+    if (primary && r && typeof r.then === 'function') {
+      running.add(node);
+      r.then(() => running.delete(node), (err) => { running.delete(node); throw err; });
+    }
+    return r;
+  };
+}
+
 /**
  * Create an element.
  *  - props.class: string or array (falsy entries skipped)
  *  - props.style: string or object ({ minWidth: '4rem' })
  *  - props.dataset: object -> data-* attributes
- *  - props.onClick / onInput / on<Anything>: function -> addEventListener('click', ...)
+ *  - props.onClick / onInput / on<Anything>: function -> addEventListener('click', ...); a `btn-primary`
+ *    ignores clicks while the promise its onClick returned is pending
  *  - value, checked, selected, disabled, hidden, readOnly, htmlFor, textContent: set as properties
  *  - anything else: setAttribute (true -> '', false/null/undefined -> skipped)
  * Children: strings, numbers, Nodes, arrays (flattened); null/undefined/false are skipped.
@@ -30,7 +51,8 @@ export function el(tag, props, ...children) {
     } else if (k === 'dataset') {
       Object.assign(node.dataset, v);
     } else if (/^on[A-Z]/.test(k) && typeof v === 'function') {
-      node.addEventListener(k.slice(2).toLowerCase(), v);
+      const type = k.slice(2).toLowerCase();
+      node.addEventListener(type, type === 'click' ? guardClick(node, v) : v);
     } else if (PROPS.has(k)) {
       node[k] = v;
     } else {

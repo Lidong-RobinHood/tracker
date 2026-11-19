@@ -1,6 +1,8 @@
 /* Settings. Narrow three-column fields at 375 px: the shared 3.2em unit padding hid digits
    (e.g. "1500" showed as "150", "30.5" as "30."). Tighter padding there only. */
-.settings-view .grid-3 .input-unit .input { padding-left: var(--s2); padding-right: 2.7em; }
+.settings-view .grid-3 .input-unit .input { padding-left: var(--s2); padding-right: 1.9em; }
+/* 320 px phones: three gram fields side by side must still show 3-digit values in full. */
+@media (max-width: 360px) { .settings-view .grid-3 { gap: var(--s2); } }
 .settings-view .grid-3 .input-unit .unit { right: var(--s2); }
 
 /* Goal amount: fixed sign ("−" lose, "+" gain) in front of the typed positive amount. */

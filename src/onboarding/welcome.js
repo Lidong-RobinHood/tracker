@@ -12,9 +12,12 @@ import { GOAL_AMOUNT_MAX } from '../core/goal-rate.js';
 import { currentPlatform, installGuide } from './install.js';
 import { requestPersistence } from './backup.js';
 import { ensureCss } from './shell.js';
+import { loadDraft, saveDraft, clearDraft } from '../ui/draft.js';
 
-const MIN_KG = 20; const MAX_KG = 400; // same limits as the Trends weight screen
+import { MIN_KG, MAX_KG } from '../core/body-weight.js'; // same limits everywhere
 const MACRO_LABEL = { protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
+/** localStorage draft of the setup (answers, typed values, current step), so a reload loses nothing. */
+const DRAFT = 'welcome';
 
 export async function mountWelcome(container) {
   ensureCss();
@@ -29,9 +32,13 @@ export async function mountWelcome(container) {
   const plat = currentPlatform();
   const STEPS = ['intro', plat.install === 'standalone' ? null : 'install', 'about', 'goal', 'data'].filter(Boolean);
 
+  // Answers and typed values from before a reload (iOS reloads an evicted home-screen app).
+  const draft = loadDraft(DRAFT);
+  const typed = (draft && draft.typed) || {};
+
   /** What the user confirmed with Next. Skipped steps stay undefined (nothing is written for them). */
-  const answers = {};
-  let i = 0;
+  const answers = draft && draft.answers && typeof draft.answers === 'object' ? { ...draft.answers } : {};
+  let i = draft ? Math.max(0, STEPS.indexOf(draft.step)) : 0;
   let busy = false;
 
   const body = el('div', { class: 'stack ob-body' });
@@ -51,6 +58,7 @@ export async function mountWelcome(container) {
       ariaLabel: "Today's weight", placeholder: lastWeight ? fmtNum(lastWeight.kg, 2) : '' }),
     activity: sel(profile.activity, [['', 'Not set'], ...ACTIVITY_LEVELS.map((a) => [a.id, `${a.label} – ${a.hint}`])], 'Activity level'),
   };
+  if (typed.about) for (const [k, input] of Object.entries(about)) if (typeof typed.about[k] === 'string') input.value = typed.about[k];
   /** Profile as currently typed (for the estimate), and the weight to use for it. */
   const typedProfile = () => ({ ...profile, sex: about.sex.value || null, birthYear: about.birthYear.getNumber(),
     heightCm: about.height.getNumber(), activity: about.activity.value || null });
@@ -78,8 +86,8 @@ export async function mountWelcome(container) {
   }
 
   // ---------------------------------------------------------------- step: goal and targets
-  const rate = goalRateControl(goal.rateKgPerWeek);
-  const editor = targetsEditor(targets);
+  const rate = goalRateControl(typed.rate ?? goal.rateKgPerWeek);
+  const editor = targetsEditor(targets, typed.editor);
   const estimateBox = el('div', { class: 'stack ob-estimate', 'aria-live': 'polite' });
   let proposal = null;
   const useEstimate = el('button', { type: 'button', class: 'btn btn-sm', hidden: true, onClick: () => { applyProposal(true); } }, 'Use the estimate');
@@ -210,7 +218,23 @@ export async function mountWelcome(container) {
     const h = body.querySelector('.ob-title');
     if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
   }
-  function go(n) { i = Math.max(0, Math.min(STEPS.length - 1, n)); render(); }
+  function go(n) { i = Math.max(0, Math.min(STEPS.length - 1, n)); render(); persist(); }
+
+  function persist() {
+    if (busy) return;
+    saveDraft(DRAFT, {
+      step: STEPS[i], answers,
+      typed: {
+        about: Object.fromEntries(Object.entries(about).map(([k, input]) => [k, input.value])),
+        rate: rate.getRate(),
+        editor: editor.state(),
+      },
+    });
+  }
+  // Every change on any step is saved (after the control's own handler ran).
+  let persistTimer = null;
+  const persistSoon = () => { clearTimeout(persistTimer); persistTimer = setTimeout(persist, 0); };
+  for (const type of ['input', 'change', 'click']) body.addEventListener(type, persistSoon);
   function next(save) {
     const step = STEPS[i];
     if (save && READ[step] && !READ[step]()) return;
@@ -231,6 +255,8 @@ export async function mountWelcome(container) {
         const rec = await t.get('settings', 'meta');
         t.put('settings', { key: 'meta', value: { ...db.SETTINGS_DEFAULTS.meta, ...(rec && rec.value), ...w.metaPatch } });
       });
+      clearTimeout(persistTimer);
+      clearDraft(DRAFT);
       requestPersistence();
       const wrote = Object.keys(w.settings).length || w.weight;
       if (wrote) toast('Setup saved. You can change everything later in Settings.', { type: 'success' });
@@ -244,16 +270,17 @@ export async function mountWelcome(container) {
   }
 
   render();
-  return () => document.documentElement.classList.remove('ob-focus');
+  if (draft) toast('Restored your setup answers from before the app was reloaded.', { duration: 4000 });
+  return () => { clearTimeout(persistTimer); document.documentElement.classList.remove('ob-focus'); };
 }
 
 /**
  * Calories + macros in grams or as a percentage split (same storage rules as Settings).
  * @param {object} targets stored settings.targets
  */
-function targetsEditor(targets) {
-  let mode = targetMode(targets);
-  let edited = false;
+function targetsEditor(targets, saved = null) {
+  let mode = saved && (saved.mode === 'percent' || saved.mode === 'grams') ? saved.mode : targetMode(targets);
+  let edited = !!(saved && saved.edited);
   const listeners = [];
   const markEdited = () => { edited = true; for (const fn of listeners) fn(); };
   const kcal = numberInput({ value: targets.kcal, min: 0, max: 20000, decimals: 0, ariaLabel: 'Calories target', onInput: () => { markEdited(); update(); } });
@@ -275,6 +302,15 @@ function targetsEditor(targets) {
     el('div', { class: 'chips', role: 'group', 'aria-label': 'Preset splits' }, chips),
     el('div', { class: 'grid-3' }, MACROS.map((k) => withHint(field(MACRO_LABEL[k], pct[k], { unit: '%' }), pctHints[k]))),
     sumLine);
+
+  if (saved) {
+    // Typed values from a draft (raw text, so a half-typed number comes back as it was).
+    if (typeof saved.kcal === 'string') kcal.value = saved.kcal;
+    for (const k of MACROS) {
+      if (saved.grams && typeof saved.grams[k] === 'string') grams[k].value = saved.grams[k];
+      if (saved.pct && typeof saved.pct[k] === 'string') pct[k].value = saved.pct[k];
+    }
+  }
 
   const pctValues = () => Object.fromEntries(MACROS.map((k) => [k, pct[k].getNumber()]));
   function update() {
@@ -309,6 +345,12 @@ function targetsEditor(targets) {
       el('p', { class: 'field-hint' }, 'Percent: protein and carbs 4 kcal/g, fat 9 kcal/g; grams are rounded.')),
     edited: () => edited,
     onEdit: (fn) => listeners.push(fn),
+    /** Everything typed, for the draft. */
+    state: () => ({
+      mode, edited, kcal: kcal.value,
+      grams: Object.fromEntries(MACROS.map((k) => [k, grams[k].value])),
+      pct: Object.fromEntries(MACROS.map((k) => [k, pct[k].value])),
+    }),
     /** Fill in a proposal: calories always; grams in grams mode (percent mode keeps the split). */
     set(t) {
       kcal.setNumber(t.kcal);

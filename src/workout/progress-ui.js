@@ -81,7 +81,10 @@ export function comparisonBlock(cmp, exMap) {
       el('div', { class: 'grow' },
         el('div', { class: 'small muted' }, 'Volume load'),
         el('div', { class: 'wk-cmp-big num' }, fmtLoad(t.cur)),
-        el('div', { class: 'small muted' }, t.prev !== null ? `${totalLabel}: ${fmtLoad(t.prev)}` : 'Nothing to compare with yet')),
+        // `cur` is always this session's whole volume load; the % may compare only the exercises
+        // that have an earlier entry (matched basis), so say so when that differs.
+        el('div', { class: 'small muted' }, t.prev === null ? 'Nothing to compare with yet'
+          : `${totalLabel}: ${fmtLoad(t.prev)}${t.basis === 'matched' && t.matchedCur !== t.cur ? ` (same exercises now ${fmtLoad(t.matchedCur)})` : ''}`)),
       pctBadge(t.pct)),
     ...groups.map(([status, title]) => {
       const list = rows(status);

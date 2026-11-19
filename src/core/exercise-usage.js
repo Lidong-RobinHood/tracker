@@ -10,8 +10,14 @@
 //  - empty search: a "Recent" group (used exercises, most recently used first, then most often used,
 //    then name; up to RECENT_LIMIT), followed by the full library by name.
 //  - search: match quality first (see matchScore); among equally good matches, used exercises
-//    before unused ones (recent first, then count), then name.
+//    before unused ones (recent first, then count), then the common base lifts (BASE_LIFTS in the
+//    seed data), then name.
+// Abbreviations: a whole query that is a known name alias ("ohp", "rdl", "incline db", "bench"; the
+// import's alias table) puts that exercise first; single words "db", "bb", "bw" (WORD_ABBREVIATIONS)
+// also match "dumbbell", "barbell", "bodyweight".
 import { doneSets } from './workout.js';
+import { ALIASES, WORD_ABBREVIATIONS, nameKey } from './import-exercise-match.js';
+import { BASE_LIFTS } from '../data/exercises.js';
 
 export const RECENT_LIMIT = 12;
 
@@ -63,21 +69,26 @@ const norm = (s) => String(s || '').toLowerCase();
 
 /**
  * Match quality of an exercise for a search (0 = no match). Every word must occur in the name,
- * equipment or primary muscles (the picker's existing rule). Then:
+ * equipment or primary muscles (the picker's existing rule; a word abbreviation such as "db" may
+ * occur as its full word). Then:
+ *   5 the whole query is a known alias of this exercise ·
  *   4 the name starts with the whole query · 3 every word starts a word of the name ·
  *   2 every word is in the name · 1 matched via equipment/muscles too.
  */
 export function matchScore(ex, query) {
   const q = norm(query).trim();
   if (!q) return 1;
-  const terms = q.split(/\s+/).filter(Boolean);
+  if (ALIASES.get(nameKey(q)) === ex.id) return 5;
+  // an abbreviation stands for its word only ("bb" must not match inside "dumbbell")
+  const terms = q.split(/\s+/).filter(Boolean).map((t) => [WORD_ABBREVIATIONS[t] || t]);
   const name = norm(ex.name);
   const hay = `${name} ${norm(ex.equipment)} ${(ex.primary || []).join(' ').toLowerCase()}`;
-  if (!terms.every((t) => hay.includes(t))) return 0;
+  const every = (test) => terms.every((forms) => forms.some(test));
+  if (!every((t) => hay.includes(t))) return 0;
   if (name.startsWith(q)) return 4;
   const words = name.split(/[\s\-–(),/]+/).filter(Boolean);
-  if (terms.every((t) => words.some((w) => w.startsWith(t)))) return 3;
-  if (terms.every((t) => name.includes(t))) return 2;
+  if (every((t) => words.some((w) => w.startsWith(t)))) return 3;
+  if (every((t) => name.includes(t))) return 2;
   return 1;
 }
 
@@ -90,6 +101,7 @@ export function matchScore(ex, query) {
 export function rankExercises(list, query, usage) {
   return list.map((e) => ({ e, s: matchScore(e, query) }))
     .filter((x) => x.s > 0)
-    .sort((a, b) => (b.s - a.s) || compareUsage(usage.get(a.e.id), usage.get(b.e.id)) || a.e.name.localeCompare(b.e.name))
+    .sort((a, b) => (b.s - a.s) || compareUsage(usage.get(a.e.id), usage.get(b.e.id))
+      || (BASE_LIFTS.has(b.e.id) - BASE_LIFTS.has(a.e.id)) || a.e.name.localeCompare(b.e.name))
     .map((x) => x.e);
 }

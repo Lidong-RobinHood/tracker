@@ -27,7 +27,7 @@
 //     with it instead of being "first"; best values it holds carry `baseline: true`. It never counts
 //     for session metrics (session tonnage, total reps), month scopes and statistics, session counts,
 //     trend points or routine history.
-import { byRecent, e1rm } from './workout.js';
+import { byRecent, e1rm, isLoggedWorkout } from './workout.js';
 import { isBaseline } from './baseline.js';
 import { normalDone, dropDone, loadOf, doneEntries, sessionTotals, pctChange, previousRoutineSession, isOlder } from './workout-progress.js';
 import { round } from './numbers.js';
@@ -126,7 +126,7 @@ export function scopeBests(history) {
  * Later sessions are dropped, so everything is "as of" the workout's date and start time.
  */
 export function timelineUpTo(workouts, workout) {
-  const before = (workouts || []).filter((w) => w && w.finishedAt && w.id !== workout.id && isOlder(w, workout));
+  const before = (workouts || []).filter((w) => isLoggedWorkout(w) && w.id !== workout.id && isOlder(w, workout));
   return [...chrono(before), workout];
 }
 

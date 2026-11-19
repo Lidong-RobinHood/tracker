@@ -79,7 +79,7 @@ export async function mountWorkoutImport(container) {
       preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (err) {
       console.error(err);
-      toast(`Could not read the text: ${err.message}`, { type: 'error' });
+      toast(`Could not read the text: ${err.message}`, { type: 'error', duration: 8000 });
     } finally {
       readBtn.disabled = false;
       readBtn.textContent = 'Show preview';
@@ -205,7 +205,7 @@ export async function mountWorkoutImport(container) {
   function workoutCard(w, i) {
     const d = dateInput(workoutDate(i), now, (v) => { state.dates[i] = v; renderPreview(); });
     d.setAttribute('aria-label', `Date of workout ${i + 1}`);
-    const fromLine = w.dateLine ? `date from line ${w.dateLine}` : 'no date line: default date';
+    const fromLine = w.dateLine && w.date ? `date in the file: ${dateY(w.date)} (line ${w.dateLine})` : 'no date line: default date';
     return el('section', { class: 'card stack imp-workout', dataset: { index: String(i) } },
       el('div', { class: 'row-between imp-row-wrap' },
         el('div', { class: 'li-main' },

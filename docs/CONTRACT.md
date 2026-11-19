@@ -45,6 +45,10 @@ export const routes = [
   If the user navigated away while an async mount was still running, cleanup runs immediately.
 - A thrown error is caught and shown as an error card (and logged).
 - On every navigation the router first closes all open sheets/modals (their `onClose` runs).
+- Each dismissible sheet/modal adds a history entry (same URL): the phone's Back button closes only the
+  top overlay. Closing it with its own controls removes the entry; `navigate()`/`back()` called right
+  after a close wait for that step. For ~350 ms after an overlay closes, taps are swallowed, and a
+  `btn-primary` ignores clicks while the promise returned by its `onClick` is pending.
 
 ### Navigation — `src/ui/nav.js` (also re-exported by `src/ui/index.js`)
 
@@ -66,6 +70,7 @@ export const routes = [
 | `confirmDialog({ title, message, confirmLabel, cancelLabel, danger })` | `Promise<boolean>`; `message` string or Node |
 | `closeAllOverlays()` | router calls it; rarely needed |
 | `toast(message, { type: 'info'\|'success'\|'error', duration, action: { label, onClick } })` | returns `dismiss()`. Use `action` for Undo. |
+| `loadDraft(name)`, `saveDraft(name, value)`, `clearDraft(name)` (`src/ui/draft.js`) | unfinished input kept in localStorage across reloads (not in backups), expires after 24 h. Never keys or images. |
 | `numberInput({ value, placeholder, min, max, decimals = 2, integer, class, ariaLabel, id, name, onInput, onChange })` | `<input type=text inputmode=decimal>` (numeric for `integer`), accepts `,` and `.`, selects all on focus, Enter blurs. Extra methods: `input.getNumber()` → number\|null (null if empty, invalid or outside min/max), `input.setNumber(n\|null)`. Sets `aria-invalid` when invalid. Callbacks get `(number\|null, input)`. With `min < 0` (the iOS decimal keypad has no minus key) a `±` toggle button (`input.signToggle`, `aria-label` "Minus sign", `aria-pressed` = negative, 44 px) is put before the input inside `<span class="num-signed">` once the input has a parent; it flips the sign of the typed text and fires `input` + `change`. Typed `-` and `−` are accepted there. `min ≥ 0`: unchanged, no button. |
 | `field(label, control, { hint, unit })` | labelled field; `unit` shows a suffix (`'g'`, `'kcal'`) |
 | `pageHeader({ title, subtitle, back, actions })` | sticky header; `back: true` or a fallback path shows a back button; `actions`: nodes on the right |
@@ -135,4 +140,6 @@ only while `meta.seedVersion < SEED_VERSION`, adding missing ids and never overw
   script, sets `window.BarcodeDetectionAPI`) + `zxing_reader.wasm`; see `spike/app.js` for how to load it
   lazily and point `locateFile` at the wasm with a relative URL. Prefer native `BarcodeDetector`.
 - Service worker (`sw.js`) is network-first and ignores cross-origin requests, so API calls are never cached.
+  It precaches every file listed in `precache-list.js` at install; after adding, removing or changing any
+  runtime file run `node tools/build-precache.mjs` (`npm test` fails otherwise).
 - Everything must work under a sub-path (`/tracker/`): never use URLs starting with `/`.

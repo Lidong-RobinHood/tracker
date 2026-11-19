@@ -23,7 +23,7 @@
 //   - Starting point (baseline.js isBaseline): part of an exercise's history for records and for
 //     "vs last time" (compared by its working sets only; the best-set row counts for records), never
 //     a routine session, never a chart point, never itself a record-setting session.
-import { doneSets, byRecent, e1rm } from './workout.js';
+import { doneSets, byRecent, e1rm, isLoggedWorkout } from './workout.js';
 import { isBaseline, isBestSet, workingEntry } from './baseline.js';
 import { round, percent } from './numbers.js';
 import { addDays } from './dates.js';
@@ -131,9 +131,9 @@ export function compareMetrics(cur, prev) {
 
 // ---------------------------------------------------------------- matching
 
-/** Finished workouts, newest first. */
+/** Finished workouts with at least one done set (isLoggedWorkout), newest first. */
 export function finishedWorkouts(workouts) {
-  return (workouts || []).filter((w) => w && w.finishedAt).sort(byRecent);
+  return (workouts || []).filter(isLoggedWorkout).sort(byRecent);
 }
 
 /** true when `a` happened before `b` (date, then start time). */
@@ -224,13 +224,15 @@ export function sessionTotals(workout) {
 
 /**
  * Compare a session with what came before, exercise by exercise.
- * Total: for a routine session with an earlier session of the same routine, the session's volume
- * load vs that session's ('session' basis, what the routine progress list shows). Otherwise the sum
- * of the loads of the exercises that have a previous entry vs the sum of those previous loads
- * ('matched' basis). Bodyweight-only exercises do not move the total.
+ * Total: `cur` is always this session's whole volume load (sessionTotals). The comparison: for a
+ * routine session with an earlier session of the same routine, that session's volume load
+ * ('session' basis, what the routine progress list shows). Otherwise the sum of the loads of the
+ * exercises that have a previous entry (`matchedCur`) vs the sum of those previous loads (`prev`,
+ * 'matched' basis; null when nothing could be matched, e.g. the first session). Bodyweight-only
+ * exercises do not move the percentage.
  * @param {object[]} workouts all workouts (the session itself may be included; it is skipped)
  * @param {object} workout
- * @returns {{prevSession: object|null, total: {basis: 'session'|'matched', cur: number, prev: number|null, pct: number|null, trend: string},
+ * @returns {{prevSession: object|null, total: {basis: 'session'|'matched', cur: number, matchedCur: number, prev: number|null, pct: number|null, trend: string},
  *   rows: {exerciseId: string, status: 'up'|'down'|'flat'|'new'|'skipped', metrics: object|null, prevMetrics: object|null,
  *          cmp: object|null, prevWorkout: object|null, records: object[]}[]}}
  */
@@ -259,14 +261,14 @@ export function compareSession(workouts, workout) {
     }
   }
   let total;
+  const whole = sessionTotals(workout).load;
   if (prevSession) {
-    const c = sessionTotals(workout).load;
     const p = sessionTotals(prevSession).load;
-    const pct = pctChange(c, p);
-    total = { basis: 'session', cur: c, prev: p, pct, trend: trendOf(pct) };
+    const pct = pctChange(whole, p);
+    total = { basis: 'session', cur: whole, matchedCur: whole, prev: p, pct, trend: trendOf(pct) };
   } else {
     const pct = pctChange(round(mCur, 2), round(mPrev, 2));
-    total = { basis: 'matched', cur: round(mCur, 2), prev: mPrev > 0 ? round(mPrev, 2) : null, pct, trend: trendOf(pct) };
+    total = { basis: 'matched', cur: whole, matchedCur: round(mCur, 2), prev: mPrev > 0 ? round(mPrev, 2) : null, pct, trend: trendOf(pct) };
   }
   return { prevSession, total, rows };
 }

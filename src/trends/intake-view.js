@@ -1,16 +1,16 @@
 // Intake history: daily kcal bars for the last 4 weeks (Mon–Sun aligned), target line, weekly averages.
 // Route: trends/intake
 import { el, pageHeader, emptyState, fmtNum, fmtDate, href } from '../ui/index.js';
-import { addDays, dateRange, weekStart } from '../core/dates.js';
-import { weeklyIntake } from '../core/adaptive.js';
+import { dateRange, weekStart } from '../core/dates.js';
 import { intakeChart } from './charts.js';
-import { ensureCss, loadTrendsData, signed } from './data.js';
+import { ensureCss, loadTrendsData, signed, intakeHistory } from './data.js';
 
 export async function mountIntake(container) {
   ensureCss();
   container.append(pageHeader({ title: 'Intake history', back: 'trends' }));
   const d = await loadTrendsData();
-  const from = addDays(weekStart(d.today), -21);
+  const h = intakeHistory(d);
+  const from = h.from;
   const byDate = new Map(d.intake.map((r) => [r.date, r.kcal]));
   const days = dateRange(from, d.today).map((date) => ({ date, kcal: byDate.get(date) ?? null }));
   if (!days.some((x) => x.kcal)) {
@@ -18,12 +18,12 @@ export async function mountIntake(container) {
       el('a', { class: 'btn btn-primary', href: href('diary') }, 'Open diary'))));
     return;
   }
-  const weeks = weeklyIntake(d.intake, d.today, from, d.config);
+  const weeks = h.weeks;
   const target = d.targets.kcal;
   container.append(
-    el('section', { class: 'card stack' }, intakeChart(days, target, weeks, d.today)),
+    el('section', { class: 'card stack' }, el('p', { class: 'small muted' }, h.label), intakeChart(days, target, weeks, d.today)),
     el('section', { class: 'section' }, el('h2', { class: 'section-title' }, 'Weekly averages'),
-      el('div', { class: 'card card-flush' }, el('div', { class: 'list' }, [...weeks].reverse().map((w) => el('a', { class: 'list-item', href: href(`diary/${w.from}`) },
+      el('div', { class: 'card card-flush' }, el('div', { class: 'list' }, [...weeks].reverse().map((w) => el('a', { class: 'list-item tr-week-row', href: href(`diary/${w.from}`) },
         el('div', { class: 'li-main' },
           el('div', { class: 'li-title' }, `${fmtDate(w.from)} – ${fmtDate(w.to)}`),
           el('div', { class: 'li-sub' }, `${w.days} complete day${w.days === 1 ? '' : 's'}${w.incomplete ? `, ${w.incomplete} incomplete` : ''}${w.from === weekStart(d.today) ? ' · this week, today excluded' : ''}`)),

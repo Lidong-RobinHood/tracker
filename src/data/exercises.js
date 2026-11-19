@@ -4,10 +4,25 @@
 
 export const SEED_VERSION = 1;
 
-/** Default kg step per equipment type. */
+/**
+ * Default kg step per equipment type. Dumbbells: 2.5 (was 2 until Nov 2026; 32.5 + 2 = 34.5 is not a
+ * real dumbbell). Existing installs: src/workout/data.js migrates seeded dumbbell exercises the user
+ * never edited; user-edited increments are kept.
+ */
 export const DEFAULT_INCREMENT = Object.freeze({
-  barbell: 2.5, dumbbell: 2, machine: 5, cable: 2.5, bodyweight: 2.5, other: 2.5,
+  barbell: 2.5, dumbbell: 2.5, machine: 5, cable: 2.5, bodyweight: 2.5, other: 2.5,
 });
+
+/**
+ * The common base lifts: among equally good search matches (and equal usage) the picker lists
+ * these first, e.g. "bench" → Bench Press before Bench Dip.
+ */
+export const BASE_LIFTS = Object.freeze(new Set([
+  'seed:bench-press', 'seed:incline-bench-press', 'seed:dumbbell-bench-press', 'seed:incline-dumbbell-press',
+  'seed:overhead-press', 'seed:back-squat', 'seed:front-squat', 'seed:deadlift', 'seed:romanian-deadlift',
+  'seed:barbell-row', 'seed:dumbbell-row', 'seed:pull-up', 'seed:chin-up', 'seed:lat-pulldown', 'seed:dip',
+  'seed:leg-press', 'seed:hip-thrust', 'seed:barbell-curl', 'seed:lateral-raise', 'seed:seated-cable-row',
+]));
 
 /**
  * @param {string} slug @param {string} name @param {string} equipment

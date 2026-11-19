@@ -2,13 +2,13 @@
 // finished workout (core/baseline.js, SPEC §3). Route: workout/starting-point
 // Rendering rule: typing never re-renders (nothing jumps); only add/remove rebuild the list.
 import * as db from '../db/db.js';
-import { el, pageHeader, numberInput, toast, navigate, confirmDialog, fmtDate } from '../ui/index.js';
+import { el, append, replaceChildren, pageHeader, numberInput, toast, navigate, fmtDate } from '../ui/index.js';
 import { today } from '../core/dates.js';
 import {
   findBaseline, baselineRows, validateBaseline, buildBaseline, defaultBaselineDate,
   DEFAULT_BASELINE_SETS, MAX_BASELINE_SETS, MAX_BASELINE_WEIGHT, MAX_BASELINE_REPS,
 } from '../core/baseline.js';
-import { ensureCss, loadExercises, loadWorkouts, loadRoutines, exName } from './data.js';
+import { ensureCss, loadExercises, loadWorkouts, loadRoutines, exName, confirmAction } from './data.js';
 import { pickExercise } from './picker.js';
 
 /** Unsaved, invalid edits kept while the app stays open (restored on the next visit). */
@@ -51,10 +51,10 @@ export async function mountStartingPoint(container) {
   function render() {
     ctls = [];
     if (!rows.length) {
-      listEl.replaceChildren(el('p', { class: 'muted small wk-pad' }, 'No exercises yet.'));
+      replaceChildren(listEl, el('p', { class: 'muted small wk-pad' }, 'No exercises yet.'));
       return;
     }
-    listEl.replaceChildren(
+    replaceChildren(listEl, 
       el('div', { class: 'wk-sp-row wk-sp-head small muted', 'aria-hidden': 'true' },
         el('span', 'kg'), el('span', 'reps'), el('span', 'sets'), el('span', 'best set (optional)')),
       ...rows.map((r, i) => renderRow(r, i)));
@@ -181,7 +181,7 @@ export async function mountStartingPoint(container) {
   }
 
   async function del() {
-    const ok = await confirmDialog({
+    const ok = await confirmAction({
       title: 'Delete starting point?',
       message: 'Sessions are then pre-filled only from real workouts.',
       confirmLabel: 'Delete', danger: true,
@@ -198,7 +198,7 @@ export async function mountStartingPoint(container) {
 
   render();
   const routineCount = new Set(routines.flatMap((r) => (r.items || []).map((i) => i.exerciseId))).size;
-  container.append(...[header,
+  append(container, ...[header,
     el('p', { class: 'small muted wk-pad-x' },
       'Your current working weight × reps × sets per exercise, and your best set if it differs. Used to pre-fill sessions and for records (not for the progression suggestion, which needs a real session); never counted as a workout.'),
     restored ? el('p', { class: 'small text-warning wk-pad-x' }, 'Unsaved changes restored.') : null,

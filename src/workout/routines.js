@@ -1,17 +1,21 @@
 // Routines: list (reorder, start, create) and editor (autosaved). Routes: workout/routines, workout/routines/:id
 import * as db from '../db/db.js';
-import { el, pageHeader, numberInput, toast, navigate, href, emptyState, confirmDialog } from '../ui/index.js';
+import { el, append, replaceChildren, pageHeader, numberInput, toast, navigate, href, emptyState } from '../ui/index.js';
 import { normaliseTarget, formatTarget, DEFAULT_TARGET, lastEntryFor, MAX_TARGET_WEIGHT } from '../core/workout.js';
 import {
   ensureCss, loadExercises, loadRoutines, loadWorkouts, startWorkout, newRoutine, nextRoutineOrder, createSaver, exName,
+  navAction, swallowTaps, confirmAction,
 } from './data.js';
 import { pickExercise } from './picker.js';
 
-async function createRoutine() {
+/** "+ New" / "Create routine": a double tap creates one routine and never lands on the editor. */
+const createRoutine = () => navAction(async () => {
   const r = newRoutine('New routine', [], await nextRoutineOrder());
   await db.put('routines', r);
+  swallowTaps();
   navigate(`workout/routines/${encodeURIComponent(r.id)}?new=1`);
-}
+  return true;
+});
 
 export async function mountRoutines(container) {
   ensureCss();
@@ -29,7 +33,7 @@ export async function mountRoutines(container) {
   }
 
   function render() {
-    list.replaceChildren(...routines.map((r, i) => el('div', { class: 'list-item wk-routine-row' },
+    replaceChildren(list, ...routines.map((r, i) => el('div', { class: 'list-item wk-routine-row' },
       el('a', { class: 'li-main wk-routine-link', href: href(`workout/routines/${encodeURIComponent(r.id)}`) },
         el('div', { class: 'li-title' }, r.name),
         el('div', { class: 'li-sub' }, r.items.length
@@ -37,26 +41,26 @@ export async function mountRoutines(container) {
           : 'No exercises')),
       el('button', { type: 'button', class: 'btn btn-icon btn-ghost wk-icon-sm', 'aria-label': `Move ${r.name} up`, disabled: i === 0, onClick: () => swap(i, -1) }, '↑'),
       el('button', { type: 'button', class: 'btn btn-icon btn-ghost wk-icon-sm', 'aria-label': `Move ${r.name} down`, disabled: i === routines.length - 1, onClick: () => swap(i, 1) }, '↓'),
-      el('button', { type: 'button', class: 'btn btn-sm btn-primary', onClick: () => startWorkout(r) }, 'Start'))));
+      el('button', { type: 'button', class: 'btn btn-sm btn-primary', onClick: navAction(() => startWorkout(r)) }, 'Start'))));
   }
   render();
 
-  container.append(
+  append(container, 
     pageHeader({
       title: 'Routines', back: 'workout',
-      actions: [el('button', { type: 'button', class: 'btn btn-sm btn-primary', onClick: createRoutine }, '+ New')],
+      actions: [el('button', { type: 'button', class: 'btn btn-sm btn-primary', onClick: createRoutine() }, '+ New')],
     }),
     routines.length
       ? el('div', { class: 'card card-flush' }, list)
       : emptyState('No routines yet. A routine is a list of exercises with targets, e.g. Bench Press 3 x 6.',
-        el('button', { type: 'button', class: 'btn btn-primary', onClick: createRoutine }, 'Create routine')));
+        el('button', { type: 'button', class: 'btn btn-primary', onClick: createRoutine() }, 'Create routine')));
 }
 
 export async function mountRoutineEdit(container, { id }, ctx) {
   ensureCss();
   const [routine, exMap, workouts] = await Promise.all([db.get('routines', id), loadExercises(), loadWorkouts()]);
   if (!routine) {
-    container.append(pageHeader({ title: 'Routine', back: 'workout/routines' }), emptyState('Routine not found.'));
+    append(container, pageHeader({ title: 'Routine', back: 'workout/routines' }), emptyState('Routine not found.'));
     return undefined;
   }
   let gone = false;
@@ -80,7 +84,7 @@ export async function mountRoutineEdit(container, { id }, ctx) {
   const itemsEl = el('div', { class: 'stack' });
 
   function render() {
-    itemsEl.replaceChildren(...routine.items.map((it, i) => {
+    replaceChildren(itemsEl, ...routine.items.map((it, i) => {
       const upd = () => {
         const t = normaliseTarget({ targetSets: sets.getNumber(), targetReps: reps.getNumber(), targetRepsMax: max.getNumber(), targetWeight: wt.getNumber() });
         Object.assign(it, t);
@@ -111,7 +115,7 @@ export async function mountRoutineEdit(container, { id }, ctx) {
           el('span', { class: 'wk-x', 'aria-hidden': 'true' }, '@'),
           el('label', { class: 'field-label' }, 'kg', wt)));
     }));
-    if (!routine.items.length) itemsEl.append(el('p', { class: 'muted small wk-pad-x' }, 'No exercises yet.'));
+    if (!routine.items.length) append(itemsEl, el('p', { class: 'muted small wk-pad-x' }, 'No exercises yet.'));
   }
   const mv = (i, d) => { const a = routine.items; [a[i], a[i + d]] = [a[i + d], a[i]]; render(); save(); };
   const rm = (i) => {
@@ -127,7 +131,7 @@ export async function mountRoutineEdit(container, { id }, ctx) {
     render(); save();
   };
   const del = async () => {
-    const ok = await confirmDialog({ title: 'Delete routine?', message: `"${routine.name}" will be deleted. Past workouts are kept.`, confirmLabel: 'Delete', danger: true });
+    const ok = await confirmAction({ title: 'Delete routine?', message: `"${routine.name}" will be deleted. Past workouts are kept.`, confirmLabel: 'Delete', danger: true });
     if (!ok) return;
     gone = true;
     await saver.flush();
@@ -136,14 +140,18 @@ export async function mountRoutineEdit(container, { id }, ctx) {
   };
   render();
 
-  container.append(header,
+  append(container, header,
     el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'Name'), name),
     el('div', { class: 'section' }, el('h2', { class: 'section-title' }, 'Exercises'), itemsEl),
     el('button', { type: 'button', class: 'btn btn-block', onClick: add }, '+ Add exercise'),
-    el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: async () => { await saver.flush(); startWorkout(routine); } }, 'Start this routine'),
+    el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: navAction(async () => { await saver.flush(); return startWorkout(routine); }) }, 'Start this routine'),
     el('a', { class: 'btn btn-block', href: href(`workout/routines/${encodeURIComponent(routine.id)}/progress`) }, 'See progress'),
     el('button', { type: 'button', class: 'btn btn-ghost btn-block text-danger', onClick: del }, 'Delete routine'));
 
-  if (ctx.query.new) { name.focus(); name.select(); }
+  if (ctx.query.new) {
+    name.focus(); name.select();
+    // Use the flag once: a reload must not focus the name (and open the keyboard) again.
+    history.replaceState(history.state, '', `#/workout/routines/${encodeURIComponent(routine.id)}`);
+  }
   return () => { saver.save(); };
 }

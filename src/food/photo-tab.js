@@ -13,6 +13,14 @@ import { openFoodEditor } from './food-editor.js';
 import { openSaveAsMeal } from './meals.js';
 import { logPhotoItems, putEntry } from './store.js';
 import { mealSelect, macroText } from './widgets.js';
+import { loadDraft, saveDraft, clearDraft } from '../ui/draft.js';
+
+/**
+ * localStorage draft of the review (src/ui/draft.js): items with the user's edits, hint, meal/date,
+ * provider/model and time. Never the image or a key. Restored after a reload, cleared when the items
+ * are logged or the estimate is discarded, expires after 24 h.
+ */
+export const PHOTO_DRAFT = 'photo-review';
 
 const CONF_LABEL = { high: 'high confidence', medium: 'medium confidence', low: 'low confidence', unknown: 'confidence unknown', manual: 'added by you' };
 const CONF_CLASS = { high: 'badge-conf-high', medium: 'badge-conf-medium', low: 'badge-conf-low', unknown: 'badge-conf-low', manual: 'badge-edited' };
@@ -37,6 +45,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
   let lastNote = '';
   let usedModel = '';
   let nameTouched = false; // the user edited the one-entry name
+  let estimate = null;     // { provider, model, at } of the analysis shown
 
   cleanups.push(() => { if (ctrl) ctrl.abort(); clearInterval(timer); dropPhoto(); });
 
@@ -145,6 +154,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
     if (!wrap.isConnected && c.signal.aborted) return; // view gone
     if (r.ok) {
       usedModel = `${providerName} · ${r.model || model}`;
+      estimate = { provider: cfg.provider, model: r.model || model, at: Date.now() };
       lastNote = r.note;
       rows = r.items.map((it) => ({ ...it, remember: false }));
       nameTouched = false;
@@ -181,7 +191,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
   const mealSel = mealSelect(meal);
   const addBtn = el('button', { type: 'button', class: 'btn btn-primary btn-block photo-add-items', onClick: addAll });
   const oneName = el('input', { class: 'input', type: 'text', maxlength: String(ENTRY_NAME_MAX), autocomplete: 'off', 'aria-label': 'Name of the single entry',
-    onInput: () => { nameTouched = true; } });
+    onInput: () => { nameTouched = true; persist(); } });
   const oneBtn = el('button', { type: 'button', class: 'btn btn-block photo-add-one', onClick: addOne });
   mealSel.addEventListener('change', updateTotals);
 
@@ -196,7 +206,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
       el('p', { class: 'small muted' }, 'These are estimates. Change the grams, calories or macros of any item before adding; nothing is saved yet.'),
       kept ? el('p', { class: 'small editor-note' }, 'The values you typed in Quick add are kept. “Discard estimate” brings them back.') : null,
       lastNote ? el('p', { class: 'small editor-note' }, lastNote) : null,
-      info ? el('p', { class: 'small muted' }, info) : null,
+      info ? el('p', { class: 'small editor-note', role: 'status' }, info) : null,
       reviewList,
       el('button', { type: 'button', class: 'btn btn-sm photo-add-item', onClick: addManual }, '+ Add item'),
       totalsEl,
@@ -249,7 +259,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
     const amount = numberInput({ value: row.amount, min: 0.1, max: 5000, decimals: 1, ariaLabel: `Amount of ${row.name}`,
       onInput: (n) => { row.amount = n; refreshRow(); updateTotals(); } });
     const remember = el('input', { type: 'checkbox', checked: row.remember, id: `rem-${uid}`,
-      onChange: () => { row.remember = remember.checked; } });
+      onChange: () => { row.remember = remember.checked; persist(); } });
     const card = el('div', { class: ['card stack photo-item'], dataset: { idx: String(idx) } },
       el('div', { class: 'photo-item-head' },
         el('div', { class: 'li-main' },
@@ -314,7 +324,9 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
   }
 
   function reset() {
-    rows = []; lastNote = ''; usedModel = ''; nameTouched = false;
+    rows = []; lastNote = ''; usedModel = ''; nameTouched = false; estimate = null;
+    mealSel.value = meal; oneName.value = '';
+    clearDraft(PHOTO_DRAFT);
     dropPhoto(); hint.value = '';
     if (!activePhotoConfig().missing) renderCapture(); else renderNoKey();
   }
@@ -336,6 +348,35 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
     addBtn.textContent = n === 0 ? 'No items to add' : `Add ${n} item${n === 1 ? '' : 's'} to ${mealLabel(mealSel.value)}`;
     oneBtn.textContent = n === 0 ? 'Nothing to add' : `Add as one entry · ${fmtNum(t.kcal, 0)} kcal`;
     if (!nameTouched && oneName.isConnected) oneName.value = suggestedName();
+    persist();
+  }
+
+  /** Save the review as it is now (called after every change while it is shown). */
+  function persist() {
+    if (!rows.length && !usedModel) { clearDraft(PHOTO_DRAFT); return; }
+    saveDraft(PHOTO_DRAFT, {
+      date, meal, mealChoice: mealSel.value, hint: hint.value,
+      rows: rows.map(({ warnings, ...r }) => r), lastNote, usedModel, estimate,
+      nameTouched, oneName: oneName.value,
+    });
+  }
+
+  /** Bring back a review saved before a reload. @returns {boolean} */
+  function restore() {
+    const d = loadDraft(PHOTO_DRAFT);
+    if (!d || d.date !== date || d.meal !== meal || !Array.isArray(d.rows) || (!d.rows.length && !d.usedModel)) return false;
+    rows = d.rows.map((r) => ({ ...r, remember: !!r.remember }));
+    lastNote = d.lastNote || '';
+    usedModel = d.usedModel || '';
+    estimate = d.estimate || null;
+    nameTouched = !!d.nameTouched;
+    oneName.value = d.oneName || '';
+    hint.value = d.hint || '';
+    if (d.mealChoice) mealSel.value = d.mealChoice;
+    const at = estimate && estimate.at ? new Date(estimate.at) : null;
+    const when = at ? ` from ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` : '';
+    renderReview(`Restored: this is the estimate${when} with your changes, as you left it before the app was reloaded. The photo itself is not kept.`);
+    return true;
   }
 
   let busy = false;
@@ -364,6 +405,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
       const e = quickAddEntry({ id: crypto.randomUUID(), date, meal: mealId, name: oneName.value.trim() || photoMealName(rows, hint.value), kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat, now: Date.now() });
       await putEntry(e);
       rows = [];
+      clearDraft(PHOTO_DRAFT);
       toast(`Added ${fmtNum(t.kcal, 0)} kcal to ${mealLabel(mealId)}`, { type: 'success' });
       onFinished();
     } catch (err) {
@@ -379,6 +421,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
     const remembered = rows.filter((r) => r.remember).length;
     toast(`Added ${entries.length} item${entries.length === 1 ? '' : 's'} to ${mealLabel(mealId)}`, { type: 'success' });
     rows = [];
+    clearDraft(PHOTO_DRAFT);
     setEstimateMode(true);
     replaceChildren(wrap, el('div', { class: 'card stack' },
       el('h2', { class: 'section-title' }, `Added to ${mealLabel(mealId)}`),
@@ -395,6 +438,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
     el: wrap,
     show() {
       if (ctrl || rows.length || wrap.childElementCount) return; // keep the current state
+      if (restore()) return;
       if (activePhotoConfig().missing) renderNoKey();
       else renderCapture();
     },

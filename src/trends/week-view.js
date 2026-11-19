@@ -8,7 +8,7 @@ import { fmtPercent } from '../core/food-percent.js';
 import { formatPct } from '../core/workout-progress.js';
 import { buildWeeklyReport, weekSummaries, normaliseWeek, weekStatus } from '../core/weekly-report.js';
 import { intakeChart } from './charts.js';
-import { ensureCss, getAdaptiveSetting, signed, goalText } from './data.js';
+import { ensureCss, getAdaptiveSetting, signed, goalText, tdeeText } from './data.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -379,7 +379,7 @@ function checkInCard(r) {
       `${fmtNum(p.kcal, 0)} kcal · P ${fmtNum(p.protein, 0)} g · C ${fmtNum(p.carbs, 0)} g · F ${fmtNum(p.fat, 0)} g`) : el('div', { class: 'small muted' }, 'No proposal (not enough data).'),
     el('div', { class: 'small num' }, el('span', { class: 'muted' }, 'Target after check-in: '), `${fmtNum(c.kcalTarget, 0)} kcal`),
     el('div', { class: 'small muted num' }, [
-      c.tdee ? `Expenditure ${fmtNum(c.tdee, 0)} kcal${c.basis === 'formula' ? ' (formula, not from your data)' : ''}` : null,
+      c.tdee ? `Expenditure ${tdeeText(c.tdee)} kcal${c.basis === 'formula' ? ' (formula, not from your data)' : ''}` : null,
       c.trendKg ? `trend ${fmtNum(c.trendKg, 1)} kg` : null,
       Number.isFinite(c.daysLogged) ? `${plural(c.daysLogged, 'complete day')} reviewed` : null,
     ].filter(Boolean).join(' · ')),

@@ -117,7 +117,7 @@ test('pre-fill and "Last:" use the starting point (working sets only)', () => {
   const base = makeBaseline();
   const last = lastEntryFor([base], 'bench');
   assert.equal(last.workout.id, 'base');
-  assert.deepEqual(prefillSets(last.entry, {}), [S(100, 6, 'normal', false), S(100, 6, 'normal', false), S(100, 6, 'normal', false)]);
+  assert.deepEqual(prefillSets(last.entry, {}), [S(100, 6, 'normal', false), S(100, 6, 'normal', false), S(100, 6, 'normal', false)].map((s) => ({ ...s, auto: true })));
   const e = buildEntry('bench', { targetSets: 3, targetReps: 6 }, [base]);
   assert.deepEqual(e.sets.map((s) => s.weight), [100, 100, 100]);
   // no routine target: the starting point's sets × reps become the target

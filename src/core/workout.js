@@ -42,7 +42,7 @@ export function byRecent(a, b) {
  * @returns {{workout: object, entry: object}|null}
  */
 export function lastEntryFor(workouts, exerciseId, { excludeId = null } = {}) {
-  const sorted = workouts.filter((w) => w && w.finishedAt && w.id !== excludeId).sort(byRecent);
+  const sorted = workouts.filter((w) => isLoggedWorkout(w) && w.id !== excludeId).sort(byRecent);
   for (const w of sorted) {
     const entry = (w.exercises || []).find((e) => e.exerciseId === exerciseId && doneSets(e).length > 0);
     if (entry) return { workout: w, entry };
@@ -56,7 +56,7 @@ export function lastEntryFor(workouts, exerciseId, { excludeId = null } = {}) {
  */
 export function historyFor(workouts, exerciseId) {
   const out = [];
-  for (const w of workouts.filter((x) => x && x.finishedAt).sort(byRecent)) {
+  for (const w of workouts.filter(isLoggedWorkout).sort(byRecent)) {
     for (const entry of w.exercises || []) {
       if (entry.exerciseId === exerciseId && doneSets(entry).length) out.push({ workout: w, entry });
     }
@@ -65,29 +65,69 @@ export function historyFor(workouts, exerciseId) {
 }
 
 /**
- * Rows for a new session's exercise card.
+ * Rows for a new session's exercise card. Every row is marked `auto: true` ("pre-filled, not
+ * touched by the user"; see refreshAutoSets).
  * From the last entry: its done sets (a starting point's best-set row excluded), same
- * weight/reps/type, not done. Else: `targetSets` normal
- * rows with weight = targetWeight (empty when there is none) and reps = targetReps.
+ * weight/reps/type, not done; when that gives fewer NORMAL rows than `targetSets`, more normal rows
+ * copying the last done normal set (or the target when there is none) are added after the last
+ * normal row, so dropsets stay at the end. Else: `targetSets` normal rows with weight =
+ * targetWeight (empty when there is none) and reps = targetReps.
  * @param {object|null} lastEntry
  * @param {{targetSets?: number, targetReps?: number|null, targetWeight?: number|null}} target
- * @returns {{weight: number|null, reps: number|null, type: 'normal'|'dropset', done: boolean}[]}
+ * @returns {{weight: number|null, reps: number|null, type: 'normal'|'dropset', done: boolean, auto: true}[]}
  */
 export function prefillSets(lastEntry, target) {
-  const done = doneSets(lastEntry).filter((s) => !isBestSet(s));
-  if (done.length) {
-    return done.map((s) => ({
-      weight: isNum(s.weight) ? s.weight : null,
-      reps: isNum(s.reps) ? s.reps : null,
-      type: s.type === 'dropset' ? 'dropset' : 'normal',
-      done: false,
-    }));
-  }
   const n = Math.max(1, Math.min(20, Math.round(target.targetSets || DEFAULT_TARGET.targetSets)));
   const tw = cleanTargetWeight(target.targetWeight);
-  return Array.from({ length: n }, () => ({
-    weight: tw, reps: isNum(target.targetReps) ? target.targetReps : null, type: 'normal', done: false,
-  }));
+  const tr = isNum(target.targetReps) ? target.targetReps : null;
+  const row = (weight, reps, type = 'normal') => ({ weight, reps, type, done: false, auto: true });
+  const done = doneSets(lastEntry).filter((s) => !isBestSet(s));
+  if (!done.length) return Array.from({ length: n }, () => row(tw, tr));
+  const rows = done.map((s) => row(isNum(s.weight) ? s.weight : null, isNum(s.reps) ? s.reps : null, s.type === 'dropset' ? 'dropset' : 'normal'));
+  let lastNormal = -1;
+  rows.forEach((r, i) => { if (r.type === 'normal') lastNormal = i; });
+  const have = rows.filter((r) => r.type === 'normal').length;
+  if (have < n) {
+    const src = lastNormal >= 0 ? rows[lastNormal] : { weight: tw, reps: tr };
+    const extra = Array.from({ length: n - have }, () => row(src.weight, src.reps));
+    rows.splice(lastNormal + 1, 0, ...extra);
+  }
+  return rows;
+}
+
+/**
+ * Re-derive the rows the user has not touched (`auto: true`) from freshly pre-filled rows, e.g.
+ * after the session's date or the card's target changed. Edited or ticked rows (no `auto`) are
+ * never changed. Rule, by position: an auto row at index i becomes fresh[i] (dropped when there is
+ * no fresh[i]); fresh rows beyond the current list are appended. When every row is auto the result
+ * is exactly `fresh`.
+ * @param {object[]} sets current rows
+ * @param {object[]} fresh prefillSets(...) for the new date / target
+ * @returns {object[]} new array (row objects of touched rows are kept as they are)
+ */
+export function refreshAutoSets(sets, fresh) {
+  const out = [];
+  (sets || []).forEach((s, i) => {
+    if (!s || !s.auto || s.done) out.push(s);
+    else if (fresh[i]) out.push({ ...fresh[i] });
+  });
+  for (let i = (sets || []).length; i < fresh.length; i++) out.push({ ...fresh[i] });
+  return out;
+}
+
+/** true when the workout has at least one done set (normal or dropset). */
+export function hasDoneSet(workout) {
+  return !!(workout && Array.isArray(workout.exercises) && workout.exercises.some((e) => doneSets(e).length > 0));
+}
+
+/**
+ * THE predicate for statistics: a finished workout that counts (has ≥ 1 done set). Finished
+ * workouts without any done set (left over from older versions that finished an untouched
+ * workout) are ignored by every count, comparison and chart; History lists them as
+ * "no sets logged" with a delete action. Unfinished workouts are never "logged".
+ */
+export function isLoggedWorkout(workout) {
+  return !!(workout && workout.finishedAt) && hasDoneSet(workout);
 }
 
 /** A target weight in kg: > 0 and ≤ 1000, 2 decimals; anything else (missing, 0 = bodyweight) → null. */

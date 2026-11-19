@@ -48,7 +48,7 @@ export async function mountWeightImport(container) {
       preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (err) {
       console.error(err);
-      toast(`Could not read the text: ${err.message}`, { type: 'error' });
+      toast(`Could not read the text: ${err.message}`, { type: 'error', duration: 8000 });
     } finally {
       readBtn.disabled = false;
       readBtn.textContent = 'Show preview';

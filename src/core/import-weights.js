@@ -21,8 +21,9 @@
 //   ISO timestamps ("2026-11-12T07:30", optional seconds and zone) use their local date.
 import { splitLines, findDate, detectDateOrder, parseNumber, stripWeekdays } from './import-common.js';
 
-export const MIN_KG = 30;
-export const MAX_KG = 300;
+import { MIN_KG, MAX_KG, isPlausibleKg } from './body-weight.js';
+
+export { MIN_KG, MAX_KG }; // shared range (src/core/body-weight.js)
 
 const LB_RE = /\b(lbs?|pounds?|pfund)\b/i;
 
@@ -154,7 +155,7 @@ export function analyseWeights(rows, { today, existing }) {
   const flagged = [];
   const byDate = new Map();
   for (const r of rows) {
-    if (r.kg < MIN_KG || r.kg > MAX_KG) { flagged.push({ ...r, reason: `${r.kg} kg is outside ${MIN_KG}–${MAX_KG} kg` }); continue; }
+    if (!isPlausibleKg(r.kg)) { flagged.push({ ...r, reason: `${r.kg} kg is outside ${MIN_KG}–${MAX_KG} kg` }); continue; }
     if (r.date > today) { flagged.push({ ...r, reason: 'Date is in the future' }); continue; }
     const prev = byDate.get(r.date);
     if (prev) flagged.push({ ...prev, reason: `Same day again on line ${r.line}; that line is used` });

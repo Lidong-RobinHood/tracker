@@ -1,13 +1,13 @@
 // Muscle recovery: compact section for the workout home, and the detail screen.
 // Route: workout/recovery. Model and caveats: src/core/recovery.js (general rule of thumb, not a measurement).
 import * as db from '../db/db.js';
-import { el, pageHeader, href, fmtTime, fmtNum, toast, openSheet, numberInput, field, confirmDialog } from '../ui/index.js';
+import { el, replaceChildren, append, pageHeader, href, fmtTime, fmtNum, toast, openSheet, numberInput, field } from '../ui/index.js';
 import {
   muscleRecovery, sortByRecovery, recoveryWords, STATUS_LABEL, RECOVERY_CONFIG, RECOVERY_KEY,
   recoverySettings, paceFactor, lookbackFrom, doseFactor, recoveryWindow, validateRange, withBase, baseRange,
 } from '../core/recovery.js';
 import { MUSCLES } from '../core/muscles.js';
-import { ensureCss, loadExercises } from './data.js';
+import { ensureCss, loadExercises, confirmAction } from './data.js';
 
 const H = 3600000;
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -132,15 +132,15 @@ export async function mountRecovery(container) {
   const [workouts, exMap, weights, setting] = await Promise.all([
     loadRecentWorkouts(now), loadExercises(), db.getSetting('volume'), loadRecoverySetting(),
   ]);
-  container.append(pageHeader({ title: 'Muscle recovery', subtitle: 'General estimate per muscle', back: 'workout' }));
+  append(container, pageHeader({ title: 'Muscle recovery', subtitle: 'General estimate per muscle', back: 'workout' }));
 
   const listHost = el('div', { class: 'card wk-rc-card' });
   const rangesHost = el('div', { class: 'card card-flush' });
   const resetAllBtn = el('button', { type: 'button', class: 'btn btn-ghost btn-block', onClick: () => resetAll() }, 'Reset all to default');
   const paint = () => {
     const rows = sortByRecovery(muscleRecovery(workouts, exMap, weights, { now, ...recoveryOpts(setting) }));
-    listHost.replaceChildren(el('div', { class: 'wk-rc-list' }, rows.map((r) => detailRow(r, now))));
-    rangesHost.replaceChildren(el('div', { class: 'list' }, MUSCLES.map((m) => rangeRow(m))));
+    replaceChildren(listHost, el('div', { class: 'wk-rc-list' }, rows.map((r) => detailRow(r, now))));
+    replaceChildren(rangesHost, el('div', { class: 'list' }, MUSCLES.map((m) => rangeRow(m))));
     resetAllBtn.hidden = !setting.base;
   };
   let chain = Promise.resolve();
@@ -187,7 +187,7 @@ export async function mountRecovery(container) {
         err,
       ],
     });
-    sh.footer.append(
+    append(sh.footer, 
       custom ? el('button', {
         type: 'button', class: 'btn', onClick: async () => { sh.close(); await setRange(m.id, null); toast(`${m.name}: default ${def[0]}–${def[1]} h`); },
       }, 'Reset to default') : el('button', { type: 'button', class: 'btn', onClick: () => sh.close() }, 'Cancel'),
@@ -205,7 +205,7 @@ export async function mountRecovery(container) {
 
   async function resetAll() {
     if (!setting.base) return;
-    const ok = await confirmDialog({ title: 'Reset all ranges?', message: 'Every muscle goes back to the default range. Your pace setting stays.', confirmLabel: 'Reset' });
+    const ok = await confirmAction({ title: 'Reset all ranges?', message: 'Every muscle goes back to the default range. Your pace setting stays.', confirmLabel: 'Reset' });
     if (!ok) return;
     delete setting.base;
     paint();
@@ -226,7 +226,7 @@ export async function mountRecovery(container) {
     }, label)));
 
   paint();
-  container.append(
+  append(container, 
     el('p', { class: 'small muted wk-pad-x' }, CAPTION),
     el('section', { class: 'section' },
       el('h2', { class: 'section-title' }, 'Your recovery'),

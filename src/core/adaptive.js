@@ -20,6 +20,7 @@
 //     is treated as not logged. Days without a (valid) log are imputed with the mean valid intake of
 //     the surrounding ±14 days, with extra uncertainty (missingIntakeSdKcal).
 //   - Today's intake is never used.
+import { isPlausibleKg } from './body-weight.js';
 import { addDays, daysBetween, weekStart, isValidDate } from './dates.js';
 import { splitMacrosFor } from './macro-split.js';
 
@@ -94,7 +95,7 @@ const median = (arr) => {
 export function cleanWeights(weights) {
   const byDate = new Map();
   for (const w of weights || []) {
-    if (w && isValidDate(w.date) && isNum(w.kg) && w.kg > 20 && w.kg < 400) byDate.set(w.date, w.kg);
+    if (w && isValidDate(w.date) && isPlausibleKg(w.kg)) byDate.set(w.date, w.kg);
   }
   return [...byDate.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([date, kg]) => ({ date, kg }));
 }
@@ -191,6 +192,31 @@ export function weeklyIntake(intake, today, from, config) {
       days: ok.length, incomplete: rows.length - ok.length });
   }
   return weeks;
+}
+
+/**
+ * The window of the Intake history screen (and the dashboard's intake card): the Mon–Sun week of
+ * `today` and the 3 before it; today itself is never counted (the day is not over).
+ * @returns {{from: string, to: string}} from = Monday 3 weeks before this week's Monday, to = yesterday
+ */
+export function intakeHistoryRange(today) {
+  return { from: addDays(weekStart(today), -21), to: addDays(today, -1) };
+}
+
+/** Logged days (complete + incomplete) in weeklyIntake() rows. */
+export function loggedDayCount(weeks) {
+  return weeks.reduce((n, w) => n + w.days + w.incomplete, 0);
+}
+
+// ---------------------------------------------------------------- display
+
+/**
+ * Expenditure (TDEE) as shown anywhere in the app: rounded to the nearest 10 kcal. One rule, so the
+ * estimate, the check-in and the target history never show 2450 next to 2452.
+ * @param {number|null|undefined} kcal @returns {number|null}
+ */
+export function displayTdee(kcal) {
+  return isNum(kcal) ? Math.round(kcal / 10) * 10 : null;
 }
 
 // ---------------------------------------------------------------- formula fallback
@@ -422,9 +448,16 @@ export function buildCheckIn({ today, weights, intake, goal, profile = null, tar
   const trendStart = trendAt(series, addDays(reviewFrom, -1));
   const estimate = estimateExpenditure({ weights, intake, asOf: thisWeek, profile, config: cfg });
   const rate = isNum(goal && goal.rateKgPerWeek) ? goal.rateKgPerWeek : 0;
-  const weightKg = trendAt(series, thisWeek);
-  const basisKind = estimate.status === 'ok' ? 'data' : estimate.formula ? 'formula' : null;
-  const tdee = basisKind === 'data' ? estimate.tdee : basisKind === 'formula' ? estimate.formula.kcal : null;
+  let weightKg = trendAt(series, thisWeek);
+  let formula = null;
+  if (estimate.status !== 'ok') {
+    // Not enough data yet: propose from the labelled formula estimate, using the latest weigh-in
+    // (trend as of today), as the Expenditure screen does. A weigh-in from this week counts too.
+    weightKg = trendAt(series, today);
+    formula = formulaTdee(profile, weightKg, today);
+  }
+  const basisKind = estimate.status === 'ok' ? 'data' : formula ? 'formula' : null;
+  const tdee = basisKind === 'data' ? estimate.tdee : basisKind === 'formula' ? formula.kcal : null;
   const previousKcal = targets && targets.source === 'adaptive' ? targets.kcal : null;
   let proposal = tdee !== null && weightKg !== null
     ? weeklyTarget({ tdee, rateKgPerWeek: rate, weightKg, sex: profile && profile.sex, previousKcal, config: cfg })
@@ -441,6 +474,8 @@ export function buildCheckIn({ today, weights, intake, goal, profile = null, tar
     avgIntake, daysLogged: validWeek.length, incompleteDays: week.length - validWeek.length,
     trendStart, trendEnd, trendChange: trendStart !== null && trendEnd !== null ? trendEnd - trendStart : null,
     estimate, basisKind, tdee, rateKgPerWeek: rate, weightKg, proposal,
+    // Why there is no proposal: no weigh-in at all, or no data estimate and an incomplete profile.
+    noProposal: proposal ? null : weightKg === null ? 'no-weight' : 'no-estimate',
   };
 }
 

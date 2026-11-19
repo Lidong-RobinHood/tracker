@@ -1,6 +1,6 @@
 // Percent of daily targets and each meal's share of the day. Pure, no DOM.
 
-import { percent } from './numbers.js';
+import { percent, round } from './numbers.js';
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
@@ -32,6 +32,36 @@ export function targetPercents(consumed, targets) {
     out[k] = { pct, over: pct !== null && isNum(c) && c > t };
   }
   return out;
+}
+
+/**
+ * Eaten vs target exactly as displayed, so the numbers never contradict each other:
+ *  - eaten is rounded once (to `decimals`); left/over are computed from that ROUNDED value and the
+ *    (rounded) target, so shown eaten + shown left = shown target, always;
+ *  - over (warning colour, red bar, "x over") only when the shown excess is at least 1 displayed unit,
+ *    so "0 g over" or "1 g left" never appear next to eaten = target;
+ *  - pct comes from the raw values (percentOfTarget), fraction = raw consumed / target for bar width.
+ * @param {number|null|undefined} consumed raw total
+ * @param {number|null|undefined} target
+ * @param {{decimals?: number}} [opts] display decimals (0 for kcal and grams)
+ * @returns {{eaten: number, target: number|null, left: number|null, over: number|null, isOver: boolean,
+ *   pct: number|null, fraction: number}} left/over null without a target; one of them is 0
+ */
+export function targetStatus(consumed, target, { decimals = 0 } = {}) {
+  const c = isNum(consumed) ? Math.max(0, consumed) : 0;
+  const eaten = round(c, decimals);
+  if (!isNum(target) || target <= 0) return { eaten, target: null, left: null, over: null, isOver: false, pct: null, fraction: 0 };
+  const t = round(target, decimals);
+  const diff = round(t - eaten, decimals); // ≥ 0: left; < 0: over (a whole number of display units)
+  const isOver = diff <= -(10 ** -decimals) + 1e-9;
+  return {
+    eaten, target: t,
+    left: isOver ? 0 : Math.max(0, diff),
+    over: isOver ? -diff : 0,
+    isOver,
+    pct: percentOfTarget(c, target),
+    fraction: c / target,
+  };
 }
 
 /**

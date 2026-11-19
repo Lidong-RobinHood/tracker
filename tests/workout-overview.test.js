@@ -158,3 +158,18 @@ test('weeklyMuscleSets: totals equal muscleVolume per week; starting point ignor
   const t = o.weeklyMuscleSets([], EX, w, '2026-11-19', { targets: { calves: 6 } });
   assert.deepEqual(t.rows.map((r) => r.muscle), ['calves']);
 });
+
+test('finished workouts without a done set never count (routine overview, month, last-workout pool)', () => {
+  const a = W('2026-11-02', [E('bench', [S(100, 5), S(100, 5)])]);
+  const empty = W('2026-11-09', [E('bench', [S(100, 5, 'normal', false)])]);
+  const scan = o.scanHistory([a, empty]);
+  assert.deepEqual(scan.sessions.map((w) => w.id), [a.id]);
+  const ro = o.routineOverview([a, empty], ROUTINES)[0];
+  assert.equal(ro.sessions, 1);
+  assert.equal(ro.last.workoutId, a.id);
+  assert.equal(ro.pct, null);
+  assert.equal(o.monthComparison(scan.sessions, scan.byWorkout, '2026-11-18').cur.sessions, 1);
+  // the comparison of a later session skips the empty one (no "−100 %")
+  const b = W('2026-11-16', [E('bench', [S(100, 5), S(100, 5)])]);
+  assert.equal(analyseWorkout([a, empty, b], b, EX).routine.prev.id, a.id);
+});

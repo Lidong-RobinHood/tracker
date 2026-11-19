@@ -8,7 +8,7 @@
 //     the history for every session.
 //   - Sessions, tonnage and counts leave starting points and unfinished workouts out.
 //   - Everything is as of the data's own dates: a session is only compared with sessions before it.
-import { byRecent } from './workout.js';
+import { byRecent, isLoggedWorkout } from './workout.js';
 import { isBaseline } from './baseline.js';
 import { sessionBests, compareBest, deltaOf, modeOf, METRICS, SESSION_METRICS, LOAD_METRICS, REPS_METRICS, monthOf } from './workout-analytics.js';
 import { doneEntries, sessionTotals, pctChange, exerciseSeries, routineSessions } from './workout-progress.js';
@@ -17,8 +17,8 @@ import { addDays, weekStart } from './dates.js';
 import { MUSCLES } from './muscles.js';
 import { round } from './numbers.js';
 
-/** Finished workouts (starting point included), oldest first. */
-const chronoFinished = (workouts) => (workouts || []).filter((w) => w && w.finishedAt).sort((a, b) => byRecent(b, a));
+/** Logged finished workouts (isLoggedWorkout; starting point included), oldest first. */
+const chronoFinished = (workouts) => (workouts || []).filter(isLoggedWorkout).sort((a, b) => byRecent(b, a));
 
 /**
  * One pass over the finished history.

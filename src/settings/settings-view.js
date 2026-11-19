@@ -120,9 +120,11 @@ function targetsSection(targets, onSaved) {
       return;
     }
     const p = pctValues();
+    // Just switched, nothing edited: the percentages only describe the stored grams, so show those.
+    const keep = untouched();
     for (const k of MACROS) {
       if (pct[k].value.trim() && p[k] === null) pct[k].setAttribute('aria-invalid', 'true');
-      const g = macroGrams(kcal, p[k], k);
+      const g = keep ? memo.grams[k] : macroGrams(kcal, p[k], k);
       pctHints[k].textContent = g === null ? '= – g' : `= ${fmtNum(Math.round(g), 0)} g`;
     }
     const v = validateSplit(p);
@@ -135,6 +137,7 @@ function targetsSection(targets, onSaved) {
         : v.diff < 0 ? `Total ${fmtNum(v.sum)} % · ${fmtNum(-v.diff)} % left to assign`
           : `Total ${fmtNum(v.sum)} % · ${fmtNum(v.diff)} % too much`;
     const rest = carbsRest(p);
+    restBtn.hidden = v.ok && allValid; // already 100 %: nothing to fill in
     restBtn.disabled = rest === null || (v.ok && p.carbs === rest);
     restBtn.textContent = rest === null ? 'Set carbs to the rest' : `Set carbs to the rest (${fmtNum(rest)} %)`;
     for (const [i, preset] of SPLIT_PRESETS.entries()) {
@@ -146,6 +149,9 @@ function targetsSection(targets, onSaved) {
   // Remembers what the last switch produced, so switching back without edits restores the exact values.
   let memo = mode === 'percent' ? { kcal: targets.kcal, grams: gramValues(), pct: pctValues() } : null;
   const same = (a, b) => !!a && !!b && MACROS.every((k) => a[k] === b[k]);
+  /** Percent mode, and neither calories nor percentages edited since the switch / load / save. */
+  const untouched = () => mode === 'percent' && !!memo && memo.kcal === kcalInput.getNumber() && same(memo.pct, pctValues())
+    && MACROS.every((k) => Number.isFinite(memo.grams[k]));
 
   function switchMode(next) {
     if (next === mode) return;
@@ -185,7 +191,10 @@ function targetsSection(targets, onSaved) {
       toast(r.error, { type: 'error' });
       return;
     }
-    const next = r.targets;
+    let next = r.targets;
+    // Saved right after switching to Percent without edits: the stored grams stay as they are
+    // (the rounded percentages would turn e.g. 70 g fat into 71 g).
+    if (mode === 'percent' && untouched()) next = { ...next, ...memo.grams };
     await db.setSetting('targets', next);
     memo = { kcal, grams: { protein: next.protein, carbs: next.carbs, fat: next.fat }, pct: next.pct || pctValues() };
     if (mode === 'percent') for (const k of MACROS) grams[k].setNumber(next[k]);

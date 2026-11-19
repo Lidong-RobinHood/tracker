@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import * as w from '../src/core/workout.js';
 
 const S = (weight, reps, type = 'normal', done = true) => ({ weight, reps, type, done });
+/** A pre-filled (untouched) row. */
+const A = (weight, reps, type = 'normal') => ({ weight, reps, type, done: false, auto: true });
 const entry = (sets, t = { targetSets: 3, targetReps: 6, targetRepsMax: null }) => ({ exerciseId: 'x', ...t, sets, note: '' });
 const WO = (id, date, entries, finished = true, startedAt = 1) => ({ id, date, startedAt, finishedAt: finished ? startedAt + 1 : null, exercises: entries });
 
@@ -17,10 +19,8 @@ test('formatSets / formatTarget match the sheet', () => {
 
 test('prefill copies last done sets (dropsets as dropsets), else target rows with empty weight', () => {
   const last = entry([S(100, 7), S(100, 8), S(100, 8), S(80, 5, 'dropset'), S(100, 3, 'normal', false)]);
-  assert.deepEqual(w.prefillSets(last, { targetSets: 3, targetReps: 6 }), [
-    S(100, 7, 'normal', false), S(100, 8, 'normal', false), S(100, 8, 'normal', false), S(80, 5, 'dropset', false),
-  ]);
-  assert.deepEqual(w.prefillSets(null, { targetSets: 2, targetReps: 6 }), [S(null, 6, 'normal', false), S(null, 6, 'normal', false)]);
+  assert.deepEqual(w.prefillSets(last, { targetSets: 3, targetReps: 6 }), [A(100, 7), A(100, 8), A(100, 8), A(80, 5, 'dropset')]);
+  assert.deepEqual(w.prefillSets(null, { targetSets: 2, targetReps: 6 }), [A(null, 6), A(null, 6)]);
 });
 
 test('lastEntryFor: newest finished with done sets, skipping excluded and unfinished', () => {
@@ -40,7 +40,7 @@ test('buildEntry: explicit target wins, else last target, else default', () => {
   const e1 = w.buildEntry('x', { targetSets: 3, targetReps: 6, targetRepsMax: 8 }, [b]);
   assert.equal(e1.targetSets, 3);
   assert.equal(e1.targetRepsMax, 8);
-  assert.deepEqual(e1.sets, [S(100, 8, 'normal', false)]);
+  assert.deepEqual(e1.sets, [A(100, 8), A(100, 8), A(100, 8)], 'at least targetSets rows');
   assert.equal(w.buildEntry('x', null, [b]).targetSets, 5);
   const e3 = w.buildEntry('new', null, [b]);
   assert.deepEqual([e3.targetSets, e3.targetReps, e3.sets.length], [3, 8, 3]);
@@ -94,9 +94,9 @@ test('formatTarget with a weight target; bodyweight/empty shows none', () => {
 
 test('prefill from the target weight only without a previous session', () => {
   const t = { targetSets: 3, targetReps: 6, targetWeight: 100 };
-  assert.deepEqual(w.prefillSets(null, t), [S(100, 6, 'normal', false), S(100, 6, 'normal', false), S(100, 6, 'normal', false)]);
+  assert.deepEqual(w.prefillSets(null, t), [A(100, 6), A(100, 6), A(100, 6)]);
   const last = entry([S(95, 6), S(95, 5)]);
-  assert.deepEqual(w.prefillSets(last, t), [S(95, 6, 'normal', false), S(95, 5, 'normal', false)]);
+  assert.deepEqual(w.prefillSets(last, t), [A(95, 6), A(95, 5), A(95, 5)]);
   const e = w.buildEntry('x', t, []);
   assert.equal(e.targetWeight, 100);
   assert.deepEqual(e.sets.map((s) => s.weight), [100, 100, 100]);
@@ -161,4 +161,42 @@ test('lastEntryFor uses the most recent by date/time, not insertion order (back-
   const logging = { id: 'l', date: '2026-11-10', startedAt: at(2026, 11, 10, 18) };
   const older = [newer, backdated].filter((x) => w.byRecent(x, logging) > 0);
   assert.deepEqual(older.map((x) => x.id), ['b']);
+});
+
+// ---------------------------------------------------------------- pre-fill row count, auto rows, logged predicate
+test('prefill gives at least targetSets normal rows; extras copy the last done set, dropsets stay last', () => {
+  const t = { targetSets: 3, targetReps: 8 };
+  // 2 of 3 ticked last time
+  assert.deepEqual(w.prefillSets(entry([S(100, 8), S(100, 7), S(100, 8, 'normal', false)]), t), [A(100, 8), A(100, 7), A(100, 7)]);
+  // with a dropset: extras go before it
+  assert.deepEqual(w.prefillSets(entry([S(100, 8), S(80, 5, 'dropset')]), t), [A(100, 8), A(100, 8), A(100, 8), A(80, 5, 'dropset')]);
+  // only a dropset done: extras from the target
+  assert.deepEqual(w.prefillSets(entry([S(80, 5, 'dropset')]), { ...t, targetWeight: 90 }), [A(90, 8), A(90, 8), A(90, 8), A(80, 5, 'dropset')]);
+  // more done than the target: all kept
+  assert.equal(w.prefillSets(entry([S(1, 1), S(1, 1), S(1, 1), S(1, 1)]), t).length, 4);
+});
+
+test('refreshAutoSets: untouched rows re-derived, edited/ticked rows kept', () => {
+  const edited = { weight: 105, reps: 6, type: 'normal', done: false };
+  const ticked = S(100, 8);
+  const cur = [ticked, A(100, 8), edited, A(100, 8)];
+  const fresh = [A(110, 6), A(110, 6), A(110, 6), A(110, 6), A(90, 5, 'dropset')];
+  const out = w.refreshAutoSets(cur, fresh);
+  assert.equal(out[0], ticked);
+  assert.deepEqual(out[1], A(110, 6));
+  assert.equal(out[2], edited);
+  assert.deepEqual(out.slice(3), [A(110, 6), A(90, 5, 'dropset')]);
+  // all untouched -> exactly fresh (row count may shrink)
+  assert.deepEqual(w.refreshAutoSets([A(1, 8), A(1, 8), A(1, 8)], [A(100, 6), A(100, 6)]), [A(100, 6), A(100, 6)]);
+  // target 3 x 8 -> 3 x 6 @ 100 without history (verifier case)
+  const before = w.prefillSets(null, { targetSets: 3, targetReps: 8 });
+  assert.deepEqual(w.refreshAutoSets(before, w.prefillSets(null, { targetSets: 3, targetReps: 6, targetWeight: 100 })), [A(100, 6), A(100, 6), A(100, 6)]);
+});
+
+test('isLoggedWorkout: finished with a done set; empty or unfinished workouts do not count', () => {
+  assert.equal(w.isLoggedWorkout(WO('a', '2026-11-10', [entry([S(90, 8)])])), true);
+  assert.equal(w.isLoggedWorkout(WO('b', '2026-11-10', [entry([S(90, 8, 'normal', false)])])), false);
+  assert.equal(w.isLoggedWorkout(WO('c', '2026-11-10', [])), false);
+  assert.equal(w.isLoggedWorkout(WO('d', '2026-11-10', [entry([S(90, 8)])], false)), false);
+  assert.equal(w.hasDoneSet(WO('d', '2026-11-10', [entry([S(90, 8)])], false)), true);
 });

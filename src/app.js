@@ -1,5 +1,6 @@
 // Boot, hash router and tab bar. Features register routes by exporting `routes` from their index.js.
 import { el, closeAllOverlays } from './ui/index.js';
+import { _dropStaleOverlayEntry } from './ui/overlay.js';
 import { _noteNavigation } from './ui/nav.js';
 import { openDb, seedExercises } from './db/db.js';
 import { SEED_EXERCISES, SEED_VERSION } from './data/exercises.js';
@@ -92,7 +93,7 @@ async function render() {
   if (!firstRender) _noteNavigation();
   firstRender = false;
 
-  closeAllOverlays();
+  closeAllOverlays({ navigation: true });
   runCleanup();
 
   const found = match(path);
@@ -143,6 +144,7 @@ window.addEventListener('pagehide', (e) => { if (!e.persisted) runCleanup(); });
 
 async function boot() {
   buildTabbar();
+  _dropStaleOverlayEntry(); // reloaded while a sheet was open: step back to the page's own entry
   window.addEventListener('hashchange', render);
   try {
     await openDb();

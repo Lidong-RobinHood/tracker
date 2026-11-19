@@ -1,7 +1,7 @@
 // Exercise library: list (search, muscle filter, archived), detail/edit with history, new.
 // Routes: workout/exercises, workout/exercises/new, workout/exercises/:id
 import * as db from '../db/db.js';
-import { el, pageHeader, toast, navigate, href, emptyState, confirmDialog, fmtNum } from '../ui/index.js';
+import { el, append, replaceChildren, pageHeader, toast, navigate, href, emptyState, fmtNum } from '../ui/index.js';
 import { MUSCLES } from '../core/muscles.js';
 import { formatSets, formatWeight } from '../core/workout.js';
 import {
@@ -10,7 +10,7 @@ import {
 import { today } from '../core/dates.js';
 import { lineChart } from './chart.js';
 import { pctBadge, fmtLoad, fmtLoadNum, recordBadges } from './progress-ui.js';
-import { ensureCss, loadExercises, loadWorkouts, musclesLine, newExercise, shortDate, findByName } from './data.js';
+import { ensureCss, loadExercises, loadWorkouts, musclesLine, newExercise, shortDate, findByName, confirmAction } from './data.js';
 import { exerciseForm, EQUIPMENT } from './exercise-form.js';
 import { matches } from './picker.js';
 import { tutorialSection } from './tutorial.js';
@@ -31,7 +31,7 @@ export async function mountLibrary(container) {
     onInput: () => { state.query = search.value.trim(); render(); },
   });
   const chips = el('div', { class: 'chips chips-scroll' });
-  const renderChips = () => chips.replaceChildren(
+  const renderChips = () => replaceChildren(chips, 
     el('button', { type: 'button', class: 'chip', 'aria-pressed': state.muscle ? 'false' : 'true', onClick: () => { state.muscle = null; renderChips(); render(); } }, 'All'),
     ...MUSCLES.map((m) => el('button', {
       type: 'button', class: 'chip', 'aria-pressed': state.muscle === m.id ? 'true' : 'false',
@@ -49,16 +49,16 @@ export async function mountLibrary(container) {
       .filter((e) => matches(e, state.query))
       .filter((e) => !state.muscle || e.primary.includes(state.muscle) || (e.secondary || []).includes(state.muscle));
     count.textContent = `${items.length} exercise${items.length === 1 ? '' : 's'}`;
-    list.replaceChildren(...items.map((e) => el('a', { class: 'list-item', href: href(`workout/exercises/${encodeURIComponent(e.id)}`) },
+    replaceChildren(list, ...items.map((e) => el('a', { class: 'list-item', href: href(`workout/exercises/${encodeURIComponent(e.id)}`) },
       el('div', { class: 'li-main' },
         el('div', { class: 'li-title' }, e.name, e.isCustom ? el('span', { class: 'badge wk-badge-gap' }, 'Custom') : null),
         el('div', { class: 'li-sub' }, `${musclesLine(e)} · ${equipmentName(e.equipment)}`)),
       el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›'))));
-    if (!items.length) list.append(el('p', { class: 'muted small wk-pad' }, state.archived ? 'No archived exercises.' : 'No match.'));
+    if (!items.length) append(list, el('p', { class: 'muted small wk-pad' }, state.archived ? 'No archived exercises.' : 'No match.'));
   }
   render();
 
-  container.append(
+  append(container, 
     pageHeader({
       title: 'Exercises', back: 'workout',
       actions: [el('a', { class: 'btn btn-sm btn-primary', href: href('workout/exercises/new') }, '+ New')],
@@ -80,7 +80,7 @@ export async function mountNewExercise(container, _params, ctx) {
     toast('Exercise created', { type: 'success' });
     navigate(`workout/exercises/${encodeURIComponent(ex.id)}`, { replace: true });
   };
-  container.append(pageHeader({ title: 'New exercise', back: 'workout/exercises' }),
+  append(container, pageHeader({ title: 'New exercise', back: 'workout/exercises' }),
     el('div', { class: 'card' }, form.node),
     el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: create }, 'Create exercise'));
 }
@@ -89,7 +89,7 @@ export async function mountExerciseDetail(container, { id }) {
   ensureCss();
   const [ex, workouts] = await Promise.all([db.get('exercises', id), loadWorkouts()]);
   if (!ex) {
-    container.append(pageHeader({ title: 'Exercise', back: 'workout/exercises' }), emptyState('Exercise not found.'));
+    append(container, pageHeader({ title: 'Exercise', back: 'workout/exercises' }), emptyState('Exercise not found.'));
     return;
   }
   const form = exerciseForm(ex);
@@ -108,7 +108,7 @@ export async function mountExerciseDetail(container, { id }) {
   };
   const toggleArchive = async () => {
     if (!ex.archived) {
-      const ok = await confirmDialog({
+      const ok = await confirmAction({
         title: 'Archive exercise?',
         message: 'It is hidden from pickers and the library. History is kept; you can unarchive it any time.',
         confirmLabel: 'Archive',
@@ -126,13 +126,13 @@ export async function mountExerciseDetail(container, { id }) {
   const header = pageHeader({ title: ex.name, subtitle: ex.isCustom ? 'Custom exercise' : 'Library exercise', back: 'workout/exercises' });
   const title = header.querySelector('.page-title');
   const badge = el('span', { class: 'badge badge-warning wk-badge-gap', hidden: !ex.archived }, 'Archived');
-  header.querySelector('.page-subtitle').append(badge);
+  append(header.querySelector('.page-subtitle'), badge);
   const archiveBtn = el('button', { type: 'button', class: 'btn btn-block', onClick: toggleArchive }, ex.archived ? 'Unarchive' : 'Archive');
 
   const progress = progressSections(ex, workouts);
   let tutorial = tutorialSection(ex);
 
-  container.append(header,
+  append(container, header,
     tutorial,
     ...progress,
     el('section', { class: 'section' },
@@ -189,18 +189,18 @@ function progressSections(ex, workouts) {
 
   function render() {
     const key = progressState.metric;
-    metricTabs.replaceChildren(...METRICS.map(([k, label]) => el('button', {
+    replaceChildren(metricTabs, ...METRICS.map(([k, label]) => el('button', {
       type: 'button', role: 'tab', 'aria-selected': k === key ? 'true' : 'false',
       onClick: () => { progressState.metric = k; render(); },
     }, label)));
-    rangeTabs.replaceChildren(...RANGE_LABELS.map(([k, label]) => el('button', {
+    replaceChildren(rangeTabs, ...RANGE_LABELS.map(([k, label]) => el('button', {
       type: 'button', role: 'tab', 'aria-selected': k === progressState.range ? 'true' : 'false',
       onClick: () => { progressState.range = k; render(); },
     }, label)));
     const pts = filterRange(points, progressState.range, today());
     const ch = seriesChange(pts, key);
     const unitShort = (v) => (key === 'load' ? (v >= 10000 ? `${Math.round(v / 1000)}k` : fmtLoadNum(v)) : fmtNum(v, 1));
-    chartBox.replaceChildren(pts.length
+    replaceChildren(chartBox, pts.length
       ? lineChart({
         points: pts.map((p) => ({
           date: p.date, value: p[key], mark: records.has(p.workoutId),
@@ -211,7 +211,7 @@ function progressSections(ex, workouts) {
       })
       : el('p', { class: 'muted small wk-chart-empty' }, 'No sessions in this range.'));
     const lastP = pts[pts.length - 1];
-    statsBox.replaceChildren(
+    replaceChildren(statsBox, 
       pstat('Latest', lastP ? fmtV(key, ch.last) : '–', lastP ? `${key === 'topWeight' && lastP.topWeight > 0 ? `× ${lastP.topReps} · ` : ''}${shortDate(lastP.date)}` : ''),
       pstat('Over range', pts.length > 1 ? pctBadge(ch.rangePct) : '–', pts.length > 1 ? `from ${fmtV(key, ch.first)}` : 'needs 2 sessions'),
       pstat('vs previous', pts.length > 1 ? pctBadge(ch.prevPct) : '–', pts.length > 1 ? `was ${fmtV(key, ch.previous)}` : 'needs 2 sessions'));
@@ -243,7 +243,7 @@ function progressSections(ex, workouts) {
   const histList = el('div', { class: 'list' });
   const PAGE = 20;
   const renderHist = (all) => {
-    histList.replaceChildren(...hist.slice(0, all ? undefined : PAGE).map(({ workout, entry }, i) => {
+    replaceChildren(histList, ...hist.slice(0, all ? undefined : PAGE).map(({ workout, entry }, i) => {
       if (isBaseline(workout)) return startingPointItem(workout, entry);
       const m = entryMetrics(entry);
       const prev = hist[i + 1];
@@ -256,7 +256,7 @@ function progressSections(ex, workouts) {
         el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›'));
     }));
     if (!all && hist.length > PAGE) {
-      histList.append(el('button', { type: 'button', class: 'list-item wk-more', onClick: () => renderHist(true) },
+      append(histList, el('button', { type: 'button', class: 'list-item wk-more', onClick: () => renderHist(true) },
         el('div', { class: 'li-main' }, el('div', { class: 'li-title wk-link' }, `Show all ${hist.length} sessions`))));
     }
   };

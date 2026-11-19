@@ -87,6 +87,14 @@ const ALIAS_LIST = {
   'machine-chest-press': ['Chest Press', 'Brustpresse'],
 };
 
+/**
+ * Abbreviations people type for a word inside a name ("incline db", "bb row", "bw dips"), as opposed
+ * to the whole-name aliases above. Used by the exercise picker's search (exercise-usage.js).
+ */
+export const WORD_ABBREVIATIONS = Object.freeze({
+  db: 'dumbbell', bb: 'barbell', bw: 'bodyweight', kh: 'dumbbell', lh: 'barbell',
+});
+
 /** nameKey → seed id */
 export const ALIASES = (() => {
   const m = new Map();

@@ -59,7 +59,7 @@ export async function mountFoodImport(container) {
       state.table = await runParser('readTable', text, { delimiter: state.delimiter, hasHeader: state.hasHeader });
     } catch (err) {
       console.error(err);
-      toast(`Could not read the file: ${err.message}`, { type: 'error' });
+      toast(`Could not read the file: ${err.message}`, { type: 'error', duration: 8000 });
       return;
     }
     state.delimiter = state.table.delimiter;
@@ -198,7 +198,7 @@ export async function mountFoodImport(container) {
       if (btn) preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (err) {
       console.error(err);
-      toast(`Could not build the preview: ${err.message}`, { type: 'error' });
+      toast(`Could not build the preview: ${err.message}`, { type: 'error', duration: 8000 });
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Show preview'; }
     }

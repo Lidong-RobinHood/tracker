@@ -2,6 +2,7 @@
 // run bookkeeping and undo. Imported text is untrusted: it is only ever put into the DOM as text.
 import * as db from '../db/db.js';
 import { el, fmtDate } from '../ui/index.js';
+import { parseDate } from '../core/dates.js';
 import { chunk } from '../core/import-common.js';
 import { RUNS_KEY, EXERCISE_MAP_KEY, newRun, upsertRun, ownedBy, removableExercises, pruneMappings } from '../core/import-runs.js';
 
@@ -22,10 +23,15 @@ let workerBroken = false;
 let seq = 0;
 const pending = new Map();
 
+const PARSER_LOAD_ERROR = 'The import tool could not be loaded (offline, or the connection dropped). Reload the app while online and try again.';
+
 function fallback(fn, args) {
   // Main thread, after letting the UI paint the "Reading…" state.
   return new Promise((r) => setTimeout(r, 30))
-    .then(() => import('./parsers.js'))
+    .then(() => import('./parsers.js').catch((err) => {
+      console.error(err);
+      throw new Error(PARSER_LOAD_ERROR);
+    }))
     .then(({ PARSERS }) => PARSERS[fn](...args));
 }
 
@@ -38,20 +44,30 @@ function getWorker() {
     workerBroken = true;
     return null;
   }
-  worker.onmessage = (e) => {
-    const { id, result, error } = e.data || {};
+  const w = worker;
+  // A worker whose module graph never loads (e.g. offline) may stay silent: give up on it after 6 s
+  // without its "ready" message and parse on the main thread instead, so the button never just hangs.
+  const giveUp = () => {
+    if (worker !== w) return;
+    workerBroken = true;
+    try { w.terminate(); } catch { /* gone */ }
+    worker = null;
+    for (const [, p] of pending) fallback(p.fn, p.args).then(p.resolve, p.reject);
+    pending.clear();
+  };
+  const readyTimer = setTimeout(giveUp, 6000);
+  w.onmessage = (e) => {
+    const { id, result, error, ready } = e.data || {};
+    if (ready) { clearTimeout(readyTimer); return; }
     const p = pending.get(id);
     if (!p) return;
     pending.delete(id);
     if (error) p.reject(new Error(error)); else p.resolve(result);
   };
-  worker.onerror = (e) => {
+  w.onerror = (e) => {
     e.preventDefault();
-    workerBroken = true;
-    try { worker.terminate(); } catch { /* gone */ }
-    worker = null;
-    for (const [, p] of pending) fallback(p.fn, p.args).then(p.resolve, p.reject);
-    pending.clear();
+    clearTimeout(readyTimer);
+    giveUp();
   };
   return worker;
 }
@@ -132,8 +148,11 @@ export function dateInput(value, max, onChange) {
   return i;
 }
 
-/** 'Thu 12 Nov 2026' */
-export const dateY = (d) => (d ? `${fmtDate(d)} ${d.slice(0, 4)}` : '–');
+/** 'Thu 12 Nov 2026': always with the year, exactly once (fmtDate adds it only for other years). */
+export const dateY = (d) => (d ? `${fmtDate(d, parseDate(d))} ${d.slice(0, 4)}` : '–');
+
+/** Summary of an earlier import run. Runs saved by 0.5.0 and older can say "1 Dec 2025 2025". */
+export const runSummary = (r) => String(r.summary || '').replace(/ (\d{4}) \1\b/g, ' $1');
 
 export const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 

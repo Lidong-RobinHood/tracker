@@ -2,7 +2,7 @@
 // trend, muscle tonnage, routine and month context. Route: workout/summary/:id
 // Numbers come from core/workout-analytics.js; everything is "as of" the workout's own date.
 import * as db from '../db/db.js';
-import { el, pageHeader, href, emptyState, fmtDate, fmtTime, fmtNum, navigate } from '../ui/index.js';
+import { el, append, pageHeader, href, emptyState, fmtDate, fmtTime, fmtNum, navigate } from '../ui/index.js';
 import { analyseWorkout, METRICS } from '../core/workout-analytics.js';
 import { formatPct } from '../core/workout-progress.js';
 import { formatSets } from '../core/workout.js';
@@ -68,7 +68,7 @@ export async function mountAnalytics(container, { id }) {
   ensureCss();
   const [w, exMap, workouts] = await Promise.all([db.get('workouts', id), loadExercises(), loadWorkouts()]);
   if (!w) {
-    container.append(pageHeader({ title: 'Analysis', back: 'workout/history' }),
+    append(container, pageHeader({ title: 'Analysis', back: 'workout/history' }),
       emptyState('Workout not found. It may have been deleted.',
         el('a', { class: 'btn', href: href('workout/history') }, 'Open history')));
     return;
@@ -78,26 +78,26 @@ export async function mountAnalytics(container, { id }) {
   const name = (exId) => exName(exMap, exId);
 
   container.classList.add('wk-an');
-  container.append(pageHeader({
+  append(container, pageHeader({
     title: w.name || 'Workout',
     subtitle: `Analysis · ${fmtDate(w.date)}${Number.isFinite(w.startedAt) ? ` · ${fmtTime(w.startedAt)}` : ''}${w.finishedAt ? '' : ' · in progress'}`,
     back: `workout/history/${encodeURIComponent(w.id)}`,
   }));
 
-  container.append(headerStrip(w, res));
+  append(container, headerStrip(w, res));
 
   if (!res.exercises.length) {
-    container.append(el('p', { class: 'wk-an-note' }, 'No done sets in this workout, so there is nothing to analyse yet.'));
+    append(container, el('p', { class: 'wk-an-note' }, 'No done sets in this workout, so there is nothing to analyse yet.'));
     return;
   }
 
-  container.append(recordsSection(res, name));
-  container.append(el('section', { class: 'section' },
+  append(container, recordsSection(res, name));
+  append(container, el('section', { class: 'section' },
     el('h2', { class: 'section-title' }, 'Exercises'),
     el('p', { class: 'wk-an-note' }, 'Done normal sets only; dropsets and sets not ticked are left out of every best and record. Month = ', MONTHS[Number(res.month.slice(5, 7)) - 1], ' up to this workout. All time = up to and including this workout.'),
     res.exercises.map((r) => exerciseBlock(r, w, res, name))));
-  container.append(wholeWorkout(w, res));
-  container.append(monthSection(w, res, name));
+  append(container, wholeWorkout(w, res));
+  append(container, monthSection(w, res, name));
 }
 
 // ---------------------------------------------------------------- header
@@ -133,7 +133,7 @@ function recordsSection(res, name) {
   if (!beaten.length) {
     const m = res.closestMiss;
     const allFirst = res.exercises.every((x) => x.firstTime);
-    sec.append(el('div', { class: 'wk-an-rules' },
+    append(sec, el('div', { class: 'wk-an-rules' },
       el('p', { class: 'wk-an-line' }, allFirst ? 'No records: first session of every exercise in this workout.' : 'No records this workout.'),
       m ? el('p', { class: 'wk-an-line muted num' },
         `Closest: ${name(m.exerciseId)} · ${METRICS[m.metric].short} ${absText({ ...m.delta, abs: -m.delta.abs }, m.metric).replace(/^\+/, '')} under your best (${valueText(m.metric, m.best)}, ${when(m.best)})`)
@@ -142,7 +142,7 @@ function recordsSection(res, name) {
   for (const [status, title] of GROUPS) {
     const list = res.records.filter((r) => r.status === status);
     if (!list.length) continue;
-    sec.append(el('div', { class: 'wk-an-group' },
+    append(sec, el('div', { class: 'wk-an-group' },
       el('div', { class: ['wk-an-group-head', status === 'pr' && 'is-rec'] }, status === 'matched' ? title : `${title} · ${list.length}`),
       status === 'matched' ? matchedRows(list, name) : [...byExercise(list)].map(([exId, rs]) => el('div', { class: 'wk-an-rx' },
         el('div', { class: 'wk-an-rec-title' }, name(exId)),
@@ -253,21 +253,21 @@ function trendBlock(r, status) {
 function wholeWorkout(w, res) {
   const sec = el('section', { class: 'section' }, el('h2', { class: 'section-title' }, 'Whole workout'));
   if (res.muscles.length) {
-    sec.append(el('figure', { class: 'wk-an-fig' },
+    append(sec, el('figure', { class: 'wk-an-fig' },
       el('figcaption', { class: 'wk-an-cap' }, 'Tonnage by muscle, kg'),
       hBars(res.muscles.map((m) => ({ label: m.name, value: m.tonnage, text: tKg(m.tonnage) }))),
       el('p', { class: 'wk-an-note' }, 'Each exercise’s tonnage goes to its primary muscles only, split equally when it has several. Secondary muscles, dropsets and bodyweight sets add nothing.')));
   } else {
-    sec.append(el('p', { class: 'wk-an-note' }, 'No weighted sets, so no tonnage by muscle.'));
+    append(sec, el('p', { class: 'wk-an-note' }, 'No weighted sets, so no tonnage by muscle.'));
   }
   const h = res.routine.history;
   if (h.length > 1) {
-    sec.append(el('figure', { class: 'wk-an-fig' },
+    append(sec, el('figure', { class: 'wk-an-fig' },
       el('figcaption', { class: 'wk-an-cap' }, `Session tonnage, t (1 t = 1000 kg) · last ${h.length} × ${w.name}`),
       vBars(h.map((s) => ({ date: s.date, value: s.tonnage, text: (s.tonnage / 1000).toFixed(1), current: s.current })),
         `Session tonnage of the last ${h.length} ${w.name} sessions, ${h.map((s) => `${fmtDate(s.date)} ${tKg(s.tonnage)}`).join(', ')}`)));
   } else {
-    sec.append(el('p', { class: 'wk-an-note' }, w.routineId ? 'First session of this routine: no session comparison yet.' : 'Not started from a routine: no session comparison.'));
+    append(sec, el('p', { class: 'wk-an-note' }, w.routineId ? 'First session of this routine: no session comparison yet.' : 'Not started from a routine: no session comparison.'));
   }
   return sec;
 }

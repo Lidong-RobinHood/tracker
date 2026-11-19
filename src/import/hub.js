@@ -1,7 +1,7 @@
 // Import hub: the three importers and the list of past imports with "Undo this import".
 import { el, pageHeader, href, confirmDialog, toast, fmtDate } from '../ui/index.js';
 import { fromTimestamp } from '../core/dates.js';
-import { ensureCss, loadRuns, undoRun, plural } from './shared.js';
+import { ensureCss, loadRuns, undoRun, plural, runSummary } from './shared.js';
 
 const TYPE_LABEL = { workouts: 'Workouts', weights: 'Body weight', food: 'Food diary' };
 
@@ -31,7 +31,7 @@ export async function mountHub(container) {
       type: 'button', class: 'btn btn-danger btn-sm imp-undo', onClick: async () => {
         const ok = await confirmDialog({
           title: 'Undo this import?',
-          message: `This removes exactly what this import added (${r.summary}). Entries you added yourself stay.`,
+          message: `This removes exactly what this import added (${runSummary(r)}). Entries you added yourself stay.`,
           confirmLabel: 'Undo import', danger: true,
         });
         if (!ok) return;
@@ -51,7 +51,7 @@ export async function mountHub(container) {
       el('div', { class: 'row-between' },
         el('div', { class: 'li-main' },
           el('div', { class: 'li-title' }, TYPE_LABEL[r.type] || r.type, ' ', status),
-          el('div', { class: 'li-sub' }, `${when} · ${r.summary}`)),
+          el('div', { class: 'li-sub' }, `${when} · ${runSummary(r)}`)),
         btn));
   }
 

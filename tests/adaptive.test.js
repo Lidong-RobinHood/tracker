@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ADAPTIVE_DEFAULTS, adaptiveConfig, trendSeries, trendAt, weightRate, classifyIntake, formulaTdee,
-  estimateExpenditure, weeklyTarget, weeklyIntake, kcalFloor, buildCheckIn, checkInRecords, dailyIntake,
+  estimateExpenditure, weeklyTarget, weeklyIntake, kcalFloor, buildCheckIn, checkInRecords, dailyIntake, displayTdee, intakeHistoryRange, loggedDayCount,
 } from '../src/core/adaptive.js';
 import { sumEntries } from '../src/core/nutrition.js';
 import { simulate, dayDate, mean, prng } from './helpers/adaptive-sim.js';
@@ -356,3 +356,45 @@ test('item 6: macros never exceed the calorie target; protein is capped and flag
   assert.equal(n.proteinLimited, false);
   assert.equal(n.protein, 160);
 });
+
+test('check-in proposes from the formula with the latest weigh-in, even one from this week (yesterday)', () => {
+  // Thu 2026-01-15; the only weigh-in is yesterday, after this week's Monday (the old code saw no weight)
+  const profile = { sex: 'male', birthYear: 1990, heightCm: 180, activity: 'light' };
+  const base = { today: '2026-01-15', weights: [{ date: '2026-01-14', kg: 80 }], intake: [], goal: { rateKgPerWeek: 0 }, targets: { kcal: 2000, source: 'manual' } };
+  const ci = buildCheckIn({ ...base, profile });
+  assert.equal(ci.basisKind, 'formula');
+  assert.equal(ci.weightKg, 80);
+  assert.equal(ci.tdee, formulaTdee(profile, 80, '2026-01-15').kcal, 'same formula estimate as the Expenditure screen');
+  assert.ok(ci.proposal && ci.proposal.kcal > 2000);
+  assert.equal(ci.noProposal, null);
+  // incomplete profile: no proposal, and the reason is not "log your weight"
+  const noProfile = buildCheckIn({ ...base, profile: { sex: 'male' } });
+  assert.equal(noProfile.proposal, null);
+  assert.equal(noProfile.noProposal, 'no-estimate');
+  // truly no weigh-in
+  const noWeight = buildCheckIn({ ...base, weights: [], profile });
+  assert.equal(noWeight.proposal, null);
+  assert.equal(noWeight.noProposal, 'no-weight');
+});
+
+test('displayTdee: one rounding rule for expenditure everywhere (nearest 10 kcal)', () => {
+  assert.equal(displayTdee(2452), 2450);
+  assert.equal(displayTdee(2455), 2460);
+  assert.equal(displayTdee(2449.6), 2450);
+  assert.equal(displayTdee(null), null);
+  assert.equal(displayTdee(NaN), null);
+});
+
+test('intake history window: 4 calendar weeks to yesterday, one count for dashboard and history', () => {
+  // Thu 2026-11-19: this week starts Mon 16 Nov, so the window starts Mon 26 Oct
+  assert.deepEqual(intakeHistoryRange('2026-11-19'), { from: '2026-10-26', to: '2026-11-18' });
+  assert.deepEqual(intakeHistoryRange('2026-11-16'), { from: '2026-10-26', to: '2026-11-15' });
+  const intake = [];
+  for (let i = 0; i < 40; i++) intake.push({ date: addDaysT('2026-10-10', i), kcal: i === 20 ? 300 : 2000 });
+  const { from } = intakeHistoryRange('2026-11-19');
+  const weeks = weeklyIntake(intake, '2026-11-19', from);
+  // logged days from 26 Oct to 18 Nov (today 19 Nov excluded): 24, one of them incomplete
+  assert.equal(loggedDayCount(weeks), 24);
+  assert.equal(weeks.reduce((n, w) => n + w.incomplete, 0), 1);
+});
+function addDaysT(d, n) { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); }

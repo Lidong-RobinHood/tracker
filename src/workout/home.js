@@ -1,10 +1,10 @@
 // Workout home ("Train"): resume banner, start, starting point, muscle recovery, this week's sets per
 // muscle, links. Looking back (history, routine progress, records) lives in Analysis / History. Route: workout
 import * as db from '../db/db.js';
-import { el, pageHeader, fmtTime, fmtNum, href } from '../ui/index.js';
+import { el, append, pageHeader, fmtTime, fmtNum, href } from '../ui/index.js';
 import { today } from '../core/dates.js';
 import { weeklyComparison, weeklyBreakdown, targetProgress, volumeWeights } from '../core/volume.js';
-import { sessionStats, LIVE_WINDOW_MS } from '../core/workout.js';
+import { sessionStats, isLoggedWorkout, LIVE_WINDOW_MS } from '../core/workout.js';
 import { breakdownText, breakdownAria, splitFill, breakdownCaption } from './volume-ui.js';
 import { logPastWorkout } from './datetime.js';
 import { MUSCLES } from '../core/muscles.js';
@@ -12,7 +12,7 @@ import { isBaseline, findBaseline } from '../core/baseline.js';
 import { loadTargets } from './targets.js';
 import { workoutNav } from './subnav.js';
 import { recoverySection, loadRecoverySetting } from './recovery.js';
-import { ensureCss, loadExercises, loadWorkouts, loadRoutines, findUnfinished, startWorkout, shortDate } from './data.js';
+import { ensureCss, loadExercises, loadWorkouts, loadRoutines, unfinishedWorkouts, isLiveOpen, startWorkout, shortDate, navAction } from './data.js';
 
 /** Below this many finished workouts the home screen suggests entering a starting point. */
 const THIN_HISTORY = 3;
@@ -23,33 +23,34 @@ export async function mountHome(container) {
     loadWorkouts(), loadExercises(), loadRoutines(), db.getSetting('volume'), loadTargets(), loadRecoverySetting(),
   ]);
   const weights = volumeWeights(rawWeights);
-  const open = findUnfinished(workouts);
+  const openList = unfinishedWorkouts(workouts);
   const baseline = findBaseline(workouts);
-  const finishedCount = workouts.filter((w) => w.finishedAt && !isBaseline(w)).length;
+  const finishedCount = workouts.filter((w) => isLoggedWorkout(w) && !isBaseline(w)).length;
 
-  container.append(pageHeader({ title: 'Workout' }), workoutNav('train'));
+  append(container, pageHeader({ title: 'Workout' }), workoutNav('train'));
 
-  if (open) {
+  // Resume banners: the live workout first, then any unfinished past workout (see data.js rule).
+  for (const open of openList) {
     const st = sessionStats(open);
-    container.append(el('a', { class: 'card wk-resume', href: href(`workout/session/${encodeURIComponent(open.id)}`) },
+    append(container, el('a', { class: 'card wk-resume', href: href(`workout/session/${encodeURIComponent(open.id)}`) },
       el('div', { class: 'grow' },
-        el('div', { class: 'small wk-resume-kicker' }, 'Workout in progress'),
+        el('div', { class: 'small wk-resume-kicker' }, isLiveOpen(open) ? 'Workout in progress' : 'Past workout not finished'),
         el('div', { class: 'li-title' }, open.name),
         el('div', { class: 'li-sub' }, `${resumeWhen(open)} · ${st.setsDone} set${st.setsDone === 1 ? '' : 's'} done`)),
       el('span', { class: 'btn btn-primary' }, 'Resume')));
   }
 
   // Start
-  const start = (r) => startWorkout(r);
-  container.append(el('section', { class: 'section' },
+  const start = (r) => navAction(() => startWorkout(r));
+  append(container, el('section', { class: 'section' },
     el('h2', { class: 'section-title' }, 'Start workout'),
     el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
-      ...routines.map((r) => el('button', { type: 'button', class: 'list-item', onClick: () => start(r) },
+      ...routines.map((r) => el('button', { type: 'button', class: 'list-item', onClick: start(r) },
         el('div', { class: 'li-main' },
           el('div', { class: 'li-title' }, r.name),
           el('div', { class: 'li-sub' }, routineSub(r, exMap))),
         el('span', { class: 'wk-go', 'aria-hidden': 'true' }, 'Start'))),
-      el('button', { type: 'button', class: 'list-item', onClick: () => start(null) },
+      el('button', { type: 'button', class: 'list-item', onClick: start(null) },
         el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, 'Empty workout'),
           el('div', { class: 'li-sub' }, 'Add exercises as you go'))),
       el('button', { type: 'button', class: 'list-item', onClick: () => logPastWorkout(routines) },
@@ -61,7 +62,7 @@ export async function mountHome(container) {
 
   // Starting point prompt while history is thin (always linked below as well)
   if (!baseline && finishedCount < THIN_HISTORY) {
-    container.append(el('div', { class: 'card card-flush wk-sp-cta' }, el('div', { class: 'list' },
+    append(container, el('div', { class: 'card card-flush wk-sp-cta' }, el('div', { class: 'list' },
       el('a', { class: 'list-item', href: href('workout/starting-point') },
         el('div', { class: 'li-main' },
           el('div', { class: 'li-title' }, 'Enter your starting point'),
@@ -70,7 +71,7 @@ export async function mountHome(container) {
   }
 
   // Muscle recovery (general estimate; uses only the last 14 days of the already loaded workouts)
-  container.append(recoverySection(workouts, exMap, weights, recovery));
+  append(container, recoverySection(workouts, exMap, weights, recovery));
 
   // Weekly volume (with optional targets: sets done / target and % reached)
   const cmp = weeklyComparison(workouts, exMap, weights, today());
@@ -81,7 +82,7 @@ export async function mountHome(container) {
     .map((m) => byMuscle.get(m.id) || { muscle: m.id, name: m.name, current: 0, previous: 0 });
   const hasTargets = Object.keys(targets).length > 0;
   const max = Math.max(1, ...rowsData.filter((r) => !targets[r.muscle]).map((r) => Math.max(r.current, r.previous)));
-  container.append(el('section', { class: 'section' },
+  append(container, el('section', { class: 'section' },
     el('div', { class: 'row-between' },
       el('h2', { class: 'section-title' }, `This week · ${shortDate(cmp.weekStart)} – ${shortDate(cmp.weekEnd)}`),
       el('span', { class: 'small muted' }, hasTargets ? '% target · last wk' : 'last wk')),
@@ -96,7 +97,7 @@ export async function mountHome(container) {
 
   // Links
   const activeEx = [...exMap.values()].filter((e) => !e.archived).length;
-  container.append(el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
+  append(container, el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
     link('workout/routines', 'Routines', `${routines.length}`),
     link('workout/exercises', 'Exercise library', `${activeEx}`),
     link('workout/starting-point', 'Starting point', baseline ? shortDate(baseline.date) : 'not set'),

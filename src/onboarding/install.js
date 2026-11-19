@@ -29,7 +29,8 @@ const b = (t) => el('strong', null, t);
 /**
  * Guidance block for the platform.
  * @param {ReturnType<typeof detectPlatform>} p
- * @param {{compact?: boolean}} [opts] compact: Help (no separate-data paragraph for iOS duplicates)
+ * @param {{compact?: boolean}} [opts] compact: Help (no separate-data paragraph for iOS duplicates; the
+ *   Android install button gets its own why-sentence, which the welcome step has above the guide)
  * @returns {HTMLElement}
  */
 export function installGuide(p, { compact = false } = {}) {
@@ -81,7 +82,8 @@ export function installGuide(p, { compact = false } = {}) {
           ? 'Installed. You can open Tracker from your home screen or app drawer.'
           : 'Not installed. You can install it later from the browser menu.'));
       });
-      box.append(el('p', null, 'Install Tracker so it opens like an app, works offline and the browser is less likely to clear its data.'), btn);
+      // The welcome step already says why above the guide; Help (compact) has no such intro.
+      box.append(compact ? el('p', null, 'Install Tracker so it opens like an app, works offline and the browser is less likely to clear its data.') : null, btn);
       return node;
     }
     const menu = p.browser === 'samsung' ? [['Tap the menu ', b('≡'), ' at the bottom.'], ['Tap ', b('Add page to'), ' → ', b('Home screen'), '.']]

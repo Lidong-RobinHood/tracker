@@ -117,3 +117,6 @@
 .wr-nav { display: flex; justify-content: space-between; align-items: center; gap: var(--s2); margin: calc(-1 * var(--s2)) 0; }
 .wr-nav-btn { padding: 0 var(--s2); font-size: var(--fs-sm); color: var(--accent); }
 .wr-nav-end { padding: 0 var(--s2); }
+
+/* Intake history weekly averages: the date range and day counts wrap instead of being cut off (320 px). */
+.tr-week-row .li-title, .tr-week-row .li-sub { white-space: normal; overflow-wrap: anywhere; }

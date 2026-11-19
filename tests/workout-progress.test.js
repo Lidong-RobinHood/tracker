@@ -113,7 +113,8 @@ test('compareSession: empty workout uses matched exercises for the total', () =>
   const c = p.compareSession([a, b], b);
   assert.equal(c.prevSession, null);
   assert.equal(c.total.basis, 'matched');
-  assert.equal(c.total.cur, 600);
+  assert.equal(c.total.cur, 750, 'the whole session, not only the matched exercises');
+  assert.equal(c.total.matchedCur, 600);
   assert.equal(c.total.prev, 500);
   assert.equal(c.total.pct, 20);
   assert.equal(c.rows.find((r) => r.exerciseId === 'curl').status, 'new');
@@ -121,6 +122,22 @@ test('compareSession: empty workout uses matched exercises for the total', () =>
   // nothing to compare -> no percentage
   const first = W('2026-01-01', [E('z', [S(10, 10)])]);
   assert.equal(p.compareSession([first], first).total.pct, null);
+  // first session: the real volume load, only the comparison is missing
+  assert.equal(p.compareSession([first], first).total.cur, 100);
+  assert.equal(p.compareSession([first], first).total.prev, null);
+});
+
+test('finished workouts without a done set are ignored by every statistic', () => {
+  const s1 = W('2026-08-01', [E('squat', [S(100, 5), S(100, 5)])], { routineId: 'legs' });
+  const empty = W('2026-08-08', [E('squat', [S(100, 5, 'normal', false)])], { routineId: 'legs' });
+  assert.deepEqual(p.finishedWorkouts([s1, empty]).map((w) => w.id), [s1.id]);
+  assert.deepEqual(p.routineSessions([s1, empty], 'legs').map((w) => w.id), [s1.id]);
+  const rp = p.routineProgress([s1, empty], { id: 'legs', items: [{ exerciseId: 'squat' }] });
+  assert.equal(rp.sessions.length, 1);
+  assert.equal(rp.sessions[0].workout.id, s1.id);
+  const s2 = W('2026-08-15', [E('squat', [S(100, 5), S(100, 5)])], { routineId: 'legs' });
+  assert.equal(p.previousRoutineSession([s1, empty, s2], s2).id, s1.id);
+  assert.equal(p.compareSession([s1, empty, s2], s2).total.pct, 0);
 });
 
 test('routineProgress: sessions newest first with pct vs previous, exercise rows incl. added ones', () => {

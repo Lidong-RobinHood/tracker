@@ -1,12 +1,12 @@
 // Weekly set targets per muscle (optional). Stored as setting 'volumeTargets' ({ muscleId: sets }).
 // Route: workout/targets
 import * as db from '../db/db.js';
-import { el, pageHeader, numberInput, toast, fmtNum, confirmDialog } from '../ui/index.js';
+import { el, append, replaceChildren, pageHeader, numberInput, toast, fmtNum } from '../ui/index.js';
 import { MUSCLES } from '../core/muscles.js';
 import { today } from '../core/dates.js';
 import { weeklyComparison, weeklyBreakdown, sanitiseTargets, targetProgress, MAX_WEEKLY_TARGET, volumeWeights } from '../core/volume.js';
 import { breakdownText, splitFill, breakdownCaption } from './volume-ui.js';
-import { ensureCss, loadExercises, loadWorkouts } from './data.js';
+import { ensureCss, loadExercises, loadWorkouts, confirmAction } from './data.js';
 
 export const TARGETS_KEY = 'volumeTargets';
 
@@ -40,7 +40,7 @@ export async function mountTargets(container) {
     const paint = () => {
       const tp = targetProgress(done[m.id] || 0, targets[m.id]);
       bar.hidden = !tp;
-      bar.replaceChildren(splitFill(parts[m.id], tp ? tp.fraction : 0, !!(tp && tp.reached)));
+      replaceChildren(bar, splitFill(parts[m.id], tp ? tp.fraction : 0, !!(tp && tp.reached)));
       pctEl.textContent = tp ? `${tp.reached ? '✓ ' : ''}${tp.pct} %` : '';
       pctEl.classList.toggle('text-success', !!(tp && tp.reached));
     };
@@ -66,7 +66,7 @@ export async function mountTargets(container) {
 
   const clearAll = async () => {
     if (!Object.keys(targets).length) return;
-    const ok = await confirmDialog({ title: 'Clear all targets?', message: 'Weekly set targets for every muscle are removed.', confirmLabel: 'Clear' });
+    const ok = await confirmAction({ title: 'Clear all targets?', message: 'Weekly set targets for every muscle are removed.', confirmLabel: 'Clear' });
     if (!ok) return;
     for (const k of Object.keys(targets)) delete targets[k];
     for (const [, input, paint] of inputs) { input.setNumber(null); paint(); }
@@ -74,7 +74,7 @@ export async function mountTargets(container) {
     toast('Targets cleared');
   };
 
-  container.append(
+  append(container, 
     pageHeader({ title: 'Weekly set targets', subtitle: 'Saved automatically', back: 'workout' }),
     el('p', { class: 'small muted wk-pad-x' },
       `Optional sets per week for each muscle (e.g. Chest 12). Sets are counted like the weekly list. ${breakdownCaption(weights)}Leave empty for no target.`),

@@ -3,12 +3,14 @@
 import * as db from '../db/db.js';
 import { el, pageHeader, fmtNum, fmtDate, href } from '../ui/index.js';
 import { addDays, weekStart } from '../core/dates.js';
-import { totals, progress } from '../core/food-diary.js';
+import { totals } from '../core/food-diary.js';
+import { targetStatus } from '../core/food-percent.js';
 import { weeklyComparison } from '../core/volume.js';
 import { trendSeries, trendAt, weightRate, weeklyIntake } from '../core/adaptive.js';
 import { sparkline } from './charts.js';
 import { isBaseline } from '../core/baseline.js';
-import { ensureCss, loadTrendsData, linkCard, signed, goalText, CONFIDENCE_LABEL } from './data.js';
+import { isLoggedWorkout } from '../core/workout.js';
+import { ensureCss, loadTrendsData, linkCard, signed, goalText, tdeeText, intakeHistory, CONFIDENCE_LABEL } from './data.js';
 
 export async function mountDashboard(container) {
   ensureCss();
@@ -47,16 +49,18 @@ function checkInBanner(d) {
 
 function todayCard(d) {
   const entries = d.entries.filter((e) => e.date === d.today);
-  const [kcal, protein] = progress(totals(entries), d.targets);
-  const over = kcal.remaining !== null && kcal.remaining < 0;
+  const t = totals(entries);
+  // Same rule as the diary: eaten rounded once, left/over from the rounded value (they add up).
+  const kcal = targetStatus(t.kcal, d.targets.kcal);
+  const protein = targetStatus(t.protein, d.targets.protein);
   return linkCard(href('diary'), 'Today',
     entries.length
       ? [el('div', { class: 'grid-3 tr-figs' },
-        fig('Eaten', fmtNum(kcal.consumed, 0), 'kcal'),
+        fig('Eaten', fmtNum(kcal.eaten, 0), 'kcal'),
         fig('Target', fmtNum(kcal.target, 0), 'kcal'),
-        fig(over ? 'Over' : 'Left', fmtNum(Math.abs(kcal.remaining ?? 0), 0), 'kcal', over ? 'text-warning' : null)),
-      meter(kcal.fraction),
-      el('div', { class: 'small muted num' }, `Protein ${fmtNum(protein.consumed, 0)} / ${fmtNum(protein.target, 0)} g`)]
+        fig(kcal.isOver ? 'Over' : 'Left', fmtNum(kcal.isOver ? kcal.over : kcal.left ?? 0, 0), 'kcal', kcal.isOver ? 'text-warning' : null)),
+      meter(kcal),
+      el('div', { class: 'small muted num' }, `Protein ${fmtNum(protein.eaten, 0)} / ${fmtNum(protein.target, 0)} g`)]
       : el('p', { class: 'muted small' }, `Nothing logged yet today. Target ${fmtNum(d.targets.kcal, 0)} kcal, ${fmtNum(d.targets.protein, 0)} g protein.`));
 }
 
@@ -64,7 +68,7 @@ function weekCard(d, workouts, exMap, volume) {
   const ws = weekStart(d.today);
   const [week] = weeklyIntake(d.intake, d.today, ws, d.config);
   const loggedDays = new Set(d.entries.filter((e) => e.date >= ws).map((e) => e.date)).size;
-  const done = workouts.filter((w) => w.date >= ws && w.finishedAt && !isBaseline(w)).length;
+  const done = workouts.filter((w) => w.date >= ws && isLoggedWorkout(w) && !isBaseline(w)).length;
   const cmp = weeklyComparison(workouts, exMap, volume, d.today);
   const sets = cmp.rows.filter((r) => r.current > 0).sort((a, b) => b.current - a.current);
   return linkCard(href('trends/intake'), `This week · from ${fmtDate(ws)}`,
@@ -102,13 +106,13 @@ function expenditureCard(d) {
   const kids = [];
   if (e.status === 'ok') {
     kids.push(el('div', { class: 'grid-2 tr-figs' },
-      fig('Expenditure', fmtNum(Math.round(e.tdee / 10) * 10, 0), CONFIDENCE_LABEL[e.confidence].replace(' confidence', '') + ' confidence'),
+      fig('Expenditure', tdeeText(e.tdee), CONFIDENCE_LABEL[e.confidence].replace(' confidence', '') + ' confidence'),
       fig('Proposed target', p ? fmtNum(p.kcal, 0) : '–', `${goalText(d.goal.rateKgPerWeek).toLowerCase()}`)));
   } else {
     kids.push(el('p', { class: 'small' }, e.missing[0]));
     if (e.formula) {
       kids.push(el('div', { class: 'grid-2 tr-figs' },
-        fig('Formula estimate', fmtNum(Math.round(e.formula.kcal / 10) * 10, 0), 'not from your data'),
+        fig('Formula estimate', tdeeText(e.formula.kcal), 'not from your data'),
         fig('Proposed target', p ? fmtNum(p.kcal, 0) : '–', goalText(d.goal.rateKgPerWeek).toLowerCase())));
     } else {
       kids.push(el('p', { class: 'small muted' }, 'Log weight and food daily to unlock your expenditure estimate (about 2 weeks). Fill in your profile in Settings for a formula estimate meanwhile.'));
@@ -132,11 +136,10 @@ function reportsCard(d) {
 }
 
 function intakeCard(d) {
-  const from = addDays(d.today, -27);
-  const days = d.intake.filter((r) => r.date >= from && r.date < d.today);
+  const h = intakeHistory(d);
   return linkCard(href('trends/intake'), 'Intake history',
-    days.length
-      ? el('p', { class: 'small muted' }, `${days.length} logged day${days.length === 1 ? '' : 's'} in the last 4 weeks. Daily calories against your target and weekly averages.`)
+    h.logged
+      ? el('p', { class: 'small muted' }, `${h.label} Daily calories against your target and weekly averages.`)
       : el('p', { class: 'small muted' }, 'Log food in the diary to see your daily calories here.'));
 }
 
@@ -147,7 +150,8 @@ function fig(label, value, sub, cls) {
     sub ? el('div', { class: 'small muted truncate' }, sub) : null);
 }
 
-function meter(fraction) {
-  const pct = Math.max(0, Math.min(1, fraction || 0)) * 100;
-  return el('div', { class: ['tr-meter', fraction > 1 ? 'is-over' : null], 'aria-hidden': 'true' }, el('div', { class: 'tr-meter-fill', style: { width: `${pct}%` } }));
+/** @param {{fraction: number, isOver: boolean}} x see targetStatus */
+function meter(x) {
+  const pct = Math.max(0, Math.min(1, x.fraction || 0)) * 100;
+  return el('div', { class: ['tr-meter', x.isOver ? 'is-over' : null], 'aria-hidden': 'true' }, el('div', { class: 'tr-meter-fill', style: { width: `${pct}%` } }));
 }

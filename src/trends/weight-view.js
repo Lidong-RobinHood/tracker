@@ -9,7 +9,7 @@ import { ensureCss, signed } from './data.js';
 
 const RANGES = [{ id: '1m', label: '1 M', days: 30 }, { id: '3m', label: '3 M', days: 91 }, { id: 'all', label: 'All', days: null }];
 let rangeId = '1m'; // remembered while the app is open
-const MIN_KG = 20; const MAX_KG = 400;
+import { MIN_KG, MAX_KG } from '../core/body-weight.js';
 
 export async function mountWeight(container) {
   ensureCss();

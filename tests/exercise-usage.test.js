@@ -53,3 +53,24 @@ test('search: match quality first, used before unused among equal matches', () =
   assert.deepEqual(rankExercises(EX, 'press', u).map((e) => e.id), ['incl', 'bench', 'db']);
   assert.deepEqual(rankExercises(EX, 'barbell', u).map((e) => e.id), ['curl', 'incl', 'squat', 'bench']);
 });
+
+test('search: abbreviations and base lifts first among equal matches (seed library)', async () => {
+  const { SEED_EXERCISES } = await import('../src/data/exercises.js');
+  const lib = SEED_EXERCISES.map((e) => ({ ...e }));
+  const top = (q, u = new Map()) => rankExercises(lib, q, u).slice(0, 3).map((e) => e.id);
+  assert.equal(top('incline db')[0], 'seed:incline-dumbbell-press');
+  assert.ok(rankExercises(lib, 'incline db', new Map()).every((e) => e.equipment === 'dumbbell' || e.id === 'seed:incline-dumbbell-press'));
+  assert.equal(top('ohp')[0], 'seed:overhead-press');
+  assert.equal(top('rdl')[0], 'seed:romanian-deadlift');
+  assert.ok(rankExercises(lib, 'bb row', new Map()).every((e) => e.equipment === 'barbell'), '"bb" is barbell, not the bb in dumbbell');
+  assert.ok(rankExercises(lib, 'bb row', new Map()).some((e) => e.id === 'seed:barbell-row'));
+  assert.ok(rankExercises(lib, 'bw', new Map()).length > 3);
+  assert.equal(top('bench')[0], 'seed:bench-press');
+  // Bench Dip is not ahead of Bench Press (Barbell) / (Dumbbell)
+  const bench = rankExercises(lib, 'bench', new Map()).map((e) => e.id);
+  assert.ok(bench.indexOf('seed:dumbbell-bench-press') < bench.indexOf('seed:bench-dip'));
+  // logged exercises still come first among equal matches
+  const u = exerciseUsage([WO('a', '2026-11-18', 1, ['seed:bench-dip'])]);
+  const b2 = rankExercises(lib, 'bench d', u).map((e) => e.id);
+  assert.equal(b2[0], 'seed:bench-dip');
+});

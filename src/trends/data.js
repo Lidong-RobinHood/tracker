@@ -2,10 +2,10 @@
 // all numbers come from src/core.
 import * as db from '../db/db.js';
 import { signedRateText } from '../core/goal-display.js';
-import { el } from '../ui/index.js';
+import { el, fmtNum, fmtDate } from '../ui/index.js';
 import { today, addDays } from '../core/dates.js';
 import { sumEntries } from '../core/nutrition.js';
-import { dailyIntake, ADAPTIVE_DEFAULTS, buildCheckIn, estimateExpenditure, checkInRecords } from '../core/adaptive.js';
+import { dailyIntake, ADAPTIVE_DEFAULTS, buildCheckIn, estimateExpenditure, checkInRecords, displayTdee, weeklyIntake, intakeHistoryRange, loggedDayCount } from '../core/adaptive.js';
 
 let cssLoaded = false;
 /** Load trends.css once. */
@@ -60,12 +60,31 @@ export async function answerCheckIn(checkIn, decision) {
   return rec;
 }
 
+/**
+ * Intake history window with its weekly rows and one exactly-labelled count, shared by the dashboard
+ * card and the Intake history screen so both say the same.
+ */
+export function intakeHistory(d) {
+  const { from, to } = intakeHistoryRange(d.today);
+  const weeks = weeklyIntake(d.intake, d.today, from, d.config);
+  const logged = loggedDayCount(weeks);
+  const label = `${logged} logged day${logged === 1 ? '' : 's'} from ${fmtDate(from)} to yesterday (the last 4 calendar weeks; today is not counted).`;
+  return { from, to, weeks, logged, label };
+}
+
+/** Expenditure for display: nearest 10 kcal everywhere ('2450'); '–' when unknown. */
+export function tdeeText(kcal) {
+  const v = displayTdee(kcal);
+  return v === null ? '–' : fmtNum(v, 0);
+}
+
 /** Signed number with a real minus sign: '+0.3', '−0.25'. */
 export function signed(n, decimals = 1) {
   if (n === null || n === undefined || !Number.isFinite(n)) return '–';
   const r = Number(n.toFixed(decimals));
-  if (r === 0) return (0).toFixed(decimals).replace(/\.?0+$/, '') || '0';
-  const s = Math.abs(r).toFixed(decimals).replace(/\.?0+$/, '');
+  if (r === 0) return '0';
+  // fmtNum drops trailing decimal zeros only (the old regex also turned 300 into "3").
+  const s = fmtNum(Math.abs(r), decimals);
   return `${r > 0 ? '+' : '−'}${s}`;
 }
 

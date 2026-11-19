@@ -1,5 +1,5 @@
 // Exercise editor form (library detail, "new exercise", and inline create from the picker).
-import { el, field, numberInput } from '../ui/index.js';
+import { el, replaceChildren, field, numberInput } from '../ui/index.js';
 import { MUSCLES } from '../core/muscles.js';
 import { DEFAULT_INCREMENT } from '../data/exercises.js';
 import { parseVideoUrl } from '../core/exercise-video.js';
@@ -40,8 +40,8 @@ export function exerciseForm(initial = {}, { compact = false } = {}) {
   const primaryChips = el('div', { class: 'chips' });
   const secondaryChips = el('div', { class: 'chips' });
   const renderChips = () => {
-    primaryChips.replaceChildren(...MUSCLES.map((m) => chip(m, primary, secondary)));
-    secondaryChips.replaceChildren(...MUSCLES.map((m) => chip(m, secondary, primary)));
+    replaceChildren(primaryChips, ...MUSCLES.map((m) => chip(m, primary, secondary)));
+    replaceChildren(secondaryChips, ...MUSCLES.map((m) => chip(m, secondary, primary)));
   };
   // Selecting a muscle in one group removes it from the other.
   const chip = (m, set, other) => el('button', {

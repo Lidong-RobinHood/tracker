@@ -3,7 +3,7 @@
 import { el, replaceChildren, pageHeader, toast, fmtNum, fmtDate, href } from '../ui/index.js';
 import { addDays } from '../core/dates.js';
 import { adaptiveConfig } from '../core/adaptive.js';
-import { ensureCss, loadTrendsData, answerCheckIn, signed, goalText, CONFIDENCE_LABEL } from './data.js';
+import { ensureCss, loadTrendsData, answerCheckIn, signed, goalText, tdeeText, CONFIDENCE_LABEL } from './data.js';
 
 export async function mountExpenditure(container) {
   ensureCss();
@@ -42,7 +42,7 @@ function estimateCard(d) {
   const items = [head];
   if (e.status === 'ok') {
     items.push(
-      el('div', { class: 'tr-big' }, el('span', { class: 'num' }, fmtNum(Math.round(e.tdee / 10) * 10, 0)), el('span', { class: 'muted' }, ' kcal / day')),
+      el('div', { class: 'tr-big' }, el('span', { class: 'num' }, tdeeText(e.tdee)), el('span', { class: 'muted' }, ' kcal / day')),
       el('p', { class: 'small muted' }, `Estimated from your data, ± ${fmtNum(Math.round(e.se / 10) * 10, 0)} kcal. Calories you burn per day on average, including training.`));
   } else {
     items.push(
@@ -51,7 +51,7 @@ function estimateCard(d) {
     if (e.formula) {
       items.push(el('div', { class: 'tr-formula' },
         el('div', { class: 'small muted' }, 'Formula estimate (Mifflin-St Jeor × activity) — not based on your data'),
-        el('div', { class: 'tr-big' }, el('span', { class: 'num' }, fmtNum(Math.round(e.formula.kcal / 10) * 10, 0)), el('span', { class: 'muted' }, ' kcal / day'))));
+        el('div', { class: 'tr-big' }, el('span', { class: 'num' }, tdeeText(e.formula.kcal)), el('span', { class: 'muted' }, ' kcal / day'))));
     } else {
       items.push(el('p', { class: 'small muted' }, 'Until then: fill in sex, birth year, height and activity in ',
         el('a', { href: href('settings') }, 'Settings'), ' for a formula estimate.'));
@@ -86,13 +86,13 @@ function checkInSection(d, answer) {
     row('Average intake', ci.avgIntake === null ? 'nothing logged' : `${fmtNum(ci.avgIntake, 0)} kcal (${ci.daysLogged} day${ci.daysLogged === 1 ? '' : 's'})`),
     row('Trend weight change', ci.trendChange === null ? '–' : `${signed(ci.trendChange, 2)} kg`),
     row(ci.basisKind === 'formula' ? 'Expenditure (formula)' : `Expenditure as of ${fmtDate(ci.weekStart)}`,
-      ci.tdee === null ? 'not available' : `${fmtNum(Math.round(ci.tdee / 10) * 10, 0)} kcal`));
+      ci.tdee === null ? 'not available' : `${tdeeText(ci.tdee)} kcal`));
 
   const cards = [goal, review];
   if (!ci.proposal) {
-    cards.push(el('p', { class: 'muted small' }, ci.weightKg === null
-      ? 'Log your weight to get a proposed target.'
-      : 'No proposal yet: keep logging food and weight, or complete your profile in Settings for a formula-based start.'));
+    cards.push(el('p', { class: 'muted small' }, ci.noProposal === 'no-weight'
+      ? 'No weigh-in logged yet. Log your weight to get a proposed target.'
+      : 'No proposal yet: the estimate from your data needs more logging (see above). Fill in sex, birth year, height and activity in Settings for a formula-based proposal meanwhile.'));
     return el('section', { class: 'section' }, title, el('div', { class: 'card stack' }, cards));
   }
 
@@ -134,6 +134,6 @@ function historySection(history) {
     el('div', { class: 'card card-flush' }, el('div', { class: 'list' }, history.slice(0, 26).map((h) => el('div', { class: 'list-item' },
       el('div', { class: 'li-main' },
         el('div', { class: 'li-title' }, `Week of ${fmtDate(h.weekStart)}`),
-        el('div', { class: 'li-sub' }, `${h.decision === 'kept' ? 'Kept' : 'Accepted'} · TDEE ${h.tdee === null || h.tdee === undefined ? '–' : fmtNum(h.tdee, 0)}${h.basis === 'formula' ? ' (formula)' : ''} · ${h.daysLogged} days logged`)),
+        el('div', { class: 'li-sub' }, `${h.decision === 'kept' ? 'Kept' : 'Accepted'} · TDEE ${tdeeText(h.tdee)}${h.basis === 'formula' ? ' (formula)' : ''} · ${h.daysLogged} days logged`)),
       el('span', { class: 'li-trail num' }, `${fmtNum(h.kcalTarget, 0)} kcal`))))));
 }

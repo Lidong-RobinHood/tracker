@@ -94,7 +94,8 @@ Logging a saved meal creates one diary entry per item (amounts editable before c
   primary:   [muscleId],     // each counts settings.volume.primary   (default 1)
   secondary: [muscleId],     // each counts settings.volume.secondary (default 0.5)
   equipment: 'barbell'|'dumbbell'|'machine'|'cable'|'bodyweight'|'other',
-  increment: number,         // kg step for progression suggestions, default 2.5
+  increment: number,         // kg step for progression suggestions, default 2.5 (also dumbbells;
+                             // seeded dumbbells shipped with 2 are moved to 2.5 while never edited)
   isCustom: boolean, archived: boolean, notes: string, createdAt, updatedAt }
 ```
 Muscle ids (fixed list in `src/core/muscles.js`): `chest, back, traps, shoulders, biceps,
@@ -114,10 +115,19 @@ first run; user edits to seeded exercises are kept.
 ```
 { id, date, routineId: string|null, name, startedAt, finishedAt: number|null,
   exercises: [ { exerciseId, targetSets, targetReps, targetRepsMax,
-                 sets: [ { weight, reps, type: 'normal' | 'dropset', done: boolean } ],
+                 sets: [ { weight, reps, type: 'normal' | 'dropset', done: boolean, auto?: true } ],
                  note: string } ],
   createdAt, updatedAt }
 ```
+`auto: true` marks a pre-filled row the user has not edited or ticked yet (plain JSON flag; every
+reader ignores it, rows without it count as touched). It is removed on any edit, tick, fill-down or
+applied progression; untouched rows are re-derived when the session's date or the card's target
+changes (`refreshAutoSets`).
+A **finished** workout counts for statistics only when it has at least one done set
+(`isLoggedWorkout` in `src/core/workout.js`, the one shared predicate): history counts, routine
+progress and its % changes, "vs last time", analysis hub, month counts, weekly report, recovery.
+Such empty records (left by older versions) are not deleted automatically; History lists them as
+"no sets logged" with a delete action. The app no longer creates them.
 
 **Starting point** ("current bests", `#/workout/starting-point`, logic in `src/core/baseline.js`):
 one ordinary record in `workouts` with `kind: 'baseline'`, so export/import and every history
@@ -203,9 +213,18 @@ Dropset 5x 80    5 reps at 80 kg
 ```
 
 - **Start:** pick a routine (or empty workout). One card per exercise.
+- **Unfinished workouts:** at most one *live* workout (started now; no `plannedDurationMs`) is open.
+  Starting another live one asks: no done set → "Discard it & start" (default) / "Keep it open";
+  done sets → "Finish it & start" (default) / "Discard it (n sets lost) & start" / "Cancel".
+  A *past* workout ("Log a past workout", has `plannedDurationMs`) is a separate record: logging one
+  never finishes or blocks the live session, and it is entered and saved on its own session screen.
+  The resume banner points at the live workout; an unfinished past workout gets its own banner.
+- **Finish** with no done set never stores a finished workout: it offers to discard it instead.
 - **Card:** name; target `3 x 6` (tap to edit); last session summary line; one row per set
   with two number fields (kg, reps) and a done toggle. Rows are **pre-filled from the last
-  session of that exercise** (same weight, same reps), so an unchanged set is one tap.
+  session of that exercise** (same weight, same reps), so an unchanged set is one tap. There are
+  always at least `targetSets` normal rows: missing ones copy the last done normal set (else the
+  target), placed before the dropsets.
   Add set, add dropset, delete set (swipe or long-press menu), per-exercise note.
   Entering a weight in set 1 offers to copy it down to the untouched sets below.
 - **Dropset:** a set row tagged `dropset`, visually distinct. Excluded from progression.
@@ -216,7 +235,10 @@ Dropset 5x 80    5 reps at 80 kg
   `top weight + exercise.increment`. Lighter sets (warm-ups, back-off sets) are ignored; dropsets
   never count. Example for 3 x 6: 60×10, 100×8, 100×8, 100×8 → 102.5; 100×6, 100×6, 100×6, 102.5×3
   → none (one set at 102.5). Shown as a chip ("↑ 102.5 kg — 3 sets at 100 kg hit target"); applying
-  it (to the pending sets at the old top weight) is one tap, never automatic.
+  it (to the pending sets at the old top weight) is one tap, never automatic. Once a normal row of
+  the session carries the suggested weight (applied, also after a reload) the chip is not offered
+  again. "Step 2.5 kg" next to it (and "Weight step" in the target editor) changes the exercise's
+  increment.
 - **Autosave** on every change; an unfinished workout survives reload and is resumed.
 - **Weekly volume** (`src/core/volume.js`): for the Mon–Sun week, each done `normal` set
   adds `volume.primary` to every primary muscle and `volume.secondary` to every secondary

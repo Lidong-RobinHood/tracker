@@ -1,6 +1,6 @@
 // Date/time sheets: change the date/time of a workout, and log a past workout.
 // The rules (no future, duration kept, date follows the start time) live in src/core/workout.js.
-import { el, openSheet, numberInput, field, fmtDuration } from '../ui/index.js';
+import { el, append, openSheet, numberInput, field, fmtDuration } from '../ui/index.js';
 import { today, addDays } from '../core/dates.js';
 import { rescheduleWorkout, timeOfDay, MAX_DURATION_MIN, DEFAULT_PAST_DURATION_MS } from '../core/workout.js';
 import { startWorkout } from './data.js';
@@ -37,7 +37,7 @@ export function changeDateTime(workout) {
       err,
     ],
   });
-  s.footer.append(
+  append(s.footer, 
     el('button', { type: 'button', class: 'btn', onClick: () => s.close(null) }, 'Cancel'),
     el('button', {
       type: 'button', class: 'btn btn-primary', onClick: () => {
@@ -74,7 +74,7 @@ export function logPastWorkout(routines) {
       err,
     ],
   });
-  s.footer.append(
+  append(s.footer, 
     el('button', { type: 'button', class: 'btn', onClick: () => s.close(null) }, 'Cancel'),
     el('button', {
       type: 'button', class: 'btn btn-primary', onClick: async () => {

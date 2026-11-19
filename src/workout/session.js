@@ -3,12 +3,12 @@
 // jumps while the keyboard is open. Structural changes (add/delete/reorder) re-render one card.
 import * as db from '../db/db.js';
 import {
-  el, pageHeader, numberInput, field, openSheet, openModal, confirmDialog, toast, navigate, emptyState,
+  el, append, replaceChildren, pageHeader, numberInput, field, openSheet, openModal, toast, navigate, emptyState,
   fmtTime, fmtDuration, fmtNum, fmtDate, href,
 } from '../ui/index.js';
 import {
   buildEntry, byRecent, lastEntryFor, formatSets, formatTarget, normaliseTarget, fillDownTargets,
-  sessionStats, routineItemsFromWorkout, finishTime, applySchedule, targetCheck,
+  sessionStats, routineItemsFromWorkout, finishTime, applySchedule, targetCheck, prefillSets, refreshAutoSets,
   LIVE_WINDOW_MS, MAX_TARGET_WEIGHT,
 } from '../core/workout.js';
 import { changeDateTime } from './datetime.js';
@@ -17,6 +17,7 @@ import { workoutVolume } from '../core/volume.js';
 import { MUSCLES } from '../core/muscles.js';
 import {
   ensureCss, loadExercises, loadWorkouts, createSaver, exName, shortDate, newRoutine, nextRoutineOrder,
+  confirmAction,
 } from './data.js';
 import { pickExercise } from './picker.js';
 import { tutorialMenuItem } from './tutorial.js';
@@ -30,7 +31,7 @@ export async function mountSession(container, { id }) {
     db.get('workouts', id), loadExercises(), loadWorkouts(), db.getSetting('volume'),
   ]);
   if (!workout) {
-    container.append(pageHeader({ title: 'Workout', back: 'workout' }),
+    append(container, pageHeader({ title: 'Workout', back: 'workout' }),
       emptyState('This workout does not exist (deleted?).', el('a', { class: 'btn', href: '#/workout' }, 'Workout home')));
     return undefined;
   }
@@ -47,8 +48,15 @@ export async function mountSession(container, { id }) {
   const saver = createSaver('workouts', () => (gone ? null : workout),
     (err) => { console.error(err); toast(`Could not save: ${err && err.message}`, { type: 'error' }); });
   const save = () => saver.save();
-  /** Set objects the user edited on this screen (pre-filled rows are "untouched"). */
-  const touched = new WeakSet();
+  // A row the user has not edited or ticked carries `auto: true` (set by prefillSets, persisted with
+  // the workout, so it survives a reload). Any edit, tick, fill-down or applied suggestion removes
+  // it. Auto rows are re-derived when the session's date or the card's target changes.
+  const touch = (s) => { delete s.auto; };
+  /** Re-derive the untouched rows of an entry from the history before this session and its target. */
+  const rederive = (entry) => {
+    const last = lastEntryFor(older, entry.exerciseId);
+    entry.sets = refreshAutoSets(entry.sets, prefillSets(last ? last.entry : null, entry));
+  };
 
   // ------------------------------------------------------------ header
   const subtitle = el('span');
@@ -71,7 +79,7 @@ export async function mountSession(container, { id }) {
       el('button', { type: 'button', class: 'btn btn-icon btn-ghost', 'aria-label': 'Workout menu', onClick: () => workoutMenu() }, '⋯'),
     ].filter(Boolean),
   });
-  header.querySelector('.page-subtitle').replaceChildren(subtitle);
+  replaceChildren(header.querySelector('.page-subtitle'), subtitle);
   const titleEl = header.querySelector('.page-title');
 
   // ------------------------------------------------------------ cards
@@ -81,13 +89,13 @@ export async function mountSession(container, { id }) {
 
   function renderAll() {
     cards.clear();
-    cardsEl.replaceChildren(...workout.exercises.map((entry) => {
+    replaceChildren(cardsEl, ...workout.exercises.map((entry) => {
       const c = renderCard(entry);
       cards.set(entry, c);
       return c;
     }));
     if (!workout.exercises.length) {
-      cardsEl.append(el('div', { class: 'card wk-empty-card' }, el('p', { class: 'muted' }, 'No exercises yet. Add one below.')));
+      append(cardsEl, el('div', { class: 'card wk-empty-card' }, el('p', { class: 'muted' }, 'No exercises yet. Add one below.')));
     }
   }
   function rerenderCard(entry) {
@@ -111,7 +119,10 @@ export async function mountSession(container, { id }) {
       onClick: () => editTarget(entry),
     }, formatTarget(entry));
 
-    const targetHit = el('div', { class: 'wk-tmet small', hidden: true });
+    // Target progress: one line whose slot always exists while the card has a weight target, so
+    // ticking the last required set changes its text only, never the layout below it.
+    const hasWeightTarget = targetCheck(entry) !== null;
+    const targetHit = hasWeightTarget ? el('div', { class: 'wk-tmet small', 'aria-live': 'polite' }) : null;
     const updateTarget = () => {
       const tc = targetCheck(entry);
       rowCtl.forEach((c, i) => {
@@ -119,20 +130,27 @@ export async function mountSession(container, { id }) {
         c.row.classList.toggle('is-hit', hit);
         c.label.setAttribute('aria-label', `${c.name} options${hit ? ', meets the target' : ''}`);
       });
-      targetHit.hidden = !(tc && tc.met);
-      targetHit.textContent = tc && tc.met ? `Target met: ${tc.hits} set${tc.hits === 1 ? '' : 's'} at ${fmtNum(entry.targetWeight, 2)} kg or more` : '';
+      if (!targetHit || !tc) return;
+      const at = `${fmtNum(entry.targetWeight, 2)} kg or more`;
+      targetHit.classList.toggle('is-met', tc.met);
+      targetHit.textContent = tc.met
+        ? `✓ Target met: ${tc.hits} set${tc.hits === 1 ? '' : 's'} at ${at}`
+        : `Target: ${tc.hits} of ${tc.needed} sets at ${at}`;
     };
 
     const fromStart = !!last && isBaseline(last.workout);
-    const lastLine = el('div', { class: 'wk-last small muted' }, !last ? 'No previous session' : fromStart ? startingPointLine(last) : `Last: ${formatSets(last.entry.sets)} · ${shortDate(last.workout.date)}`);
+    // Full card width, at most two lines (CSS clamp); the date is glued to the last set so a "·"
+    // never ends up alone on a line.
+    const lastText = !last ? 'No previous session' : fromStart ? startingPointLine(last) : `Last: ${formatSets(last.entry.sets)}\u00a0·\u00a0${shortDate(last.workout.date)}`;
+    const lastLine = el('div', { class: 'wk-last small muted', title: lastText }, lastText);
     // Live "vs last time": fixed-width slot (reserved even while empty) so the row never reflows.
     const deltaEl = last ? el('div', { class: 'wk-delta small', 'aria-live': 'polite' }) : null;
     const updateDelta = () => {
       if (!deltaEl) return;
       const c = liveComparison(entry, last.entry);
-      if (!c) { deltaEl.replaceChildren(); deltaEl.removeAttribute('aria-label'); deltaEl.title = ''; return; }
+      if (!c) { replaceChildren(deltaEl); deltaEl.removeAttribute('aria-label'); deltaEl.title = ''; return; }
       const what = c.basis === 'reps' ? 'reps' : 'volume';
-      deltaEl.replaceChildren(pctBadge(c.pct), el('span', { class: 'wk-delta-sub muted' }, `${what} vs ${fromStart ? 'start' : 'last'}`));
+      replaceChildren(deltaEl, pctBadge(c.pct), el('span', { class: 'wk-delta-sub muted' }, `${what} vs ${fromStart ? 'start' : 'last'}`));
       const desc = `${what} ${pctWords(c.pct)} versus ${fromStart ? 'the starting point' : 'last time'} (${basisValue(c.basis, c.cur)} vs ${basisValue(c.basis, c.prev)}, first ${c.compared} set${c.compared === 1 ? '' : 's'})`;
       deltaEl.setAttribute('aria-label', desc);
       deltaEl.title = desc;
@@ -140,7 +158,10 @@ export async function mountSession(container, { id }) {
 
     let chip = null;
     let progRow = null;
-    if (suggestion) {
+    // Already applied (now or before a reload): some normal row already carries the suggested
+    // weight, so the chip is not offered again for this session.
+    const applied = !!suggestion && entry.sets.some((s) => s.type === 'normal' && s.weight === suggestion.weight);
+    if (suggestion && !applied) {
       chip = el('button', {
         type: 'button', class: 'chip wk-prog',
         onClick: () => {
@@ -148,7 +169,7 @@ export async function mountSession(container, { id }) {
           const idx = setsForSuggestion(entry.sets, suggestion.from);
           for (const i of idx) {
             entry.sets[i].weight = suggestion.weight;
-            touched.add(entry.sets[i]);
+            touch(entry.sets[i]);
             rowCtl[i].wIn.setNumber(suggestion.weight);
           }
           chip.classList.add('is-active');
@@ -159,13 +180,17 @@ export async function mountSession(container, { id }) {
               type: 'button', class: 'chip wk-raise',
               onClick: () => { raiseTarget(entry, suggestion.weight, targetBtn); raise.remove(); },
             }, `Make ${fmtNum(suggestion.weight, 2)} kg the target`);
-            progRow.append(raise);
+            append(progRow, raise);
           }
           updateTarget();
           save();
         },
       }, `↑ ${fmtNum(suggestion.weight, 2)} kg — ${suggestion.sets} set${suggestion.sets === 1 ? '' : 's'} at ${fmtNum(suggestion.from, 2)} kg hit target`);
-      progRow = el('div', { class: 'wk-prog-row' }, chip);
+      const step = el('button', {
+        type: 'button', class: 'chip wk-prog-step', 'aria-label': `Weight step ${fmtNum(suggestion.increment, 2)} kg, change`,
+        onClick: () => editIncrement(entry),
+      }, `Step ${fmtNum(suggestion.increment, 2)} kg`);
+      progRow = el('div', { class: 'wk-prog-row' }, chip, step);
     }
 
     const noteArea = el('textarea', {
@@ -177,7 +202,7 @@ export async function mountSession(container, { id }) {
     const renderRows = () => {
       rowCtl.length = 0;
       let n = 0;
-      rowsEl.replaceChildren(
+      replaceChildren(rowsEl, 
         el('div', { class: 'wk-set wk-set-head small muted', 'aria-hidden': 'true' },
           el('span', 'Set'), el('span', 'kg'), el('span', 'Reps'), el('span', '')),
         ...entry.sets.map((s, i) => renderRow(s, i, s.type === 'dropset' ? null : ++n)));
@@ -186,33 +211,36 @@ export async function mountSession(container, { id }) {
     function renderRow(set, i, number) {
       const isDrop = set.type === 'dropset';
       const firstNormal = entry.sets.findIndex((s) => s.type === 'normal');
-      let freshFirst = false;
       const wIn = numberInput({
         value: set.weight, min: 0, max: 1000, decimals: 2, placeholder: 'kg', ariaLabel: `Set ${number ?? 'drop'} weight in kg`, class: 'wk-in',
         onInput: (v) => {
           set.weight = v;
-          touched.add(set);
+          touch(set);
           if (set.done) { updateDelta(); updateTarget(); }
-          if (freshFirst) {
-            for (const j of fillDownTargets(entry.sets, i, (k) => !touched.has(entry.sets[k]))) {
-              entry.sets[j].weight = v;
-              rowCtl[j].wIn.setNumber(v);
-            }
+          for (const j of fillDown) {
+            entry.sets[j].weight = v;
+            touch(entry.sets[j]);
+            rowCtl[j].wIn.setNumber(v);
           }
           save();
         },
       });
-      wIn.addEventListener('focus', () => { freshFirst = i === firstNormal && !set.done && !touched.has(set); });
+      // Typing a weight into an untouched first row copies it to the untouched rows below; the rows
+      // are chosen when the field gets focus, so every keystroke ("1", "10", "100") reaches them.
+      let fillDown = [];
+      wIn.addEventListener('focus', () => {
+        fillDown = i === firstNormal && !set.done && set.auto ? fillDownTargets(entry.sets, i, (k) => !!entry.sets[k].auto) : [];
+      });
       const rIn = numberInput({
         value: set.reps, min: 0, max: 999, integer: true, placeholder: 'reps', ariaLabel: `Set ${number ?? 'drop'} reps`, class: 'wk-in',
-        onInput: (v) => { set.reps = v; touched.add(set); if (set.done) { updateDelta(); updateTarget(); } save(); },
+        onInput: (v) => { set.reps = v; touch(set); if (set.done) { updateDelta(); updateTarget(); } save(); },
       });
       const doneBtn = el('button', {
         type: 'button', class: 'wk-done', 'aria-label': `Set ${number ?? 'drop'} done`, 'aria-pressed': set.done ? 'true' : 'false',
         onClick: () => {
           if (!set.done && set.reps === null) { toast('Enter reps first'); rIn.focus(); return; }
           set.done = !set.done;
-          touched.add(set);
+          touch(set);
           doneBtn.setAttribute('aria-pressed', set.done ? 'true' : 'false');
           row.classList.toggle('is-done', set.done);
           updateDelta();
@@ -238,7 +266,8 @@ export async function mountSession(container, { id }) {
       el('div', { class: 'wk-card-head' },
         el('h2', { class: 'wk-ex-name' }, exName(exMap, entry.exerciseId)),
         el('button', { type: 'button', class: 'btn btn-icon btn-ghost', 'aria-label': 'Exercise menu', onClick: () => exerciseMenu(entry) }, '⋯')),
-      el('div', { class: 'wk-meta' }, targetBtn, lastLine, deltaEl),
+      el('div', { class: 'wk-meta' }, targetBtn, deltaEl),
+      lastLine,
       targetHit,
       progRow,
       rowsEl,
@@ -277,7 +306,7 @@ export async function mountSession(container, { id }) {
     const set = entry.sets[i];
     if (!set) return;
     const s = openSheet({ title: set.type === 'dropset' ? 'Dropset' : 'Set' });
-    s.body.append(el('div', { class: 'list' },
+    append(s.body, el('div', { class: 'list' },
       el('button', {
         type: 'button', class: 'list-item', onClick: () => {
           set.type = set.type === 'dropset' ? 'normal' : 'dropset';
@@ -286,7 +315,9 @@ export async function mountSession(container, { id }) {
       }, el('div', { class: 'li-main' }, set.type === 'dropset' ? 'Make normal set' : 'Make dropset')),
       el('button', {
         type: 'button', class: 'list-item', onClick: () => {
-          entry.sets.splice(i + 1, 0, { ...set, done: false });
+          const copy = { ...set, done: false };
+          touch(copy);
+          entry.sets.splice(i + 1, 0, copy);
           s.close(); rerenderCard(entry); save();
         },
       }, el('div', { class: 'li-main' }, 'Duplicate set')),
@@ -306,22 +337,71 @@ export async function mountSession(container, { id }) {
     const reps = numberInput({ value: entry.targetReps, min: 1, max: 100, integer: true, ariaLabel: 'Target reps' });
     const max = numberInput({ value: entry.targetRepsMax, min: 1, max: 100, integer: true, placeholder: 'optional', ariaLabel: 'Max reps' });
     const wt = numberInput({ value: entry.targetWeight ?? null, min: 0, max: MAX_TARGET_WEIGHT, decimals: 2, placeholder: 'optional', ariaLabel: 'Target weight in kg' });
+    const ex = exMap.get(entry.exerciseId);
+    const inc = ex ? numberInput({ value: incrementOf(ex), min: 0, max: 50, decimals: 2, ariaLabel: 'Weight step in kg' }) : null;
     const s = openSheet({
       title: `Target · ${exName(exMap, entry.exerciseId)}`,
       content: [
         el('div', { class: 'grid-3' }, field('Sets', sets), field('Reps', reps), field('Max reps', max)),
-        field('Weight', wt, { unit: 'kg', hint: 'Optional. Leave empty for bodyweight or no weight target.' }),
+        el('div', { class: 'grid-2' },
+          field('Weight', wt, { unit: 'kg' }),
+          inc ? field('Weight step', inc, { unit: 'kg' }) : null),
+        el('p', { class: 'field-hint' }, 'Weight is optional (empty = bodyweight or no weight target). Weight step = how much the suggestion adds (0 = no suggestions); it applies to this exercise everywhere.'),
         el('p', { class: 'field-hint' }, 'A range like 3 x 6–8 progresses once every set at the top weight reaches the max.'),
       ],
     });
-    s.footer.append(
+    append(s.footer, 
       el('button', { type: 'button', class: 'btn', onClick: () => s.close() }, 'Cancel'),
       el('button', {
-        type: 'button', class: 'btn btn-primary', onClick: () => {
+        type: 'button', class: 'btn btn-primary', onClick: async () => {
           if (sets.getNumber() === null || reps.getNumber() === null) { toast('Enter sets and reps', { type: 'error' }); return; }
           if (wt.value.trim() && wt.getNumber() === null) { toast('Enter a weight in kg or leave it empty', { type: 'error' }); return; }
+          if (inc && inc.getNumber() === null) { toast('Enter a weight step from 0 to 50 kg', { type: 'error' }); return; }
           Object.assign(entry, normaliseTarget({ targetSets: sets.getNumber(), targetReps: reps.getNumber(), targetRepsMax: max.getNumber(), targetWeight: wt.getNumber() }));
+          // Rows the user has not touched follow the new target (edited / ticked rows stay).
+          rederive(entry);
+          if (inc && inc.getNumber() !== incrementOf(ex)) await saveIncrement(ex, inc.getNumber());
           s.close(); rerenderCard(entry); save();
+        },
+      }, 'Save'));
+  }
+
+  /** The exercise's weight step for suggestions (missing -> the SPEC default 2.5 kg). */
+  function incrementOf(ex) {
+    return typeof ex.increment === 'number' && Number.isFinite(ex.increment) ? ex.increment : 2.5;
+  }
+
+  /** Store a new weight step on the exercise (a user edit) and redraw every card of it. */
+  async function saveIncrement(ex, value) {
+    ex.increment = value;
+    ex.updatedAt = Date.now();
+    try { await db.put('exercises', ex); } catch (err) { console.error(err); toast(`Could not save: ${err && err.message}`, { type: 'error' }); return; }
+    for (const e of workout.exercises) if (e.exerciseId === ex.id) rerenderCard(e);
+    toast(value > 0 ? `Weight step for ${ex.name}: ${fmtNum(value, 2)} kg` : `No suggestions for ${ex.name}`, { type: 'success' });
+  }
+
+  /** "Step 2.5 kg" next to the progression chip: change the exercise's weight step. */
+  function editIncrement(entry) {
+    const ex = exMap.get(entry.exerciseId);
+    if (!ex) return;
+    const inc = numberInput({ value: incrementOf(ex), min: 0, max: 50, decimals: 2, ariaLabel: 'Weight step in kg' });
+    const s = openSheet({
+      title: `Weight step · ${ex.name}`,
+      content: [
+        field('Step', inc, { unit: 'kg', hint: 'What the suggestion adds once every set hit the target, e.g. 2.5 for dumbbells in 2.5 kg steps. 0 = no suggestions.' }),
+        el('div', { class: 'chips' }, [1, 1.25, 2, 2.5, 5].map((v) => el('button', {
+          type: 'button', class: 'chip', onClick: () => inc.setNumber(v),
+        }, `${fmtNum(v, 2)} kg`))),
+      ],
+    });
+    append(s.footer,
+      el('button', { type: 'button', class: 'btn', onClick: () => s.close() }, 'Cancel'),
+      el('button', {
+        type: 'button', class: 'btn btn-primary', onClick: async () => {
+          const v = inc.getNumber();
+          if (v === null) { toast('Enter a step from 0 to 50 kg', { type: 'error' }); return; }
+          s.close();
+          if (v !== incrementOf(ex)) await saveIncrement(ex, v);
         },
       }, 'Save'));
   }
@@ -352,7 +432,7 @@ export async function mountSession(container, { id }) {
     const s = openSheet({ title: exName(exMap, entry.exerciseId) });
     const item = (label, fn, cls) => el('button', { type: 'button', class: ['list-item', cls], onClick: () => { s.close(); fn(); } },
       el('div', { class: 'li-main' }, label));
-    s.body.append(el('div', { class: 'list' },
+    append(s.body, el('div', { class: 'list' },
       tutorialMenuItem(exMap.get(entry.exerciseId) || { id: entry.exerciseId, name: exName(exMap, entry.exerciseId) }, () => s.close()),
       item('Edit target', () => editTarget(entry)),
       item('Add note', () => { const c = cards.get(entry); const t = c && c.querySelector('.wk-note'); if (t) { t.hidden = false; t.focus(); } }),
@@ -405,7 +485,7 @@ export async function mountSession(container, { id }) {
     const s = openSheet({ title: 'Workout' });
     const item = (label, fn, cls) => el('button', { type: 'button', class: ['list-item', cls], onClick: () => { s.close(); fn(); } },
       el('div', { class: 'li-main' }, label));
-    s.body.append(el('div', { class: 'list' },
+    append(s.body, el('div', { class: 'list' },
       item('Rename', rename),
       item('Change date, time, duration', editDateTime),
       item('Save as routine', saveAsRoutine),
@@ -416,7 +496,7 @@ export async function mountSession(container, { id }) {
   function rename() {
     const input = el('input', { class: 'input', type: 'text', value: workout.name, maxlength: '60' });
     const s = openSheet({ title: 'Rename workout', content: field('Name', input) });
-    s.footer.append(el('button', {
+    append(s.footer, el('button', {
       type: 'button', class: 'btn btn-primary', onClick: () => {
         const n = input.value.trim();
         if (!n) return;
@@ -431,6 +511,8 @@ export async function mountSession(container, { id }) {
     if (!v) return;
     applySchedule(workout, v);
     older = others.filter((w) => byRecent(w, workout) > 0);
+    // Untouched rows follow the new date (pre-filled from the sessions before it).
+    if (!finished()) for (const e of workout.exercises) rederive(e);
     updateSubtitle();
     renderAll();
     await save();
@@ -445,7 +527,7 @@ export async function mountSession(container, { id }) {
       title: 'Save as routine',
       content: [field('Routine name', input), el('p', { class: 'muted small' }, `${items.length} exercise${items.length === 1 ? '' : 's'} with their targets.`)],
     });
-    s.footer.append(el('button', {
+    append(s.footer, el('button', {
       type: 'button', class: 'btn btn-primary', onClick: async () => {
         const n = input.value.trim();
         if (!n) { input.focus(); return; }
@@ -463,10 +545,17 @@ export async function mountSession(container, { id }) {
     const undone = workout.exercises.reduce((n, e) => n + e.sets.filter((s) => !s.done).length, 0);
     const stats0 = sessionStats(workout);
     if (!stats0.setsDone) {
-      const ok = await confirmDialog({ title: 'No sets ticked', message: 'Nothing is marked done. Finish anyway?', confirmLabel: 'Finish' });
+      // Never store a finished workout without a done set: offer to discard it instead.
+      const ok = await confirmAction({
+        title: 'Nothing logged',
+        message: 'No set is ticked, so there is nothing to save. Discard this workout?',
+        confirmLabel: 'Discard workout', cancelLabel: 'Keep logging', danger: true,
+      });
       if (!ok) return;
+      await removeWorkout('Workout discarded');
+      return;
     } else if (undone) {
-      const ok = await confirmDialog({
+      const ok = await confirmAction({
         title: 'Finish workout?',
         message: `${undone} set${undone === 1 ? ' is' : 's are'} not ticked and will not count.`,
         confirmLabel: 'Finish',
@@ -503,23 +592,28 @@ export async function mountSession(container, { id }) {
         rows.length ? el('div', { class: 'stack wk-summary-muscles' }, el('div', { class: 'section-title' }, 'Sets per muscle'), ...rows) : null,
       ],
     });
-    m.footer.append(
+    append(m.footer, 
       el('a', { class: 'btn btn-block', href: href(`workout/summary/${encodeURIComponent(workout.id)}`) }, 'Full analysis'),
       el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: () => m.close('done') }, 'Done'));
     m.closed.then((r) => { if (r === 'done') navigate('workout', { replace: true }); });
   }
 
   async function discard() {
-    const ok = await confirmDialog({
+    const ok = await confirmAction({
       title: finished() ? 'Delete workout?' : 'Discard workout?',
       message: 'All sets of this workout will be deleted. This cannot be undone.',
       confirmLabel: finished() ? 'Delete' : 'Discard', danger: true,
     });
     if (!ok) return;
+    await removeWorkout(finished() ? 'Workout deleted' : 'Workout discarded');
+  }
+
+  async function removeWorkout(message) {
     gone = true;
+    clearInterval(timer);
     await saver.flush();
     await db.remove('workouts', workout.id);
-    toast(finished() ? 'Workout deleted' : 'Workout discarded');
+    toast(message);
     navigate('workout', { replace: true });
   }
 
@@ -531,7 +625,7 @@ export async function mountSession(container, { id }) {
       ? el('a', { class: 'btn btn-primary btn-block', href: `#/workout/history/${encodeURIComponent(workout.id)}` }, 'Done')
       : el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: finish }, 'Finish workout'),
     el('button', { type: 'button', class: 'btn btn-ghost btn-block text-danger', onClick: discard }, finished() ? 'Delete workout' : 'Discard workout'));
-  container.append(header, cardsEl, footer);
+  append(container, header, cardsEl, footer);
 
   // Never lose a keystroke: write pending changes when the page is hidden.
   const onHide = () => { if (document.visibilityState === 'hidden') saver.save(); };

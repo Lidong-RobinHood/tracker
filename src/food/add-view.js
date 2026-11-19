@@ -12,7 +12,8 @@ import { createScanner } from './scanner.js';
 import { openPortion, editAndSaveFood } from './portion.js';
 import { openLogMeal, openEditMeal, mealKcal } from './meals.js';
 import { foodRow, segmented, ensureCss, per100Text } from './widgets.js';
-import { buildPhotoScan } from './photo-tab.js';
+import { buildPhotoScan, PHOTO_DRAFT } from './photo-tab.js';
+import { loadDraft, saveDraft, clearDraft } from '../ui/draft.js';
 
 const TABS = [
   { value: 'search', label: 'Search' },
@@ -314,11 +315,11 @@ export async function mountAdd(container, params, ctx) {
         : emptyState('No saved meals yet.'));
     }
     async function open(m) {
-      const r = await openLogMeal(m, { date, meal });
+      const r = await openLogMeal(m, { date, meal, onChange: render });
       if (r === 'logged') finished();
       else if (r === 'changed') render();
     }
-    async function edit(m) { if (await openEditMeal(m)) render(); }
+    async function edit(m) { if (await openEditMeal(m, { onChange: render })) render(); }
     return { el: wrap, show: render };
   }
 
@@ -331,6 +332,19 @@ export async function mountAdd(container, params, ctx) {
     const fat = numberInput({ min: 0, max: 1000, decimals: 1, ariaLabel: 'Fat', onInput: hint });
     const kcalField = field('Calories *', kcal, { unit: 'kcal' });
     const hintEl = el('p', { class: 'field-hint' });
+    // Half-filled form survives a reload (iOS evicting the app): localStorage draft per date + meal.
+    const QUICK_DRAFT = 'quick-add';
+    const inputs = { name, kcal, protein, carbs, fat };
+    const saveQuick = () => {
+      const v = Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, i.value]));
+      if (Object.values(v).some((x) => x.trim())) saveDraft(QUICK_DRAFT, { date, meal, ...v });
+      else clearDraft(QUICK_DRAFT);
+    };
+    for (const i of Object.values(inputs)) i.addEventListener('input', saveQuick);
+    const qd = loadDraft(QUICK_DRAFT);
+    const restoredNote = qd && qd.date === date && qd.meal === meal
+      ? el('p', { class: 'small editor-note', role: 'status' }, 'Restored the values you typed before the app was reloaded.') : null;
+    if (restoredNote) { for (const [k, i] of Object.entries(inputs)) i.value = typeof qd[k] === 'string' ? qd[k] : ''; hint(); }
     function hint() {
       const m = macroKcal({ protein: protein.getNumber(), carbs: carbs.getNumber(), fat: fat.getNumber() });
       hintEl.textContent = m ? `Macros add up to ${fmtNum(m, 0)} kcal.` : '';
@@ -342,11 +356,13 @@ export async function mountAdd(container, params, ctx) {
       for (const i of [protein, carbs, fat]) if (i.value.trim() && i.getNumber() === null) { i.focus(); toast('Enter a valid number.', { type: 'error' }); return; }
       const e = quickAddEntry({ id: crypto.randomUUID(), date, meal, name: name.value, kcal: k, protein: protein.getNumber(), carbs: carbs.getNumber(), fat: fat.getNumber(), now: Date.now() });
       await putEntry(e);
+      clearDraft(QUICK_DRAFT);
       toast(`Added ${fmtNum(k, 0)} kcal to ${mealLabel(meal)}`, { type: 'success' });
       finished();
     }
     const manualCard = el('div', { class: 'card stack quick-manual' },
       el('h2', { class: 'section-title' }, 'Enter by hand'),
+      restoredNote,
       field('Name', name),
       kcalField,
       el('div', { class: 'grid-3' }, field('Protein', protein, { unit: 'g' }), field('Carbs', carbs, { unit: 'g' }), field('Fat', fat, { unit: 'g' })),
@@ -378,7 +394,9 @@ export async function mountAdd(container, params, ctx) {
   }
 
   const builders = { search: buildSearch, scan: buildScan, recent: buildRecent, meals: buildMeals, quick: buildQuick };
-  let want = ctx.query.tab || lastTab();
+  // An unfinished photo review or quick add for this date and meal (restored after a reload) opens Quick add.
+  const hasDraft = [PHOTO_DRAFT, 'quick-add'].some((n) => { const d = loadDraft(n); return d && d.date === date && d.meal === meal; });
+  let want = ctx.query.tab || (hasDraft ? 'quick' : lastTab());
   // The former "Photo" tab now lives in Quick add: old links (and a remembered tab) open it there.
   let photoFirst = want === 'photo';
   if (want === 'photo') want = 'quick';

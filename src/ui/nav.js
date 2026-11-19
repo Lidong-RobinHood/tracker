@@ -1,4 +1,5 @@
 // Navigation helpers. The router itself lives in src/app.js and listens to hashchange.
+import { _afterHistory } from './overlay.js';
 
 /** 'workout/session/abc' -> '#/workout/session/abc' (use for <a href>). Segments are not encoded. */
 export function href(path) {
@@ -11,8 +12,12 @@ export function href(path) {
  */
 export function navigate(path, { replace = false } = {}) {
   const h = href(path);
-  if (replace) location.replace(h);
-  else location.hash = h;
+  // Right after an overlay closed, its history entry is still being removed: wait for that, so the
+  // new entry is not put on top of it (or replaces it) and then undone by that step.
+  _afterHistory(() => {
+    if (replace) location.replace(h);
+    else location.hash = h;
+  });
 }
 
 let inAppSteps = 0;
@@ -21,7 +26,7 @@ export function _noteNavigation() { inAppSteps++; }
 
 /** History back if we navigated inside the app before, else go to `fallback` (e.g. after a deep link). */
 export function back(fallback = 'diary') {
-  if (inAppSteps > 0) history.back();
+  if (inAppSteps > 0) _afterHistory(() => history.back());
   else navigate(fallback, { replace: true });
 }
 

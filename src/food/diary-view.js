@@ -4,12 +4,14 @@ import {
 } from '../ui/index.js';
 import { today, addDays, isValidDate, weekStart } from '../core/dates.js';
 import { scale } from '../core/nutrition.js';
-import { MEALS, mealLabel, groupByMeal, totals, progress, copyEntries, isQuickAdd } from '../core/food-diary.js';
-import { targetPercents, shareOfDay, fmtPercent } from '../core/food-percent.js';
+import { MEALS, mealLabel, groupByMeal, totals, copyEntries, isQuickAdd } from '../core/food-diary.js';
+import { targetStatus, shareOfDay, fmtPercent } from '../core/food-percent.js';
 import { dayEntries, putEntry, putEntries, removeEntry, removeEntries, getTargets, updateFoodFromEntry, getFood } from './store.js';
 import { openFoodEditor } from './food-editor.js';
 import { openSaveAsMeal } from './meals.js';
 import { ensureCss, mealSelect, dateInput, macroText } from './widgets.js';
+import { PHOTO_DRAFT } from './photo-tab.js';
+import { loadDraft } from '../ui/draft.js';
 
 const LABEL = { kcal: 'Calories', protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
 const uuid = () => crypto.randomUUID();
@@ -41,7 +43,14 @@ export async function mountDiary(container, params) {
   const todayLink = isToday ? null : el('a', { class: 'btn btn-sm today-link', href: href(`diary/${today()}`) }, 'Jump to today');
   const summary = el('section', { class: 'card day-summary', 'aria-label': 'Day totals' });
   const mealsWrap = el('div', { class: 'stack' });
-  container.append(...[todayLink, summary, mealsWrap].filter(Boolean));
+  // A meal-photo review left unfinished (e.g. the app was reloaded) is kept for 24 h: offer to continue.
+  const pd = loadDraft(PHOTO_DRAFT);
+  const draftLink = pd && isValidDate(pd.date) && Array.isArray(pd.rows)
+    ? el('a', { class: 'card row-between photo-draft-link', href: href(`food/add/${pd.date}/${pd.meal}?tab=quick`) },
+      el('span', { class: 'small' }, `Unfinished meal-photo estimate for ${mealLabel(pd.meal)}, ${fmtDay(pd.date)}`),
+      el('span', { class: 'small' }, 'Continue ›'))
+    : null;
+  container.append(...[todayLink, draftLink, summary, mealsWrap].filter(Boolean));
 
   let targets = await getTargets();
   let entries = [];
@@ -56,36 +65,40 @@ export async function mountDiary(container, params) {
 
   function renderSummary() {
     const t = totals(entries);
-    const p = progress(t, targets);
-    const pct = targetPercents(t, targets);
-    const kcal = p[0];
+    // One rounding rule for everything shown: eaten rounded once, left/over from the rounded value.
+    const st = Object.fromEntries(['kcal', 'protein', 'carbs', 'fat'].map((k) => [k, targetStatus(t[k], targets && targets[k])]));
+    const kcal = st.kcal;
     replaceChildren(summary,
       el('div', { class: 'kcal-line' },
-        el('div', null, el('div', { class: 'kcal-big num' }, fmtNum(kcal.consumed, 0)), el('div', { class: 'small muted' }, `of ${fmtNum(kcal.target, 0)} kcal`, pctEl(pct.kcal, ' · '))),
+        el('div', null, el('div', { class: 'kcal-big num' }, fmtNum(kcal.eaten, 0)), el('div', { class: 'small muted' }, `of ${fmtNum(kcal.target, 0)} kcal`, pctEl(kcal, ' · '))),
         el('div', { class: 'kcal-remaining' },
-          el('div', { class: ['kcal-big num', kcal.remaining < 0 ? 'text-warning' : null] }, fmtNum(Math.abs(kcal.remaining ?? 0), 0)),
-          el('div', { class: 'small muted' }, kcal.remaining < 0 ? 'kcal over' : 'kcal left'))),
+          el('div', { class: ['kcal-big num', kcal.isOver ? 'text-warning' : null] }, fmtNum(kcal.isOver ? kcal.over : kcal.left ?? 0, 0)),
+          el('div', { class: 'small muted' }, kcal.isOver ? 'kcal over' : 'kcal left'))),
       bar(kcal, 'kcal'),
-      el('div', { class: 'macro-bars' }, p.slice(1).map((x) => el('div', { class: 'macro-bar' },
-        el('div', { class: 'small macro-label' }, el('span', null, LABEL[x.key]), pctEl(pct[x.key])),
-        el('div', { class: 'num macro-amounts' }, `${fmtNum(x.consumed, 0)}`, el('span', { class: 'muted small' }, ` / ${fmtNum(x.target, 0)} g`)),
-        bar(x, x.key),
-        el('div', { class: ['small num', x.remaining < 0 ? 'text-warning' : 'muted'] }, x.target === null ? '' : x.remaining < 0 ? `${fmtNum(-x.remaining, 0)} g over` : `${fmtNum(x.remaining, 0)} g left`)))),
+      el('div', { class: 'macro-bars' }, ['protein', 'carbs', 'fat'].map((key) => {
+        const x = st[key];
+        return el('div', { class: 'macro-bar' },
+          el('div', { class: 'small macro-label' }, el('span', null, LABEL[key]), pctEl(x)),
+          el('div', { class: 'num macro-amounts' }, `${fmtNum(x.eaten, 0)}`, el('span', { class: 'muted small' }, ` / ${fmtNum(x.target, 0)} g`)),
+          bar(x, key),
+          el('div', { class: ['small num', x.isOver ? 'text-warning' : 'muted'] }, x.target === null ? '' : x.isOver ? `${fmtNum(x.over, 0)} g over` : `${fmtNum(x.left, 0)} g left`));
+      })),
       // Weekly report for the Mon–Sun week of the day being viewed (route owned by trends).
       el('a', { class: 'week-report-link', href: href(`trends/week/${weekStart(date)}`) }, 'Weekly report', el('span', { 'aria-hidden': 'true' }, ' ›')));
   }
 
   /** '62 %' (warning colour and bold when over target); nothing if there is no target. */
-  function pctEl(p, prefix = '') {
-    if (!p || p.pct === null) return null;
-    return el('span', { class: ['num pct', p.over ? 'text-warning pct-over' : null], title: p.over ? 'Over target' : 'Of daily target' }, `${prefix}${fmtPercent(p.pct)}`);
+  function pctEl(x, prefix = '') {
+    if (!x || x.pct === null) return null;
+    return el('span', { class: ['num pct', x.isOver ? 'text-warning pct-over' : null], title: x.isOver ? 'Over target' : 'Of daily target' }, `${prefix}${fmtPercent(x.pct)}`);
   }
 
+  /** @param {ReturnType<typeof targetStatus>} x */
   function bar(x, key) {
     const pct = Math.max(0, Math.min(1, x.fraction)) * 100;
     return el('div', {
-      class: ['bar', `bar-${key}`, x.fraction > 1 ? 'is-over' : null], role: 'progressbar',
-      'aria-label': LABEL[key], 'aria-valuemin': '0', 'aria-valuemax': String(Math.round(x.target ?? 0)), 'aria-valuenow': String(Math.round(x.consumed)),
+      class: ['bar', `bar-${key}`, x.isOver ? 'is-over' : null], role: 'progressbar',
+      'aria-label': LABEL[key], 'aria-valuemin': '0', 'aria-valuemax': String(x.target ?? 0), 'aria-valuenow': String(x.eaten),
     }, el('div', { class: 'bar-fill', style: { width: `${pct}%` } }));
   }
 
@@ -109,7 +122,7 @@ export async function mountDiary(container, params) {
     return el('button', { type: 'button', class: 'list-item entry-row', onClick: () => editEntry(e) },
       el('div', { class: 'li-main' },
         el('div', { class: 'li-title' }, e.name),
-        el('div', { class: 'li-sub' }, isQuick(e) ? `Quick add · ${macroText(v)}` : [fmtAmount(e.amount, e.basis), e.brand].filter(Boolean).join(' · '))),
+        el('div', { class: 'li-sub' }, isQuick(e) ? (e.name === 'Quick add' ? macroText(v) : `Quick add · ${macroText(v)}`) : [fmtAmount(e.amount, e.basis), e.brand].filter(Boolean).join(' · '))),
       el('div', { class: 'li-trail num' }, `${fmtNum(v.kcal, 0)}`, el('span', { class: 'small muted' }, ' kcal')));
   }
 

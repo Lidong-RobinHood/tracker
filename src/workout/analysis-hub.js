@@ -3,9 +3,10 @@
 // exercises, month, weekly sets) and core/workout-analytics.js analyseWorkout (last workout), so they
 // equal the screens they link to. All workouts are read once and scanned once.
 import * as db from '../db/db.js';
-import { el, pageHeader, href, fmtNum, fmtDate } from '../ui/index.js';
+import { el, append, pageHeader, href, fmtNum, fmtDate } from '../ui/index.js';
 import { today } from '../core/dates.js';
 import { isBaseline } from '../core/baseline.js';
+import { isLoggedWorkout } from '../core/workout.js';
 import { analyseWorkout, METRICS } from '../core/workout-analytics.js';
 import { formatPct } from '../core/workout-progress.js';
 import { volumeWeights } from '../core/volume.js';
@@ -75,20 +76,20 @@ export async function mountAnalysisHub(container) {
   const now = today();
   const name = (id) => exName(exMap, id);
   const open = findUnfinished(workouts);
-  const last = workouts.find((w) => w.finishedAt && !isBaseline(w)) || null;
+  const last = workouts.find((w) => isLoggedWorkout(w) && !isBaseline(w)) || null;
   const scan = scanHistory(workouts);
 
   container.classList.add('wk-an', 'wk-hub');
-  container.append(pageHeader({ title: 'Workout' }), workoutNav('analysis'));
+  append(container, pageHeader({ title: 'Workout' }), workoutNav('analysis'));
 
   if (open) {
-    container.append(el('a', { class: 'wk-hub-open', href: href(`workout/session/${encodeURIComponent(open.id)}`) },
+    append(container, el('a', { class: 'wk-hub-open', href: href(`workout/session/${encodeURIComponent(open.id)}`) },
       el('span', { class: 'grow' }, el('span', { class: 'wk-hub-kicker' }, 'Not finished'), ' ', `${open.name} · ${shortDate(open.date)}`),
       el('span', { class: 'wk-hub-go' }, 'Resume ›')));
   }
 
   if (!last) {
-    container.append(el('section', { class: 'section' },
+    append(container, el('section', { class: 'section' },
       el('h2', { class: 'section-title' }, 'Last workout'),
       el('div', { class: 'wk-an-rules' },
         el('p', { class: 'wk-an-line' }, open ? 'No finished workout yet. Finish the one in progress to see its analysis here.' : 'No finished workout yet.'),
@@ -96,16 +97,16 @@ export async function mountAnalysisHub(container) {
       el('div', { class: 'wk-hub-actions' },
         el('a', { class: 'btn btn-primary', href: href('workout') }, open ? 'Go to Train' : 'Start a workout'),
         el('a', { class: 'btn', href: href('workout/starting-point') }, 'Starting point'))));
-    container.append(linksSection(targets));
+    append(container, linksSection(targets));
     return;
   }
 
-  container.append(lastSection(last, analyseWorkout(workouts, last, exMap)));
-  container.append(monthSection(monthComparison(scan.sessions, scan.byWorkout, now)));
-  container.append(recordsSection(recentRecords(scan.records, 8), name));
-  if (routines.length) container.append(routinesSection(routines, routineOverview(workouts, routines)));
-  container.append(exercisesSection(topExercises(scan.histories, now, { weeks: WEEKS, limit: 6 }), name));
-  container.append(setsSection(weeklyMuscleSets(workouts, exMap, volumeWeights(rawWeights), now, { weeks: SET_WEEKS, targets }), targets));
+  append(container, lastSection(last, analyseWorkout(workouts, last, exMap)));
+  append(container, monthSection(monthComparison(scan.sessions, scan.byWorkout, now)));
+  append(container, recordsSection(recentRecords(scan.records, 8), name));
+  if (routines.length) append(container, routinesSection(routines, routineOverview(workouts, routines)));
+  append(container, exercisesSection(topExercises(scan.histories, now, { weeks: WEEKS, limit: 6 }), name));
+  append(container, setsSection(weeklyMuscleSets(workouts, exMap, volumeWeights(rawWeights), now, { weeks: SET_WEEKS, targets }), targets));
 }
 
 // ---------------------------------------------------------------- sections
@@ -154,11 +155,11 @@ function monthSection(m) {
 function recordsSection(groups, name) {
   const sec = el('section', { class: 'section' }, el('h2', { class: 'section-title' }, 'Recent records'));
   if (!groups.length) {
-    sec.append(el('div', { class: 'wk-an-rules' },
+    append(sec, el('div', { class: 'wk-an-rules' },
       el('p', { class: 'wk-an-line muted' }, 'No records yet. A record is a set or session that beats every earlier one for that exercise; the first time you do an exercise only sets the mark to beat.')));
     return sec;
   }
-  sec.append(el('div', { class: 'wk-hub-list' }, groups.map((g) => {
+  append(sec, el('div', { class: 'wk-hub-list' }, groups.map((g) => {
     const more = g.others.map((r) => METRICS[r.metric].short);
     return el('a', { class: 'wk-hub-row', href: summaryHref(g.workoutId) },
       el('div', { class: 'wk-hub-main' },
@@ -170,7 +171,7 @@ function recordsSection(groups, name) {
         el('div', { class: 'wk-hub-sub' }, shortDate(g.date))),
       el('span', { class: 'wk-an-chev', 'aria-hidden': 'true' }, '›'));
   })));
-  sec.append(el('p', { class: 'wk-an-note' }, 'All-time records, newest first; each opens that workout’s analysis.'));
+  append(sec, el('p', { class: 'wk-an-note' }, 'All-time records, newest first; each opens that workout’s analysis.'));
   return sec;
 }
 
@@ -197,9 +198,9 @@ function routinesSection(routines, rows) {
 function exercisesSection(rows, name) {
   const sec = el('section', { class: 'section' }, el('h2', { class: 'section-title' }, `Exercises · last ${WEEKS} weeks`));
   if (!rows.length) {
-    sec.append(el('div', { class: 'wk-an-rules' }, el('p', { class: 'wk-an-line muted' }, `No sets in the last ${WEEKS} weeks.`)));
+    append(sec, el('div', { class: 'wk-an-rules' }, el('p', { class: 'wk-an-line muted' }, `No sets in the last ${WEEKS} weeks.`)));
   } else {
-    sec.append(el('div', { class: 'wk-hub-list' }, rows.map((x) => {
+    append(sec, el('div', { class: 'wk-hub-list' }, rows.map((x) => {
       const reps = x.metric === 'bestReps';
       const val = x.value === null ? '–' : reps ? `${fmtNum(x.value, 0)} reps` : `${fmtNum(x.value, 1)} kg`;
       return el('a', { class: 'wk-hub-row', href: href(`workout/exercises/${encodeURIComponent(x.exerciseId)}`) },
@@ -212,20 +213,20 @@ function exercisesSection(rows, name) {
           el('div', { class: 'wk-hub-sub' }, x.pct === null ? (x.points.length > 1 ? '–' : 'one session') : pctText(x.pct))),
         el('span', { class: 'wk-an-chev', 'aria-hidden': 'true' }, '›'));
     })));
-    sec.append(el('p', { class: 'wk-an-note' }, `Most sessions in the last ${WEEKS} weeks. Value = latest session (best set’s est. 1RM; most reps in a set for bodyweight); % = versus the first session in these ${WEEKS} weeks.`));
+    append(sec, el('p', { class: 'wk-an-note' }, `Most sessions in the last ${WEEKS} weeks. Value = latest session (best set’s est. 1RM; most reps in a set for bodyweight); % = versus the first session in these ${WEEKS} weeks.`));
   }
-  sec.append(el('a', { class: 'wk-hub-more', href: href('workout/exercises') }, 'All exercises ›'));
+  append(sec, el('a', { class: 'wk-hub-more', href: href('workout/exercises') }, 'All exercises ›'));
   return sec;
 }
 
 function setsSection(data, targets) {
   const sec = el('section', { class: 'section' }, el('h2', { class: 'section-title' }, `Weekly sets per muscle · ${SET_WEEKS} weeks`));
   if (!data.rows.length) {
-    sec.append(el('div', { class: 'wk-an-rules' }, el('p', { class: 'wk-an-line muted' }, `No sets in the last ${SET_WEEKS} weeks.`)));
+    append(sec, el('div', { class: 'wk-an-rules' }, el('p', { class: 'wk-an-line muted' }, `No sets in the last ${SET_WEEKS} weeks.`)));
   } else {
     const max = Math.max(1, ...data.rows.map((r) => r.max), ...data.rows.map((r) => targets[r.muscle] || 0));
     const first = data.weeks[0]; const lastWk = data.weeks[data.weeks.length - 1];
-    sec.append(el('div', { class: 'wk-hub-sets' },
+    append(sec, el('div', { class: 'wk-hub-sets' },
       el('div', { class: 'wk-hub-set wk-hub-set-head', 'aria-hidden': 'true' },
         el('span'), el('span', { class: 'wk-hub-weeks' }, el('span', shortDate(first.from)), el('span', 'this wk')),
         el('span', { class: 'wk-hub-setnum' }, 'this wk')),
@@ -246,9 +247,9 @@ function setsSection(data, targets) {
               v.direct > 0 ? el('span', { class: 'wk-hub-seg is-direct', style: { flexGrow: String(v.direct) } }) : null) : null))),
         el('span', { class: 'wk-hub-setnum num', 'aria-hidden': 'true' }, t ? `${fmtNum(cur.total, 2)}/${fmtNum(t, 1)}` : fmtNum(cur.total, 2)));
       })));
-    sec.append(el('p', { class: 'wk-an-note' }, `Weighted sets per Mon–Sun week, oldest left, this week (from ${shortDate(lastWk.from)}) right. Solid = direct (muscle is a main mover), faint = partial (it assists); dashed line = weekly target.`));
+    append(sec, el('p', { class: 'wk-an-note' }, `Weighted sets per Mon–Sun week, oldest left, this week (from ${shortDate(lastWk.from)}) right. Solid = direct (muscle is a main mover), faint = partial (it assists); dashed line = weekly target.`));
   }
-  sec.append(linksSection(targets));
+  append(sec, linksSection(targets));
   return sec;
 }
 
@@ -266,7 +267,7 @@ const NS = 'http://www.w3.org/2000/svg';
 function svg(tag, attrs, ...children) {
   const n = document.createElementNS(NS, tag);
   for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
-  n.append(...children);
+  append(n, ...children);
   return n;
 }
 
