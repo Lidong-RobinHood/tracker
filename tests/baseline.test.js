@@ -141,14 +141,11 @@ test('a real session on the same date or later wins over the starting point; an 
   assert.equal(lastEntryFor([base, after], 'squat').workout.id, 'base');
 });
 
-test('progression: the starting point counts with its working sets, judged against the card target', () => {
+test('progression: the starting point never triggers a suggestion, only real sessions do', () => {
   const base = makeBaseline();
   const bench = EX.get('bench');
-  const s = suggestProgression([base], bench, { target: { targetSets: 3, targetReps: 6 } });
-  assert.equal(s.weight, 102.5);
-  assert.equal(s.baseline, true);
-  assert.equal(suggestProgression([base], bench, { target: { targetSets: 3, targetReps: 6, targetRepsMax: 8 } }), null, 'range not reached');
-  assert.equal(suggestProgression([base], bench, { target: { targetSets: 4, targetReps: 6 } }), null, 'more sets than entered');
+  assert.equal(suggestProgression([base], bench, { target: { targetSets: 3, targetReps: 6 } }), null);
+  assert.equal(suggestProgression([base], bench, { target: { targetSets: 3, targetReps: 6, targetRepsMax: 8 } }), null);
   // after a real session the real session decides
   const real = W(TODAY, [['bench', [S(100, 6), S(100, 6), S(100, 6)]]]);
   const s2 = suggestProgression([base, real], bench, { target: { targetSets: 3, targetReps: 6 } });

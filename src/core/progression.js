@@ -19,13 +19,10 @@
 //     Missing/invalid increment                    -> 2.5 kg (the SPEC default).
 //   - more done normal sets than targetSets       -> all of them must hit the target at one weight.
 //   - result rounded to 2 decimals (avoids 102.49999).
-//   - starting point (baseline.js) as the most recent "session": only its working sets count (the
-//     best-set row is ignored), and they are judged against the current card's target (`target`)
-//     when that has sets and reps; the starting point's own sets × reps only describe what was
-//     entered, they are not an aim. A real session on the same or a later date always wins.
-//     The result then carries `baseline: true`.
+//   - starting point (baseline.js) as the most recent "session": never a suggestion. It only
+//     describes where the user starts; only a real logged session can trigger the chip.
 import { lastEntryFor } from './workout.js';
-import { isBaseline, workingEntry } from './baseline.js';
+import { isBaseline } from './baseline.js';
 import { round } from './numbers.js';
 
 export const DEFAULT_INCREMENT = 2.5;
@@ -73,13 +70,8 @@ export function suggestProgression(workouts, exercise, { excludeId = null, targe
   if (!exercise) return null;
   const last = lastEntryFor(workouts, exercise.id, { excludeId });
   if (!last) return null;
-  const base = isBaseline(last.workout);
-  let entry = last.entry;
-  if (base) {
-    entry = workingEntry(entry);
-    if (target && isNum(target.targetSets) && isNum(target.targetReps)) entry = { ...entry, targetSets: null, targetReps: null, targetRepsMax: null };
-  }
-  const r = evaluateEntry(entry, exercise.increment, target);
+  if (isBaseline(last.workout)) return null;
+  const r = evaluateEntry(last.entry, exercise.increment, target);
   if (!r) return null;
-  return { ...r, workoutId: last.workout.id, date: last.workout.date, ...(base ? { baseline: true } : {}) };
+  return { ...r, workoutId: last.workout.id, date: last.workout.date };
 }

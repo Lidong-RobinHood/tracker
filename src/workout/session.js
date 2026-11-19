@@ -164,7 +164,7 @@ export async function mountSession(container, { id }) {
           updateTarget();
           save();
         },
-      }, `↑ ${fmtNum(suggestion.weight, 2)} kg — ${suggestion.baseline ? 'starting point hits target' : 'all sets hit target'}`);
+      }, `↑ ${fmtNum(suggestion.weight, 2)} kg — all sets hit target`);
       progRow = el('div', { class: 'wk-prog-row' }, chip);
     }
 
