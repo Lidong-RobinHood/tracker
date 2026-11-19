@@ -3,6 +3,8 @@
 // Usage of an exercise = the workouts (finished or in progress) with an entry for it that has at
 // least one DONE set. `lastDate`/`lastAt` come from the most recent such workout by date, then start
 // time (the same order as byRecent), so a back-dated workout never counts as "most recent".
+// The starting point (baseline.js) counts like any workout here on purpose: exercises entered there
+// show up under "Recent" in the picker.
 //
 // Picker order:
 //  - empty search: a "Recent" group (used exercises, most recently used first, then most often used,

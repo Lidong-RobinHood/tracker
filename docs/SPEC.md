@@ -119,6 +119,33 @@ first run; user edits to seeded exercises are kept.
   createdAt, updatedAt }
 ```
 
+**Starting point** ("current bests", `#/workout/starting-point`, logic in `src/core/baseline.js`):
+one ordinary record in `workouts` with `kind: 'baseline'`, so export/import and every history
+reader see plain data and no new store is needed. At most one exists (the editor updates it in place).
+```
+{ id, kind: 'baseline', date /* "as of", not in the future */, routineId: null, name: 'Starting point',
+  startedAt = finishedAt = local midnight of date,
+  exercises: [ { exerciseId, targetSets: <sets>, targetReps: <reps>, targetRepsMax: null, targetWeight: null,
+                 sets: [ <sets> × { weight, reps, type: 'normal', done: true },        // working sets
+                         { weight, reps, type: 'normal', done: true, best: true } ],  // optional best set, last
+                 note: '' } ],
+  createdAt, updatedAt }
+```
+Bodyweight exercises store `weight: null`. The best set is stored only when it differs from the
+working set. Every consumer decides via `isBaseline(workout)`; real workouts never have `kind`.
+- **Used:** session pre-fill (working sets only) and the "Last:" line (shown as "Starting point");
+  progression (working sets, judged against the session card's target); "vs last time"
+  (working sets); personal records on the exercise screen, in the post-workout analysis and in the
+  weekly report (best set included), labelled "starting point" with its date; picker "Recent".
+- **Ignored:** weekly sets per muscle (+ direct/partial breakdown, set targets), muscle recovery,
+  workout counts and tonnage totals, routine sessions and their % changes, session tonnage / total
+  reps records, month statistics, trend and progress charts, weekly report training section and week
+  summaries. It is never a record-setting session itself.
+- On the same date a real session counts as newer than the starting point (`byRecent`), so a real
+  session on or after its date always wins for pre-fill, "Last:" and progression.
+- History shows it as one "Starting point" item; opening it (or its id in session/history/analysis
+  routes) goes to the editor.
+
 ### `weights` (key `date`)
 `{ date, kg, updatedAt }` — one body-weight value per day.
 

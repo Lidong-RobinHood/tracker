@@ -20,7 +20,11 @@
 //     that contains it (done sets); if there is none (exercise added to the routine, or the session
 //     was started empty / without routine) it falls back to the most recent earlier finished session
 //     of any kind containing the exercise. Same exercise twice in one session -> merged.
+//   - Starting point (baseline.js isBaseline): part of an exercise's history for records and for
+//     "vs last time" (compared by its working sets only; the best-set row counts for records), never
+//     a routine session, never a chart point, never itself a record-setting session.
 import { doneSets, byRecent, e1rm } from './workout.js';
+import { isBaseline, isBestSet, workingEntry } from './baseline.js';
 import { round } from './numbers.js';
 import { addDays } from './dates.js';
 
@@ -168,7 +172,7 @@ export function exerciseHistory(workouts, exerciseId) {
 /** Finished sessions of a routine, newest first. */
 export function routineSessions(workouts, routineId) {
   if (!routineId) return [];
-  return finishedWorkouts(workouts).filter((w) => w.routineId === routineId);
+  return finishedWorkouts(workouts).filter((w) => w.routineId === routineId && !isBaseline(w));
 }
 
 /** The most recent finished session of the same routine before `workout`, or null. */
@@ -178,7 +182,8 @@ export function previousRoutineSession(workouts, workout) {
 }
 
 /**
- * Entry to compare an exercise of `workout` with (see header for the rule).
+ * Entry to compare an exercise of `workout` with (see header for the rule). A starting point's entry
+ * is returned without its best-set row.
  * @returns {{workout: object, entry: object, sameRoutine: boolean}|null}
  */
 export function previousEntry(workouts, workout, exerciseId) {
@@ -192,7 +197,7 @@ export function previousEntry(workouts, workout, exerciseId) {
   }
   for (const w of older) {
     const e = doneEntries(w).get(exerciseId);
-    if (e) return { workout: w, entry: e, sameRoutine: !!workout.routineId && w.routineId === workout.routineId };
+    if (e) return { workout: w, entry: isBaseline(w) ? workingEntry(e) : e, sameRoutine: !!workout.routineId && w.routineId === workout.routineId };
   }
   return null;
 }
@@ -327,7 +332,7 @@ export function personalRecords(history) {
   let heaviest = null; let best = null; let mostReps = null;
   const byW = new Map();
   for (const { workout, entry } of chrono(history)) {
-    const at = { date: workout.date, workoutId: workout.id };
+    const at = { date: workout.date, workoutId: workout.id, ...(isBaseline(workout) ? { baseline: true } : {}) };
     for (const s of normalDone(entry)) {
       if (!hasReps(s)) continue;
       const w = hasWeight(s) ? s.weight : 0;
@@ -380,13 +385,15 @@ export function newRecords(prior, entry) {
 }
 
 /**
- * Sessions (ids) in which the exercise set at least one new record (first session excluded).
+ * Sessions (ids) in which the exercise set at least one new record (first session excluded; a
+ * starting point is earlier history only and never listed).
  * @returns {Map<string, ReturnType<typeof newRecords>>} workoutId -> records
  */
 export function recordSessions(history) {
   const out = new Map();
   const list = chrono(history);
   for (let i = 1; i < list.length; i++) {
+    if (isBaseline(list[i].workout)) continue;
     const r = newRecords(list.slice(0, i), list[i].entry);
     if (r.length) out.set(list[i].workout.id, r);
   }
@@ -396,14 +403,14 @@ export function recordSessions(history) {
 // ---------------------------------------------------------------- charts
 
 /**
- * Chronological points for an exercise's progress chart.
+ * Chronological points for an exercise's progress chart (starting point left out).
  * topWeight: top set weight (0 = bodyweight); topReps: reps of the top set; e1rm: best estimated 1RM;
  * load: volume load; reps: total normal reps; bestReps: most reps in one normal set.
  * @returns {{date: string, workoutId: string, topWeight: number, topReps: number, e1rm: number,
  *   load: number, reps: number, bestReps: number, sets: number, bodyweight: boolean}[]}
  */
 export function exerciseSeries(history) {
-  return chrono(history).map(({ workout, entry }) => {
+  return chrono(history).filter((h) => !isBaseline(h.workout)).map(({ workout, entry }) => {
     const m = entryMetrics(entry);
     const bestReps = normalDone(entry).reduce((a, s) => Math.max(a, hasReps(s) ? s.reps : 0), 0);
     return {
@@ -454,7 +461,7 @@ export function seriesChange(points, key) {
  */
 export function liveComparison(entry, lastEntry) {
   const cur = normalDone(entry);
-  const last = normalDone(lastEntry);
+  const last = normalDone(lastEntry).filter((s) => !isBestSet(s));
   if (!cur.length || !last.length) return null;
   const slice = last.slice(0, cur.length);
   const bw = !cur.some(hasWeight) && !slice.some(hasWeight);

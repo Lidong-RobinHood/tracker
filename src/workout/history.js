@@ -9,11 +9,14 @@ import { ensureCss, loadExercises, loadWorkouts, loadRoutines, exName } from './
 import { changeDateTime, logPastWorkout } from './datetime.js';
 import { compareSession } from '../core/workout-progress.js';
 import { comparisonBlock } from './progress-ui.js';
+import { isBaseline, findBaseline } from '../core/baseline.js';
 
 export async function mountHistory(container) {
   ensureCss();
   const [workouts, exMap, routines] = await Promise.all([loadWorkouts(), loadExercises(), loadRoutines()]);
-  const done = workouts.filter((w) => w.finishedAt);
+  // Real finished sessions, plus the starting point as one labelled item (not a workout).
+  const baseline = findBaseline(workouts);
+  const done = workouts.filter((w) => w.finishedAt && (!isBaseline(w) || w === baseline));
   container.append(pageHeader({
     title: 'History', back: 'workout',
     actions: [el('button', { type: 'button', class: 'btn btn-sm', onClick: () => logPastWorkout(routines) }, 'Log past')],
@@ -33,6 +36,7 @@ export async function mountHistory(container) {
     container.append(el('section', { class: 'section' },
       el('h2', { class: 'section-title' }, `${MONTHS[m - 1]} ${y}`),
       el('div', { class: 'card card-flush' }, el('div', { class: 'list' }, ws.map((w) => {
+        if (isBaseline(w)) return baselineItem(w, exMap);
         const st = sessionStats(w);
         const names = w.exercises.filter((e) => doneSets(e).length).map((e) => exName(exMap, e.exerciseId));
         return el('a', { class: 'list-item', href: href(`workout/history/${encodeURIComponent(w.id)}`) },
@@ -45,6 +49,16 @@ export async function mountHistory(container) {
   }
 }
 
+function baselineItem(w, exMap) {
+  const names = w.exercises.map((e) => exName(exMap, e.exerciseId));
+  return el('a', { class: 'list-item', href: href('workout/starting-point') },
+    el('div', { class: 'li-main' },
+      el('div', { class: 'li-title' }, 'Starting point'),
+      el('div', { class: 'li-sub' }, `As of ${fmtDate(w.date)} · ${names.length} exercise${names.length === 1 ? '' : 's'} · not a workout`),
+      names.length ? el('div', { class: 'li-sub' }, names.join(', ')) : null),
+    el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›'));
+}
+
 export async function mountHistoryDetail(container, { id }) {
   ensureCss();
   const [w, exMap, weights, workouts] = await Promise.all([db.get('workouts', id), loadExercises(), db.getSetting('volume'), loadWorkouts()]);
@@ -52,6 +66,7 @@ export async function mountHistoryDetail(container, { id }) {
     container.append(pageHeader({ title: 'Workout', back: 'workout/history' }), emptyState('Workout not found.'));
     return;
   }
+  if (isBaseline(w)) { navigate('workout/starting-point', { replace: true }); return; }
   const st = sessionStats(w);
   const editHref = href(`workout/session/${encodeURIComponent(w.id)}`);
   container.append(pageHeader({

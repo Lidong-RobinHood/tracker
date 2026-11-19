@@ -22,7 +22,10 @@
 //   - Training: workouts dated in the week. Done = finished. Sets = done normal sets; volume load =
 //     Σ weight × reps of done normal sets (workout-progress.js). Sets per muscle = volume.muscleVolume
 //     (weighted, counts unfinished sessions too, as on the Workout screens).
+//     The starting point (baseline.js isBaseline) is not a workout: it is never listed or counted
+//     here; it only serves as earlier history for personal records.
 //   - Percentage change = workout-progress.pctChange: previous missing / 0 → null ("–"), never NaN.
+import { isBaseline } from './baseline.js';
 import { addDays, weekStart, weekday, isValidDate, dateRange, daysBetween } from './dates.js';
 import { sumEntries } from './nutrition.js';
 import { percentOfTarget } from './food-percent.js';
@@ -208,7 +211,7 @@ function weightFor({ ws, today, weights, series, goalRate }) {
 /** Workouts dated in [ws, we] with their totals. */
 function weekWorkouts(workouts, ws) {
   const we = addDays(ws, 6);
-  return (workouts || []).filter((w) => w && typeof w.date === 'string' && w.date >= ws && w.date <= we)
+  return (workouts || []).filter((w) => w && !isBaseline(w) && typeof w.date === 'string' && w.date >= ws && w.date <= we)
     .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : (a.startedAt || 0) - (b.startedAt || 0)));
 }
 
@@ -364,7 +367,7 @@ export function weekSummaries({ today, entries, weights, workouts, config }) {
     w.any = true; w.weighIns++; w.kg += r.kg;
   }
   for (const r of workouts || []) {
-    const w = r && touch(r.date);
+    const w = r && !isBaseline(r) && touch(r.date);
     if (!w) continue;
     w.any = true; w.sessions++;
     if (r.finishedAt) w.workouts++;

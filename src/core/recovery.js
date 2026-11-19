@@ -30,7 +30,9 @@
 //     limits (6–240 h) and the minimum width becomes min(8, the user's width). So at the reference
 //     dose (4 sets) and average pace the window is exactly the user's range; more or fewer sets and
 //     the pace still scale it, never clipped back to the defaults' 24–120 h.
+//  8. The starting point (baseline.js isBaseline) is not a training session and is ignored.
 import { MUSCLES } from './muscles.js';
+import { isBaseline } from './baseline.js';
 import { parseDate, isValidDate } from './dates.js';
 import { workoutVolume } from './volume.js';
 import { round } from './numbers.js';
@@ -203,6 +205,7 @@ export function muscleRecovery(workouts, exercises, weights, { now, factor = 1, 
   const lowerMs = now - cfg.lookbackDays * 24 * H;
   const sessions = [];
   for (const w of workouts || []) {
+    if (isBaseline(w)) continue;
     const at = sessionTime(w);
     if (at === null || at < lowerMs) continue;
     sessions.push({ w, at, vol: workoutVolume(w, exercises, weights) });

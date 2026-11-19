@@ -7,6 +7,7 @@ import { totals, progress } from '../core/food-diary.js';
 import { weeklyComparison } from '../core/volume.js';
 import { trendSeries, trendAt, weightRate, weeklyIntake } from '../core/adaptive.js';
 import { sparkline } from './charts.js';
+import { isBaseline } from '../core/baseline.js';
 import { ensureCss, loadTrendsData, linkCard, signed, goalText, CONFIDENCE_LABEL } from './data.js';
 
 export async function mountDashboard(container) {
@@ -63,7 +64,7 @@ function weekCard(d, workouts, exMap, volume) {
   const ws = weekStart(d.today);
   const [week] = weeklyIntake(d.intake, d.today, ws, d.config);
   const loggedDays = new Set(d.entries.filter((e) => e.date >= ws).map((e) => e.date)).size;
-  const done = workouts.filter((w) => w.date >= ws && w.finishedAt).length;
+  const done = workouts.filter((w) => w.date >= ws && w.finishedAt && !isBaseline(w)).length;
   const cmp = weeklyComparison(workouts, exMap, volume, d.today);
   const sets = cmp.rows.filter((r) => r.current > 0).sort((a, b) => b.current - a.current);
   return linkCard(href('trends/intake'), `This week · from ${fmtDate(ws)}`,

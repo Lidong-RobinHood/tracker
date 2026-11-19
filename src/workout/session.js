@@ -22,6 +22,7 @@ import { pickExercise } from './picker.js';
 import { tutorialMenuItem } from './tutorial.js';
 import { liveComparison, compareSession } from '../core/workout-progress.js';
 import { pctBadge, pctWords, basisValue, comparisonBlock } from './progress-ui.js';
+import { isBaseline, workingSets, bestSetOf } from '../core/baseline.js';
 
 export async function mountSession(container, { id }) {
   ensureCss();
@@ -33,6 +34,7 @@ export async function mountSession(container, { id }) {
       emptyState('This workout does not exist (deleted?).', el('a', { class: 'btn', href: '#/workout' }, 'Workout home')));
     return undefined;
   }
+  if (isBaseline(workout)) { navigate('workout/starting-point', { replace: true }); return undefined; }
   // History for "Last:" / prefill / progression = sessions older than this one by date and start
   // time (not by creation), so a back-dated session only sees what came before it.
   const others = workouts.filter((w) => w.id !== workout.id);
@@ -121,8 +123,8 @@ export async function mountSession(container, { id }) {
       targetHit.textContent = tc && tc.met ? `Target met: ${tc.hits} set${tc.hits === 1 ? '' : 's'} at ${fmtNum(entry.targetWeight, 2)} kg or more` : '';
     };
 
-    const lastLine = el('div', { class: 'wk-last small muted' },
-      last ? `Last: ${formatSets(last.entry.sets)} · ${shortDate(last.workout.date)}` : 'No previous session');
+    const fromStart = !!last && isBaseline(last.workout);
+    const lastLine = el('div', { class: 'wk-last small muted' }, !last ? 'No previous session' : fromStart ? startingPointLine(last) : `Last: ${formatSets(last.entry.sets)} · ${shortDate(last.workout.date)}`);
     // Live "vs last time": fixed-width slot (reserved even while empty) so the row never reflows.
     const deltaEl = last ? el('div', { class: 'wk-delta small', 'aria-live': 'polite' }) : null;
     const updateDelta = () => {
@@ -130,8 +132,8 @@ export async function mountSession(container, { id }) {
       const c = liveComparison(entry, last.entry);
       if (!c) { deltaEl.replaceChildren(); deltaEl.removeAttribute('aria-label'); deltaEl.title = ''; return; }
       const what = c.basis === 'reps' ? 'reps' : 'volume';
-      deltaEl.replaceChildren(pctBadge(c.pct), el('span', { class: 'wk-delta-sub muted' }, `${what} vs last`));
-      const desc = `${what} ${pctWords(c.pct)} versus last time (${basisValue(c.basis, c.cur)} vs ${basisValue(c.basis, c.prev)}, first ${c.compared} set${c.compared === 1 ? '' : 's'})`;
+      deltaEl.replaceChildren(pctBadge(c.pct), el('span', { class: 'wk-delta-sub muted' }, `${what} vs ${fromStart ? 'start' : 'last'}`));
+      const desc = `${what} ${pctWords(c.pct)} versus ${fromStart ? 'the starting point' : 'last time'} (${basisValue(c.basis, c.cur)} vs ${basisValue(c.basis, c.prev)}, first ${c.compared} set${c.compared === 1 ? '' : 's'})`;
       deltaEl.setAttribute('aria-label', desc);
       deltaEl.title = desc;
     };
@@ -162,7 +164,7 @@ export async function mountSession(container, { id }) {
           updateTarget();
           save();
         },
-      }, `↑ ${fmtNum(suggestion.weight, 2)} kg — all sets hit target`);
+      }, `↑ ${fmtNum(suggestion.weight, 2)} kg — ${suggestion.baseline ? 'starting point hits target' : 'all sets hit target'}`);
       progRow = el('div', { class: 'wk-prog-row' }, chip);
     }
 
@@ -539,6 +541,12 @@ export async function mountSession(container, { id }) {
     document.removeEventListener('visibilitychange', onHide);
     saver.save();
   };
+}
+
+/** 'Starting point: 100×6, 100×6, 100×6 · best 105×3 · 18 Nov' */
+function startingPointLine(last) {
+  const best = bestSetOf(last.entry);
+  return `Starting point: ${formatSets(workingSets(last.entry))}${best ? ` · best ${formatSets([best])}` : ''} · ${shortDate(last.workout.date)}`;
 }
 
 function stat(value, label) {

@@ -8,10 +8,14 @@ import { breakdownText, breakdownAria, splitFill, breakdownCaption } from './vol
 import { logPastWorkout } from './datetime.js';
 import { MUSCLES } from '../core/muscles.js';
 import { routineProgress } from '../core/workout-progress.js';
+import { isBaseline, findBaseline } from '../core/baseline.js';
 import { loadTargets } from './targets.js';
 import { pctBadge, pctWords } from './progress-ui.js';
 import { recoverySection, loadRecoverySetting } from './recovery.js';
 import { ensureCss, loadExercises, loadWorkouts, loadRoutines, findUnfinished, startWorkout, shortDate } from './data.js';
+
+/** Below this many finished workouts the home screen suggests entering a starting point. */
+const THIN_HISTORY = 3;
 
 export async function mountHome(container) {
   ensureCss();
@@ -20,6 +24,8 @@ export async function mountHome(container) {
   ]);
   const weights = volumeWeights(rawWeights);
   const open = findUnfinished(workouts);
+  const baseline = findBaseline(workouts);
+  const finishedCount = workouts.filter((w) => w.finishedAt && !isBaseline(w)).length;
 
   container.append(pageHeader({ title: 'Workout' }));
 
@@ -52,6 +58,16 @@ export async function mountHome(container) {
       routines.length ? null : el('a', { class: 'list-item', href: href('workout/routines') },
         el('div', { class: 'li-main' }, el('div', { class: 'li-title wk-link' }, 'Create a routine'),
           el('div', { class: 'li-sub' }, 'e.g. Bench Press 3 x 6')))))));
+
+  // Starting point prompt while history is thin (always linked below as well)
+  if (!baseline && finishedCount < THIN_HISTORY) {
+    container.append(el('div', { class: 'card card-flush wk-sp-cta' }, el('div', { class: 'list' },
+      el('a', { class: 'list-item', href: href('workout/starting-point') },
+        el('div', { class: 'li-main' },
+          el('div', { class: 'li-title' }, 'Enter your starting point'),
+          el('div', { class: 'li-sub' }, 'Current working weights, so sessions start pre-filled')),
+        el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›')))));
+  }
 
   // Muscle recovery (general estimate; uses only the last 14 days of the already loaded workouts)
   container.append(recoverySection(workouts, exMap, weights, recovery));
@@ -86,12 +102,12 @@ export async function mountHome(container) {
   }
 
   // Links
-  const finishedCount = workouts.filter((w) => w.finishedAt).length;
   const activeEx = [...exMap.values()].filter((e) => !e.archived).length;
   container.append(el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
     link('workout/routines', 'Routines', `${routines.length}`),
     link('workout/exercises', 'Exercise library', `${activeEx}`),
     link('workout/history', 'History', `${finishedCount}`),
+    link('workout/starting-point', 'Starting point', baseline ? shortDate(baseline.date) : 'not set'),
     link('workout/targets', 'Weekly set targets', hasTargets ? `${Object.keys(targets).length}` : 'off'))));
 }
 

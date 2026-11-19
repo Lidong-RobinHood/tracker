@@ -5,7 +5,10 @@
 //   normal  set: weights.primary   to each primary muscle, weights.secondary to each secondary muscle
 //   dropset row: weights.dropset × those same amounts
 // Exercises missing from the lookup (deleted) are skipped. Results are rounded to 2 decimals.
+// The starting point (baseline.js isBaseline) is not training and never counts (here, in the
+// breakdown, in weekly targets and in recovery, which builds on workoutVolume).
 import { MUSCLES } from './muscles.js';
+import { isBaseline } from './baseline.js';
 import { weekStart, addDays } from './dates.js';
 import { round } from './numbers.js';
 
@@ -61,7 +64,7 @@ export function muscleVolume(workouts, exercises, weights, { from, to }) {
   const get = lookup(exercises);
   const acc = {};
   for (const wo of workouts) {
-    if (!wo || typeof wo.date !== 'string' || wo.date < from || wo.date > to) continue;
+    if (!wo || isBaseline(wo) || typeof wo.date !== 'string' || wo.date < from || wo.date > to) continue;
     addWorkout(acc, wo, get, w);
   }
   for (const k of Object.keys(acc)) {
@@ -115,7 +118,7 @@ export function muscleVolumeBreakdown(workouts, exercises, weights, { from, to }
   const acc = {};
   const row = (m) => (acc[m] ||= { total: 0, direct: { sets: 0, value: 0 }, partial: { sets: 0, value: 0 }, drop: { sets: 0, value: 0, direct: 0, partial: 0 } });
   for (const wo of workouts || []) {
-    if (!wo || typeof wo.date !== 'string' || wo.date < from || wo.date > to) continue;
+    if (!wo || isBaseline(wo) || typeof wo.date !== 'string' || wo.date < from || wo.date > to) continue;
     for (const entry of wo.exercises || []) {
       const ex = get(entry.exerciseId);
       if (!ex) continue;

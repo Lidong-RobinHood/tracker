@@ -14,6 +14,7 @@ import { ensureCss, loadExercises, loadWorkouts, musclesLine, newExercise, short
 import { exerciseForm, EQUIPMENT } from './exercise-form.js';
 import { matches } from './picker.js';
 import { tutorialSection } from './tutorial.js';
+import { isBaseline, workingEntry, workingSets, bestSetOf } from '../core/baseline.js';
 
 // Filter state survives navigating into a detail and back.
 const state = { query: '', muscle: null, archived: false };
@@ -155,8 +156,9 @@ function progressSections(ex, workouts) {
       el('h2', { class: 'section-title' }, 'Progress'),
       el('p', { class: 'muted small wk-pad-x' }, 'No finished sessions with this exercise yet. Progress, records and history appear here after the first one.'))];
   }
+  // Chart points leave the starting point out; records and the list below include it.
   const points = exerciseSeries(hist);
-  const bw = points.every((p) => p.bodyweight);
+  const bw = points.length ? points.every((p) => p.bodyweight) : hist.every((h) => entryMetrics(h.entry).bodyweight);
   const METRICS = bw
     ? [['bestReps', 'Best set', 'reps'], ['reps', 'Total reps', 'reps']]
     : [['topWeight', 'Top set', 'kg'], ['e1rm', 'Est. 1RM', 'kg'], ['load', 'Volume', 'kg'],
@@ -218,6 +220,7 @@ function progressSections(ex, workouts) {
   render();
 
   // Records
+  const nReal = hist.filter((h) => !isBaseline(h.workout)).length;
   const pr = personalRecords(hist);
   const recRows = [];
   if (pr.heaviest) recRows.push(recRow('Heaviest weight', `${fmtNum(pr.heaviest.weight, 2)} kg × ${pr.heaviest.reps}`, pr.heaviest));
@@ -233,7 +236,7 @@ function progressSections(ex, workouts) {
         atWeight.map((r) => el('div', { class: 'wk-repsw-row num' },
           el('span', r.weight ? `${fmtNum(r.weight, 2)} kg` : 'Bodyweight'),
           el('span', `${r.reps} reps`),
-          el('span', { class: 'small muted' }, shortDate(r.date))))) : null,
+          el('span', { class: 'small muted' }, r.baseline ? 'starting point' : shortDate(r.date))))) : null,
       el('p', { class: 'field-hint' }, 'Normal ticked sets only; dropsets never count. A record belongs to the first session that reached it. Estimated 1RM = weight × (1 + reps / 30).')));
 
   // History with % vs previous session and PR badges
@@ -241,9 +244,10 @@ function progressSections(ex, workouts) {
   const PAGE = 20;
   const renderHist = (all) => {
     histList.replaceChildren(...hist.slice(0, all ? undefined : PAGE).map(({ workout, entry }, i) => {
+      if (isBaseline(workout)) return startingPointItem(workout, entry);
       const m = entryMetrics(entry);
       const prev = hist[i + 1];
-      const c = prev ? compareMetrics(m, entryMetrics(prev.entry)) : null;
+      const c = prev ? compareMetrics(m, entryMetrics(workingEntry(prev.entry))) : null;
       return el('a', { class: 'list-item', href: href(`workout/history/${encodeURIComponent(workout.id)}`) },
         el('div', { class: 'li-main' },
           el('div', { class: 'li-title wk-wrap' }, formatSets(entry.sets), ...recordBadges(records.get(workout.id))),
@@ -264,7 +268,7 @@ function progressSections(ex, workouts) {
       el('div', { class: 'card stack wk-chart-card' }, metricTabs, rangeTabs, chartBox, statsBox, note)),
     recSection,
     el('section', { class: 'section' },
-      el('h2', { class: 'section-title' }, `History · ${hist.length} session${hist.length === 1 ? '' : 's'} · % vs previous`),
+      el('h2', { class: 'section-title' }, `History · ${nReal} session${nReal === 1 ? '' : 's'}${nReal < hist.length ? ' + starting point' : ''} · % vs previous`),
       el('div', { class: 'card card-flush' }, histList)),
   ];
 }
@@ -277,9 +281,20 @@ function pstat(label, value, sub) {
 }
 
 function recRow(label, value, at, extra) {
-  return el('a', { class: 'wk-rec', href: href(`workout/history/${encodeURIComponent(at.workoutId)}`) },
+  return el('a', { class: 'wk-rec', href: href(at.baseline ? 'workout/starting-point' : `workout/history/${encodeURIComponent(at.workoutId)}`) },
     el('div', { class: 'grow' }, el('div', { class: 'small muted' }, label), el('div', { class: 'wk-rec-value num' }, value, extra ? el('span', { class: 'small muted' }, ` · ${extra}`) : null)),
-    el('span', { class: 'small muted' }, shortDate(at.date)));
+    el('span', { class: 'small muted' }, at.baseline ? `Starting point · ${shortDate(at.date)}` : shortDate(at.date)));
+}
+
+/** The starting point in an exercise's history list (not a session). */
+function startingPointItem(workout, entry) {
+  const best = bestSetOf(entry);
+  return el('a', { class: 'list-item', href: href('workout/starting-point') },
+    el('div', { class: 'li-main' },
+      el('div', { class: 'li-title wk-wrap' }, formatSets(workingSets(entry)), best ? ` · best ${formatSets([best])}` : null),
+      el('div', { class: 'li-sub' }, `Starting point · as of ${shortDate(workout.date)}`)),
+    el('span', { class: 'li-trail small muted' }, 'start'),
+    el('span', { class: 'li-chevron', 'aria-hidden': 'true' }, '›'));
 }
 
 function equipmentName(id) {

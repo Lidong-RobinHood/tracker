@@ -2,12 +2,13 @@
 // trend, muscle tonnage, routine and month context. Route: workout/summary/:id
 // Numbers come from core/workout-analytics.js; everything is "as of" the workout's own date.
 import * as db from '../db/db.js';
-import { el, pageHeader, href, emptyState, fmtDate, fmtTime, fmtNum } from '../ui/index.js';
+import { el, pageHeader, href, emptyState, fmtDate, fmtTime, fmtNum, navigate } from '../ui/index.js';
 import { analyseWorkout, METRICS } from '../core/workout-analytics.js';
 import { formatPct } from '../core/workout-progress.js';
 import { formatSets } from '../core/workout.js';
 import { ensureCss, loadExercises, loadWorkouts, exName, shortDate } from './data.js';
 import { trendChart, hBars, vBars } from './analytics-charts.js';
+import { isBaseline } from '../core/baseline.js';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -58,6 +59,9 @@ function absText(d, metric) {
 
 const pctText = (p) => formatPct(p).replace(' ', ' ');
 
+/** When a best was set: '12 Nov', or 'starting point, 12 Nov' for the starting point. */
+const when = (b) => (b.baseline ? `starting point, ${shortDate(b.date)}` : shortDate(b.date));
+
 // ---------------------------------------------------------------- mount
 
 export async function mountAnalytics(container, { id }) {
@@ -69,6 +73,7 @@ export async function mountAnalytics(container, { id }) {
         el('a', { class: 'btn', href: href('workout/history') }, 'Open history')));
     return;
   }
+  if (isBaseline(w)) { navigate('workout/starting-point', { replace: true }); return; }
   const res = analyseWorkout(workouts, w, exMap);
   const name = (exId) => exName(exMap, exId);
 
@@ -131,7 +136,7 @@ function recordsSection(res, name) {
     sec.append(el('div', { class: 'wk-an-rules' },
       el('p', { class: 'wk-an-line' }, allFirst ? 'No records: first session of every exercise in this workout.' : 'No records this workout.'),
       m ? el('p', { class: 'wk-an-line muted num' },
-        `Closest: ${name(m.exerciseId)} · ${METRICS[m.metric].short} ${absText({ ...m.delta, abs: -m.delta.abs }, m.metric).replace(/^\+/, '')} under your best (${valueText(m.metric, m.best)}, ${shortDate(m.best.date)})`)
+        `Closest: ${name(m.exerciseId)} · ${METRICS[m.metric].short} ${absText({ ...m.delta, abs: -m.delta.abs }, m.metric).replace(/^\+/, '')} under your best (${valueText(m.metric, m.best)}, ${when(m.best)})`)
         : null));
   }
   for (const [status, title] of GROUPS) {
@@ -152,7 +157,7 @@ function matchedRows(list, name) {
     el('div', { class: 'wk-an-rec-main' },
       el('div', { class: 'wk-an-rec-title' }, name(exId)),
       el('div', { class: 'wk-an-rec-sub num' },
-        `${rs.map((r) => `${METRICS[r.metric].short} ${valueText(r.metric, r.cur)}`).join(', ')} · same as ${[...new Set(rs.map((r) => shortDate(r.prevAll.date)))].join(', ')}`))));
+        `${rs.map((r) => `${METRICS[r.metric].short} ${valueText(r.metric, r.cur)}`).join(', ')} · same as ${[...new Set(rs.map((r) => when(r.prevAll)))].join(', ')}`))));
 }
 
 /** Records grouped by exercise, in first-seen order. */
@@ -170,7 +175,7 @@ function recordRow(r) {
   return el('div', { class: ['wk-an-rec', `is-${r.status}`] },
     el('div', { class: 'wk-an-rec-main' },
       el('div', { class: 'wk-an-rec-metric' }, METRICS[r.metric].label),
-      el('div', { class: 'wk-an-rec-sub num' }, `${valueText(r.metric, ref)} (${shortDate(ref.date)}) → ${valueText(r.metric, r.cur)}`)),
+      el('div', { class: 'wk-an-rec-sub num' }, `${valueText(r.metric, ref)} (${when(ref)}) → ${valueText(r.metric, r.cur)}`)),
     el('div', { class: 'wk-an-rec-delta num' },
       el('div', { class: 'wk-an-rec-abs' }, absText(r.delta, r.metric)),
       r.delta && r.delta.pct !== null && r.delta.abs !== 0 ? el('div', { class: 'wk-an-rec-pct' }, pctText(r.delta.pct)) : null));
@@ -183,7 +188,7 @@ function exerciseBlock(r, w, res, name) {
   const status = Object.fromEntries(r.statuses.map((s) => [s.metric, s.status]));
   const recs = r.statuses.filter((s) => s.status === 'pr').length;
   const monthName = MONTHS[Number(res.month.slice(5, 7)) - 1];
-  const holder = (b) => (!b ? '' : b.workoutId === w.id ? 'this workout' : shortDate(b.date));
+  const holder = (b) => (!b ? '' : b.workoutId === w.id ? 'this workout' : b.baseline ? 'starting point' : shortDate(b.date));
 
   const table = el('table', { class: 'wk-an-table num' },
     el('thead', {}, el('tr', {},
@@ -214,7 +219,8 @@ function exerciseBlock(r, w, res, name) {
     el('a', { class: 'wk-an-ex-head', href: href(`workout/exercises/${encodeURIComponent(r.exerciseId)}`) },
       el('h3', { class: 'wk-an-ex-name' }, name(r.exerciseId)),
       el('span', { class: ['wk-an-ex-tag', recs && 'is-rec'] },
-        r.firstTime ? 'first time' : recs ? `${recs} record${recs === 1 ? '' : 's'}` : `${r.sessions} sessions`),
+        r.firstTime ? 'first time' : recs ? `${recs} record${recs === 1 ? '' : 's'}`
+          : r.sessions === 1 && r.startingPoint ? 'vs starting point' : `${r.sessions} session${r.sessions === 1 ? '' : 's'}`),
       el('span', { class: 'wk-an-chev', 'aria-hidden': 'true' }, '›')),
     el('p', { class: 'wk-an-sets num' }, el('span', { class: 'muted' }, 'Sets, kg × reps  '), formatSets(r.sets) || '–'),
     notes ? el('p', { class: 'wk-an-note' }, notes) : null,
@@ -278,7 +284,7 @@ function monthOrder(list, res) {
 function monthSection(w, res, name) {
   const m = res.monthView;
   const monthName = `${MONTHS[Number(m.month.slice(5, 7)) - 1]} ${m.month.slice(0, 4)}`;
-  const holder = (b) => (!b ? '' : b.workoutId === w.id ? 'this workout' : shortDate(b.date));
+  const holder = (b) => (!b ? '' : b.workoutId === w.id ? 'this workout' : b.baseline ? 'starting point' : shortDate(b.date));
   return el('section', { class: 'section' },
     el('h2', { class: 'section-title' }, `${monthName} · up to ${shortDate(w.date)}`),
     el('div', { class: 'wk-an-strip is-3' },

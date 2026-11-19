@@ -22,7 +22,13 @@
 //       matched equals the all-time best before this workout
 //       month   below the all-time best, but beats the best earlier in the same calendar month
 //       below   none of the above
+//   - Starting point (baseline.js isBaseline): counts as earlier history for the set metrics
+//     (heaviest set, tonnage set, est. 1RM, most reps in a set), so the first real session is compared
+//     with it instead of being "first"; best values it holds carry `baseline: true`. It never counts
+//     for session metrics (session tonnage, total reps), month scopes and statistics, session counts,
+//     trend points or routine history.
 import { byRecent, e1rm } from './workout.js';
+import { isBaseline } from './baseline.js';
 import { normalDone, dropDone, loadOf, doneEntries, sessionTotals, pctChange, previousRoutineSession, isOlder } from './workout-progress.js';
 import { round } from './numbers.js';
 import { muscleName } from './muscles.js';
@@ -30,6 +36,9 @@ import { muscleName } from './muscles.js';
 const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
 const hasWeight = (s) => isNum(s.weight) && s.weight > 0;
 const hasReps = (s) => isNum(s.reps) && s.reps > 0;
+
+/** Metrics that describe a whole session; a starting point never holds them. */
+export const SESSION_METRICS = Object.freeze(['tonnage', 'bwTotal']);
 
 /** Metric keys and labels. `unit` is the unit of `value`. */
 export const METRICS = Object.freeze({
@@ -99,8 +108,10 @@ export function scopeBests(history) {
   const out = Object.fromEntries(Object.keys(METRICS).map((k) => [k, null]));
   for (const { workout, entry } of chrono(history.map((h) => ({ ...h, date: h.workout.date, startedAt: h.workout.startedAt })))) {
     const b = sessionBests(entry);
+    const base = isBaseline(workout);
     for (const k of Object.keys(METRICS)) {
-      if (b[k] && compareBest(k, b[k], out[k]) > 0) out[k] = { ...b[k], date: workout.date, workoutId: workout.id };
+      if (base && SESSION_METRICS.includes(k)) continue;
+      if (b[k] && compareBest(k, b[k], out[k]) > 0) out[k] = { ...b[k], date: workout.date, workoutId: workout.id, ...(base ? { baseline: true } : {}) };
     }
   }
   return out;
@@ -156,7 +167,7 @@ export function metricStatuses(hist) {
   const before = hist.slice(0, -1);
   const month = monthOf(last.workout.date);
   const all = scopeBests(before);
-  const mon = scopeBests(before.filter((h) => monthOf(h.workout.date) === month));
+  const mon = scopeBests(before.filter((h) => monthOf(h.workout.date) === month && !isBaseline(h.workout)));
   const cur = sessionBests(last.entry);
   const keys = modeOf(last.entry) === 'reps' ? REPS_METRICS : LOAD_METRICS;
   const out = [];
@@ -232,11 +243,13 @@ export function analyseWorkout(workouts, workout, exercises, { trendSessions = 1
   for (const [exerciseId, entry] of doneEntries(workout)) {
     const hist = exerciseTimeline(timeline, exerciseId);
     const before = hist.slice(0, -1);
-    const inMonth = (h) => monthOf(h.workout.date) === month;
+    const inMonth = (h) => monthOf(h.workout.date) === month && !isBaseline(h.workout);
+    const real = hist.filter((h) => !isBaseline(h.workout));
+    const start = before.filter((h) => isBaseline(h.workout)).pop() || null;
     const mode = modeOf(entry);
     const trendMetric = mode === 'reps' ? 'bwReps' : 'e1rm';
     const all = scopeBests(hist);
-    const trend = hist.slice(-trendSessions)
+    const trend = real.slice(-trendSessions)
       .map((h) => {
         const b = sessionBests(h.entry)[trendMetric];
         return b ? { date: h.workout.date, workoutId: h.workout.id, value: b.value, weight: b.weight, reps: b.reps, current: h.workout.id === workout.id } : null;
@@ -251,7 +264,8 @@ export function analyseWorkout(workouts, workout, exercises, { trendSessions = 1
       for (const s of e.sets || []) { allSets.push(s); if (!s || !s.done) undone++; }
     }
     rows.push({
-      exerciseId, mode, sessions: hist.length, firstTime: before.length === 0,
+      exerciseId, mode, sessions: real.length, firstTime: before.length === 0,
+      startingPoint: start ? { date: start.workout.date, workoutId: start.workout.id } : null,
       sets: allSets, undone, dropsets: drops.length, dropTonnage: loadOf(drops),
       scopes: {
         workout: scopeBests([hist[hist.length - 1]]),
@@ -287,7 +301,7 @@ export function analyseWorkout(workouts, workout, exercises, { trendSessions = 1
   const prev = previousRoutineSession(workouts, workout);
   const prevTonnage = prev ? sessionTotals(prev).load : null;
   const routineHistory = workout.routineId
-    ? timeline.filter((w) => w.routineId === workout.routineId).slice(-routineSessions)
+    ? timeline.filter((w) => w.routineId === workout.routineId && !isBaseline(w)).slice(-routineSessions)
       .map((w) => ({ workoutId: w.id, date: w.date, tonnage: sessionTotals(w).load, current: w.id === workout.id }))
     : [];
 
@@ -310,7 +324,7 @@ export function analyseWorkout(workouts, workout, exercises, { trendSessions = 1
  */
 export function monthSummary(timeline, month) {
   const idx = [];
-  timeline.forEach((w, i) => { if (monthOf(w.date) === month) idx.push(i); });
+  timeline.forEach((w, i) => { if (monthOf(w.date) === month && !isBaseline(w)) idx.push(i); });
   let tonnage = 0; let records = 0; let sessions = 0;
   const order = [];
   for (const i of idx) {

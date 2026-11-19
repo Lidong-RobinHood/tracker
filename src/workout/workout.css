@@ -384,3 +384,18 @@
 
 /* ---------------------------------------------------------------- recovery ranges */
 .wk-rc-own { margin-right: var(--s1); }
+
+/* ---------------------------------------------------------------- starting point */
+.wk-sp-list { padding: var(--s2) var(--s3); }
+.wk-sp-item { padding: var(--s2) 0; border-top: 1px solid var(--border); }
+.wk-sp-head + .wk-sp-item { border-top: 0; }
+.wk-sp-name { display: flex; align-items: center; gap: var(--s1); min-height: var(--tap); margin-right: calc(-1 * var(--s2)); font-weight: 600; }
+.wk-sp-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; align-items: center; }
+.wk-sp-row > :nth-child(4) { margin-left: 8px; width: calc(100% - 8px); }
+.wk-sp-head { padding: 0 0 2px; text-align: right; }
+.wk-sp-head > span { padding-right: var(--s2); }
+.wk-sp-head > span:nth-child(4) { grid-column: 4 / span 2; margin-left: 8px; text-align: center; padding-right: 0; white-space: nowrap; }
+.wk-sp-in { min-height: var(--tap); height: var(--tap); padding: 0 var(--s2); }
+.wk-sp-bw { text-align: right; padding-right: var(--s2); line-height: var(--tap); }
+.wk-sp-error { padding: 0 var(--s1); }
+.wk-sp-cta { border-color: var(--accent); }

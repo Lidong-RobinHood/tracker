@@ -1,6 +1,7 @@
 // Workout session helpers. Pure, no DOM / IndexedDB. Records follow SPEC §3 (`workouts`).
 import { round } from './numbers.js';
 import { isValidDate, parseDate, fromTimestamp, today } from './dates.js';
+import { isBaseline, isBestSet } from './baseline.js';
 
 /** Default target for an exercise added without a routine or previous target. */
 export const DEFAULT_TARGET = Object.freeze({ targetSets: 3, targetReps: 8, targetRepsMax: null, targetWeight: null });
@@ -20,16 +21,21 @@ export function doneSets(entry) {
 
 /**
  * Sort key for "most recent": date, then start time. Works for unfinished sessions too.
+ * On the same date a starting point (baseline.js) is always older than a real session, so a real
+ * session on that day takes precedence for pre-fill, "Last:" and progression.
  * @returns {number} negative when a is more recent than b
  */
 export function byRecent(a, b) {
   if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+  if (isBaseline(a) !== isBaseline(b)) return isBaseline(a) ? 1 : -1;
   return (b.startedAt || 0) - (a.startedAt || 0) || (b.finishedAt || 0) - (a.finishedAt || 0);
 }
 
 /**
  * The most recent FINISHED workout that "contains" the exercise, i.e. has an entry for it with at
  * least one done set (an exercise left in a routine but skipped does not count as history).
+ * The starting point counts (its entry is returned as stored, best-set row included; see
+ * baseline.js workingEntry). A real session on the same or a later date wins (byRecent).
  * @param {object[]} workouts
  * @param {string} exerciseId
  * @param {{excludeId?: string|null}} [opts] skip this workout (the one being edited)
@@ -60,14 +66,15 @@ export function historyFor(workouts, exerciseId) {
 
 /**
  * Rows for a new session's exercise card.
- * From the last entry: its done sets, same weight/reps/type, not done. Else: `targetSets` normal
+ * From the last entry: its done sets (a starting point's best-set row excluded), same
+ * weight/reps/type, not done. Else: `targetSets` normal
  * rows with weight = targetWeight (empty when there is none) and reps = targetReps.
  * @param {object|null} lastEntry
  * @param {{targetSets?: number, targetReps?: number|null, targetWeight?: number|null}} target
  * @returns {{weight: number|null, reps: number|null, type: 'normal'|'dropset', done: boolean}[]}
  */
 export function prefillSets(lastEntry, target) {
-  const done = doneSets(lastEntry);
+  const done = doneSets(lastEntry).filter((s) => !isBestSet(s));
   if (done.length) {
     return done.map((s) => ({
       weight: isNum(s.weight) ? s.weight : null,

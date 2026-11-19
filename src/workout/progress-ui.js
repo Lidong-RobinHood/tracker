@@ -3,6 +3,10 @@ import { el, href, fmtNum } from '../ui/index.js';
 import { formatPct, trendOf } from '../core/workout-progress.js';
 import { formatWeight } from '../core/workout.js';
 import { exName, shortDate } from './data.js';
+import { isBaseline } from '../core/baseline.js';
+
+/** '12 Nov', or 'starting point 12 Nov' when the earlier entry is the starting point. */
+const prevWhen = (w) => (isBaseline(w) ? `starting point ${shortDate(w.date)}` : shortDate(w.date));
 
 const ARROW = { up: '▲', down: '▼', flat: '=', none: '' };
 
@@ -100,5 +104,5 @@ function rowDetail(r) {
     : r.metrics.bodyweight ? basisValue('reps', r.metrics.reps) : basisValue('load', r.metrics.load);
   const now = `top ${topText(r.metrics.top)} · ${value}`;
   if (!r.prevMetrics) return now;
-  return `${now} (was ${topText(r.prevMetrics.top)} · ${basisValue(r.cmp.basis, r.cmp.prev)}, ${shortDate(r.prevWorkout.date)})`;
+  return `${now} (was ${topText(r.prevMetrics.top)} · ${basisValue(r.cmp.basis, r.cmp.prev)}, ${prevWhen(r.prevWorkout)})`;
 }
