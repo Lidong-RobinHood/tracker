@@ -407,7 +407,7 @@ export async function mountSession(container, { id }) {
       el('div', { class: 'li-main' }, label));
     s.body.append(el('div', { class: 'list' },
       item('Rename', rename),
-      item('Change date/time', editDateTime),
+      item('Change date, time, duration', editDateTime),
       item('Save as routine', saveAsRoutine),
       finished() ? null : item('Finish workout', finish),
       item(finished() ? 'Delete workout' : 'Discard workout', discard, 'text-danger')));

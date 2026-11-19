@@ -25,7 +25,7 @@ export function changeDateTime(workout) {
   const dur = numberInput({ value: curMin, min: 1, max: MAX_DURATION_MIN, integer: true, placeholder: finished ? '' : 'optional', ariaLabel: 'Duration in minutes' });
   const err = el('p', { class: 'field-error', role: 'alert', hidden: true });
   const s = openSheet({
-    title: 'Change date/time',
+    title: 'Change date, time, duration',
     content: [
       el('div', { class: 'grid-2' }, field('Date', date), field('Start time', time)),
       field('Duration', dur, {

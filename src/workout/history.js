@@ -125,7 +125,7 @@ export async function mountHistoryDetail(container, { id }) {
   container.append(
     w.finishedAt ? el('a', { class: 'btn btn-primary btn-block', href: href(`workout/summary/${encodeURIComponent(w.id)}`) }, 'Full analysis') : null,
     el('a', { class: 'btn btn-block', href: editHref }, 'Edit workout'),
-    el('button', { type: 'button', class: 'btn btn-block', onClick: editTime }, 'Change date/time'),
+    el('button', { type: 'button', class: 'btn btn-block', onClick: editTime }, 'Change date, time, duration'),
     el('button', {
       type: 'button', class: 'btn btn-ghost btn-block text-danger', onClick: async () => {
         const ok = await confirmDialog({ title: 'Delete workout?', message: 'This workout and its sets will be deleted. This cannot be undone.', confirmLabel: 'Delete', danger: true });
