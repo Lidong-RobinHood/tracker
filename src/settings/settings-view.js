@@ -5,15 +5,23 @@ import { macroKcal } from '../core/nutrition.js';
 import { MACROS, SPLIT_PRESETS, targetMode, validateSplit, macroGrams, gramsFromPct, pctFromGrams, pctOfKcal, carbsRest } from '../core/macro-split.js';
 import { today } from '../core/dates.js';
 import { APP_VERSION } from '../version.js';
-import { ACTIVITY_LEVELS, GOAL_RATE_MIN, GOAL_RATE_MAX, ADAPTIVE_DEFAULTS } from '../core/adaptive.js';
+import { ACTIVITY_LEVELS, ADAPTIVE_DEFAULTS } from '../core/adaptive.js';
+import { rateToGoal, goalToRate, goalSummary, amountValid, GOAL_AMOUNT_MAX, GOAL_PRESETS, GOAL_DEFAULT_AMOUNT } from '../core/goal-rate.js';
 
 const STORE_LABELS = {
   foods: 'Foods', diary: 'Diary entries', meals: 'Saved meals', exercises: 'Exercises', routines: 'Routines',
   workouts: 'Workouts', weights: 'Body weights', settings: 'Settings', targetHistory: 'Target history',
 };
 
+function ensureCss() {
+  if (document.querySelector('link[data-settings-css]')) return;
+  document.head.append(el('link', { rel: 'stylesheet', href: new URL('./settings.css', import.meta.url).href, 'data-settings-css': '' }));
+}
+
 /** @param {HTMLElement} container */
 export async function mountSettings(container) {
+  ensureCss();
+  container.classList.add('settings-view');
   const [targets, volume, goal, profile, adaptive] = await Promise.all([db.getSetting('targets'), db.getSetting('volume'),
     db.getSetting('goal'), db.getSetting('profile'), db.getSetting('adaptive')]);
   const goalEl = goalSection(targets, goal, profile, adaptive || {});
@@ -196,18 +204,23 @@ function goalSection(targets, goal, profile, adaptive) {
     options.map(([v, label]) => el('option', { value: v, selected: v === (value ?? '') }, label)));
   const mode = select(targets.source === 'adaptive' ? 'adaptive' : 'manual',
     [['manual', 'Manual (as set above)'], ['adaptive', 'Adaptive (weekly check-in)']], 'How targets are set');
-  const rate = numberInput({ value: goal.rateKgPerWeek ?? 0, min: GOAL_RATE_MIN, max: GOAL_RATE_MAX, decimals: 2, ariaLabel: 'Goal rate' });
+  const rate = goalRateControl(goal.rateKgPerWeek);
   const sex = select(profile.sex, [['', 'Not set'], ['female', 'Female'], ['male', 'Male'], ['other', 'Other / prefer not to say']], 'Sex');
   const birthYear = numberInput({ value: profile.birthYear, integer: true, min: 1900, max: new Date().getFullYear() - 10, ariaLabel: 'Birth year' });
   const height = numberInput({ value: profile.heightCm, min: 100, max: 250, decimals: 1, ariaLabel: 'Height' });
   const activity = select(profile.activity, [['', 'Not set'], ...ACTIVITY_LEVELS.map((a) => [a.id, `${a.label} – ${a.hint}`])], 'Activity level');
   const protein = numberInput({ value: adaptive.proteinPerKg ?? ADAPTIVE_DEFAULTS.proteinPerKg, min: 0.8, max: 3.5, decimals: 2, ariaLabel: 'Protein per kg' });
   const fat = numberInput({ value: adaptive.fatPerKg ?? ADAPTIVE_DEFAULTS.fatPerKg, min: 0.3, max: 2, decimals: 2, ariaLabel: 'Fat per kg' });
-  const floor = numberInput({ value: adaptive.kcalFloor ?? null, integer: true, min: 800, max: 4000, placeholder: 'by sex', ariaLabel: 'Calorie floor' });
+  const floor = numberInput({ value: adaptive.kcalFloor ?? null, integer: true, min: 800, max: 4000, placeholder: 'auto', ariaLabel: 'Calorie floor' });
 
   const save = async () => {
-    const r = rate.getNumber();
-    if (r === null) { rate.focus(); toast(`Enter a goal from ${GOAL_RATE_MIN} to +${GOAL_RATE_MAX} kg a week.`, { type: 'error' }); return; }
+    const r = rate.getRate();
+    if (r === null) {
+      rate.amount.focus();
+      const dir = rate.getDirection();
+      toast(`Enter how many kg a week to ${dir}: more than 0, at most ${GOAL_AMOUNT_MAX[dir]}.`, { type: 'error' });
+      return;
+    }
     const checks = [[birthYear, 'birth year'], [height, 'height'], [protein, 'protein per kg'], [fat, 'fat per kg'], [floor, 'calorie floor']];
     for (const [input, name] of checks) {
       if (input.value.trim() && input.getNumber() === null) { input.focus(); toast(`Enter a valid ${name} (or leave it empty).`, { type: 'error' }); return; }
@@ -234,7 +247,7 @@ function goalSection(targets, goal, profile, adaptive) {
   };
   const sec = section('Goal & adaptive targets',
     field('Targets', mode, { hint: 'Adaptive: each Monday the Trends tab proposes new targets from your weight and food; nothing changes until you accept.' }),
-    field('Goal rate', rate, { unit: 'kg/wk', hint: `Negative = lose. −0.5 = lose half a kilo a week, 0 = maintain, +0.25 = gain a quarter kilo. Range ${GOAL_RATE_MIN} to +${GOAL_RATE_MAX}.` }),
+    rate,
     el('h3', { class: 'field-label' }, 'Profile (for the formula estimate before enough data)'),
     el('div', { class: 'grid-2' },
       field('Sex', sex),
@@ -252,6 +265,86 @@ function goalSection(targets, goal, profile, adaptive) {
   sec.updateSplitNote = updateSplitNote;
   updateSplitNote(targets);
   return sec;
+}
+
+/**
+ * Goal as Lose | Maintain | Gain plus a positive amount in kg a week (no minus key needed on a phone keypad).
+ * Stored as the signed settings.goal.rateKgPerWeek (see core/goal-rate.js).
+ * @returns {HTMLElement & {getRate: () => number|null, getDirection: () => string, amount: HTMLInputElement}}
+ */
+function goalRateControl(storedRate) {
+  const initial = rateToGoal(storedRate);
+  let direction = initial.direction;
+  const uid = Math.random().toString(36).slice(2);
+  const amount = numberInput({ value: initial.amount, min: 0, max: Math.max(GOAL_AMOUNT_MAX.lose, GOAL_AMOUNT_MAX.gain), decimals: 2,
+    ariaLabel: 'Amount in kg per week', id: `goal-amount-${uid}` });
+  const summary = el('div', { class: 'field-hint', 'aria-live': 'polite' });
+  const DIRS = [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']];
+  const dirBtns = DIRS.map(([d, label]) => el('button', { type: 'button', role: 'radio', dataset: { dir: d },
+    onClick: () => setDirection(d, true) }, label));
+  const group = el('div', { class: 'tabs', role: 'radiogroup', 'aria-labelledby': `goal-label-${uid}` }, dirBtns);
+  // Arrow keys move between the three options (radio group pattern).
+  group.addEventListener('keydown', (e) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const i = DIRS.findIndex(([d]) => d === direction);
+    const next = DIRS[(i + step + DIRS.length) % DIRS.length][0];
+    setDirection(next, true);
+    dirBtns.find((b) => b.dataset.dir === next).focus();
+  });
+  const chipsBox = el('div', { class: 'chips', role: 'group', 'aria-label': 'Common amounts' });
+  const amountRow = el('div', { class: 'stack' },
+    field('Amount', amount, { unit: 'kg/wk' }),
+    chipsBox);
+
+  const current = () => amount.getNumber();
+  function paint() {
+    for (const b of dirBtns) {
+      const on = b.dataset.dir === direction;
+      b.setAttribute('aria-checked', String(on));
+      b.classList.toggle('is-active', on);
+      b.tabIndex = on ? 0 : -1;
+    }
+    const maintain = direction === 'maintain';
+    amountRow.hidden = maintain;
+    amount.disabled = maintain;
+    const n = current();
+    const valid = !maintain && amountValid(direction, n);
+    // numberInput only knows 0…1; the limit depends on the direction.
+    if (!maintain && amount.value.trim() !== '' && !valid) amount.setAttribute('aria-invalid', 'true');
+    else amount.removeAttribute('aria-invalid');
+    for (const c of chipsBox.children) c.setAttribute('aria-pressed', String(Number(c.dataset.kg) === n));
+    const kcalDay = valid ? Math.round((n * ADAPTIVE_DEFAULTS.kcalPerKg) / 7 / 10) * 10 : null;
+    summary.textContent = `${goalSummary(direction, n)}`
+      + (kcalDay ? ` (about ${fmtNum(kcalDay, 0)} kcal a day ${direction === 'lose' ? 'below' : 'above'} what you burn).` : '.')
+      + ` Lose up to ${GOAL_AMOUNT_MAX.lose} kg or gain up to ${GOAL_AMOUNT_MAX.gain} kg a week.`;
+  }
+  function setDirection(d, byUser) {
+    direction = d;
+    if (d !== 'maintain') {
+      chipsBox.replaceChildren(...GOAL_PRESETS[d].map((kg) => el('button', { class: 'chip', type: 'button', dataset: { kg: String(kg) },
+        'aria-pressed': 'false', 'aria-label': `${d === 'lose' ? 'Lose' : 'Gain'} ${kg} kg a week`,
+        onClick: () => { amount.setNumber(kg); paint(); } }, `${kg} kg`)));
+      // Switching from Maintain with nothing typed yet: start from a sensible amount.
+      if (byUser && amount.value.trim() === '') amount.setNumber(GOAL_DEFAULT_AMOUNT[d]);
+    } else {
+      chipsBox.replaceChildren();
+    }
+    paint();
+  }
+  amount.addEventListener('input', paint);
+
+  const wrap = /** @type {any} */ (el('div', { class: 'field' },
+    el('div', { class: 'field-label', id: `goal-label-${uid}` }, 'Goal'),
+    group,
+    amountRow,
+    summary));
+  wrap.getDirection = () => direction;
+  wrap.getRate = () => goalToRate(direction, current());
+  wrap.amount = amount;
+  setDirection(direction, false);
+  return wrap;
 }
 
 // ---------------------------------------------------------------- volume

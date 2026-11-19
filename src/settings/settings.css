@@ -1,0 +1,4 @@
+/* Settings. Narrow three-column fields at 375 px: the shared 3.2em unit padding hid digits
+   (e.g. "1500" showed as "150", "30.5" as "30."). Tighter padding there only. */
+.settings-view .grid-3 .input-unit .input { padding-left: var(--s2); padding-right: 2.7em; }
+.settings-view .grid-3 .input-unit .unit { right: var(--s2); }
