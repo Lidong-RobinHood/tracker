@@ -1,9 +1,9 @@
 // Saved meals: log (with editable amounts), rename/edit/delete, create from diary entries.
-import { el, openSheet, numberInput, toast, confirmDialog, fmtNum, fmtAmount, fmtDay } from '../ui/index.js';
+import { el, openSheet, numberInput, toast, confirmDialog, fmtGrouped, fmtAmount, fmtDay, iconButton, icon, field } from '../ui/index.js';
 import { scale, sumEntries } from '../core/nutrition.js';
 import { entriesFromMeal, mealFromEntries, mealLabel } from '../core/food-diary.js';
 import { putEntries, putMeal, removeMeal, touchFoods } from './store.js';
-import { mealSelect, dateInput } from './widgets.js';
+import { mealSelect, dateInput, mealDateRow, macroText } from './widgets.js';
 
 const uuid = () => crypto.randomUUID();
 
@@ -19,36 +19,38 @@ export const mealKcal = (meal) => sumEntries(meal.items).kcal;
 export function openLogMeal(meal, { date, meal: mealId, onChange }) {
   const rows = meal.items.map((item) => {
     const amount = numberInput({ value: item.amount, min: 0, max: 10000, decimals: 1, ariaLabel: `Amount of ${item.name}`, onInput: update });
-    const kcal = el('span', { class: 'num small muted' });
+    const kcal = el('span', { class: 'num' });
     const row = el('div', { class: 'meal-item-row' },
       el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, item.name), el('div', { class: 'li-sub' }, kcal)),
       el('div', { class: 'input-unit meal-amount' }, amount, el('span', { class: 'unit' }, item.basis)));
     return { item, amount, kcal, row };
   });
-  const total = el('div', { class: 'num meal-total' });
+  const totalKcal = el('span', { class: 't-head num' });
+  const totalMacros = el('span', { class: 't-sub muted num' });
+  const total = el('div', { class: 'meal-total' },
+    el('div', { class: 'row-between' }, el('span', { class: 'field-label' }, 'Total'), totalKcal), totalMacros);
   const mealSel = mealSelect(mealId);
   const dateIn = dateInput(date);
   const sheet = openSheet({
     title: meal.name,
     content: [
-      el('p', { class: 'small muted' }, 'Adjust amounts if needed. 0 skips an item.'),
+      el('p', { class: 't-sub muted' }, '0 skips an item.'),
       el('div', { class: 'list' }, rows.map((r) => r.row)),
       total,
-      el('div', { class: 'grid-2' },
-        el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Meal'), mealSel),
-        el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Date'), dateIn)),
+      mealDateRow(mealSel, dateIn),
     ],
   });
   const logBtn = el('button', { type: 'button', class: 'btn btn-primary grow', onClick: log }, 'Log');
-  sheet.footer.append(el('button', { type: 'button', class: 'btn', onClick: edit }, 'Edit meal'), logBtn);
+  sheet.footer.append(el('button', { type: 'button', class: 'btn', onClick: edit }, icon('pencil'), 'Edit meal'), logBtn);
 
   function amounts() { return rows.map((r) => r.amount.getNumber()); }
   function update() {
     const a = amounts();
-    rows.forEach((r, i) => { r.kcal.textContent = `${fmtNum(scale(r.item.per100, a[i] ?? 0).kcal, 0)} kcal`; });
+    rows.forEach((r, i) => { r.kcal.textContent = `${fmtGrouped(scale(r.item.per100, a[i] ?? 0).kcal, 0)} kcal`; });
     const used = rows.map((r, i) => ({ per100: r.item.per100, amount: a[i] ?? 0 }));
     const t = sumEntries(used);
-    total.textContent = `Total ${fmtNum(t.kcal, 0)} kcal · P ${fmtNum(t.protein)} · C ${fmtNum(t.carbs)} · F ${fmtNum(t.fat)}`;
+    totalKcal.textContent = `${fmtGrouped(t.kcal, 0)} kcal`;
+    totalMacros.textContent = macroText(t);
     const n = a.filter((x) => x !== null && x > 0).length;
     logBtn.disabled = n === 0;
     logBtn.textContent = `Log ${n} item${n === 1 ? '' : 's'}`;
@@ -86,18 +88,18 @@ export function openEditMeal(meal, { onChange } = {}) {
   const rows = meal.items.map((item) => {
     const amount = numberInput({ value: item.amount, min: 0.1, max: 10000, decimals: 1, ariaLabel: `Amount of ${item.name}` });
     const row = el('div', { class: 'meal-item-row' },
-      el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, item.name), el('div', { class: 'li-sub' }, `${fmtNum(item.per100.kcal, 0)} kcal / 100 ${item.basis}`)),
+      el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, item.name), el('div', { class: 'li-sub' }, `${fmtGrouped(item.per100.kcal, 0)} kcal / 100 ${item.basis}`)),
       el('div', { class: 'input-unit meal-amount' }, amount, el('span', { class: 'unit' }, item.basis)),
-      el('button', { type: 'button', class: 'btn btn-icon btn-ghost', 'aria-label': `Remove ${item.name}`, onClick: () => { row.remove(); r.removed = true; } }, '×'));
+      iconButton('x', { label: `Remove ${item.name}`, onClick: () => { row.remove(); r.removed = true; } }));
     const r = { item, amount, row, removed: false };
     return r;
   });
   const sheet = openSheet({
     title: 'Edit meal',
     content: [
-      el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Name'), name),
+      field('Name', name),
       el('div', { class: 'list' }, rows.map((r) => r.row)),
-      el('button', { type: 'button', class: 'btn btn-ghost text-danger', onClick: del }, 'Delete meal'),
+      el('button', { type: 'button', class: 'btn btn-ghost text-danger delete-meal', onClick: del }, icon('trash-2'), 'Delete meal'),
     ],
   });
   sheet.footer.append(
@@ -115,7 +117,7 @@ export function openEditMeal(meal, { onChange } = {}) {
     toast('Meal saved', { type: 'success' });
   }
   async function del() {
-    const ok = await confirmDialog({ title: 'Delete meal?', message: `“${meal.name}” will be removed from your saved meals. Diary entries stay.`, confirmLabel: 'Delete', danger: true });
+    const ok = await confirmDialog({ title: `Delete “${meal.name}”?`, message: 'Diary entries stay.', confirmLabel: 'Delete', danger: true });
     if (!ok) return;
     await removeMeal(meal.id);
     sheet.close('deleted');
@@ -136,8 +138,8 @@ export function openSaveAsMeal(entries, defaultName) {
   const sheet = openSheet({
     title: 'Save as meal',
     content: [
-      el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Name'), name),
-      el('ul', { class: 'small muted plain-list' }, entries.map((e) => el('li', `${e.name} · ${fmtAmount(e.amount, e.basis)}`))),
+      field('Name', name),
+      el('ul', { class: 't-sub muted plain-list' }, entries.map((e) => el('li', `${e.name} · ${fmtAmount(e.amount, e.basis)}`))),
     ],
   });
   const save = async () => {

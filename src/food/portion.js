@@ -1,11 +1,11 @@
 // Portion screen: every add path ends here. Amount, serving chips, live values, edit values, meal/date.
-import { el, openSheet, numberInput, toast, fmtNum, fmtDay, fmtAmount, replaceChildren } from '../ui/index.js';
+import { el, openSheet, numberInput, toast, fmtNum, fmtDay, fmtAmount, replaceChildren, icon } from '../ui/index.js';
 import { scale, isComplete, missingFields } from '../core/nutrition.js';
 import { defaultAmount, multiplyAmount } from '../core/portion.js';
 import { mealLabel } from '../core/food-diary.js';
 import { logFood, saveFood } from './store.js';
 import { openFoodEditor } from './food-editor.js';
-import { mealSelect, dateInput, sourceBadge, per100Text, offCredit } from './widgets.js';
+import { mealSelect, dateInput, sourceBadge, per100Text, offCredit, mealDateRow, portionValues } from './widgets.js';
 
 /**
  * Edit a food's values (userEdited) and store it. Returns the stored record or null.
@@ -34,16 +34,15 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
   let current = food;
   let converted = kcalConverted;
 
-  const titleEl = el('div', { class: 'portion-name' });
-  const subEl = el('div', { class: 'portion-sub small muted' });
+  const titleEl = el('div', { class: 't-head portion-name' });
+  const subEl = el('div', { class: 'portion-sub t-sub muted' });
   const creditEl = offCredit();
   const amount = numberInput({ value: defaultAmount(food), min: 0.1, max: 10000, decimals: 1, ariaLabel: 'Amount', onInput: () => update() });
   amount.classList.add('portion-amount');
   const unit = el('span', { class: 'unit' });
-  const chips = el('div', { class: 'chips' });
-  const kcalEl = el('div', { class: 'portion-kcal num' });
-  const macros = el('div', { class: 'portion-macros grid-3' });
-  const extra = el('div', { class: 'small muted portion-extra' });
+  const chips = el('div', { class: 'chips chips-scroll portion-chips' });
+  const valuesEl = el('div', { class: 'portion-values' });
+  const extra = el('div', { class: 't-sub muted num portion-extra' });
   const warn = el('p', { class: 'field-error' });
   const mealSel = mealSelect(meal);
   const dateIn = dateInput(date);
@@ -54,16 +53,14 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
     content: [
       el('div', { class: 'portion-head' }, titleEl, subEl),
       creditEl,
-      el('div', { class: 'portion-amount-row' },
+      el('div', { class: 'field portion-amount-row' },
         el('label', { class: 'field-label', htmlFor: amount.id = `amt-${Math.random().toString(36).slice(2)}` }, 'Amount'),
         el('div', { class: 'input-unit' }, amount, unit)),
       chips,
-      el('div', { class: 'portion-values card' }, kcalEl, macros, extra),
+      valuesEl,
       warn,
-      el('button', { type: 'button', class: 'btn btn-sm btn-ghost edit-values', onClick: editValues }, '✎ Edit values'),
-      el('div', { class: 'grid-2' },
-        el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Meal'), mealSel),
-        el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Date'), dateIn)),
+      el('button', { type: 'button', class: 'btn btn-sm btn-ghost edit-values', onClick: editValues }, icon('pencil'), 'Edit values'),
+      mealDateRow(mealSel, dateIn),
     ],
   });
   const addBtn = el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: add }, 'Add');
@@ -93,15 +90,13 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
   function update() {
     const n = amount.getNumber();
     const v = scale(current.per100, n ?? 0);
-    kcalEl.replaceChildren(el('span', { class: 'big' }, fmtNum(v.kcal, 0)), ' kcal');
-    macros.replaceChildren(
-      macroCell('Protein', v.protein), macroCell('Carbs', v.carbs), macroCell('Fat', v.fat));
     const extras = [['Sugars', v.sugars], ['Sat. fat', v.satFat], ['Fibre', v.fibre], ['Salt', v.salt]]
       .filter(([, x]) => x !== null).map(([l, x]) => `${l} ${fmtNum(x, l === 'Salt' ? 2 : 1)} g`);
     extra.textContent = extras.join(' · ');
+    replaceChildren(valuesEl, portionValues(v, extras.length ? extra : null));
     for (const c of chips.querySelectorAll('[data-amount]')) c.classList.toggle('is-active', n !== null && Number(c.dataset.amount) === n);
     const missing = missingFields(current);
-    warn.textContent = missing.length ? `Values missing (${missing.join(', ')}). Use “Edit values” to complete them.` : '';
+    warn.textContent = missing.length ? `Missing: ${missing.join(', ')}. Tap Edit values.` : '';
     addBtn.disabled = n === null || n <= 0;
     addBtn.textContent = n === null ? 'Enter an amount' : `Add ${fmtAmount(n, current.basis)} to ${mealLabel(mealSel.value)}`;
   }
@@ -142,6 +137,3 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
   return sheet.closed.then((r) => r || null);
 }
 
-function macroCell(label, v) {
-  return el('div', { class: 'macro-cell' }, el('div', { class: 'num macro-val' }, `${fmtNum(v)} g`), el('div', { class: 'small muted' }, label));
-}

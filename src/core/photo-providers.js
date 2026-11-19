@@ -31,6 +31,6 @@ export function networkError(providerId, ctx = {}) {
   if (providerId === 'anthropic') return photoError('network', '', { provider: a.name });
   return photoError('network', '', {
     provider: a.name,
-    message: `Could not reach ${a.name}. Check your connection and try again. If this keeps happening while other sites work, the browser may be blocked from calling ${a.name} directly.`,
+    message: `Could not reach ${a.name}. Check your connection and try again.`,
   });
 }

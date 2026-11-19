@@ -1,6 +1,9 @@
 // Add-food screen: tabs Search · Scan · Recent · Meals · Quick add. Every food path ends in the portion sheet.
 // Quick add also holds "Scan meal photo" (AI estimate → review → log); old ?tab=photo links open it there.
-import { el, pageHeader, numberInput, field, toast, emptyState, fmtNum, fmtDay, fmtAmount, back } from '../ui/index.js';
+import {
+  el, pageHeader, numberInput, field, toast, emptyState, fmtGrouped, fmtDate, fmtAmount, back, iconTabs, segmented, sectionHeader,
+  cardHeader, iconButton, icon, infoButton, replaceChildren,
+} from '../ui/index.js';
 import { isComplete, missingFields, macroKcal, emptyPer100 } from '../core/nutrition.js';
 import { checkDigitOk } from '../core/barcode.js';
 import { indexItem, search, preferMatches } from '../core/food-search.js';
@@ -11,16 +14,16 @@ import { searchGeneric } from './generic.js';
 import { createScanner } from './scanner.js';
 import { openPortion, editAndSaveFood } from './portion.js';
 import { openLogMeal, openEditMeal, mealKcal } from './meals.js';
-import { foodRow, segmented, ensureCss, per100Text, offCredit } from './widgets.js';
+import { foodRow, ensureCss, per100Text, offCredit } from './widgets.js';
 import { buildPhotoScan, PHOTO_DRAFT } from './photo-tab.js';
 import { loadDraft, saveDraft, clearDraft } from '../ui/draft.js';
 
 const TABS = [
-  { value: 'search', label: 'Search' },
-  { value: 'scan', label: 'Scan' },
-  { value: 'recent', label: 'Recent' },
-  { value: 'meals', label: 'Meals' },
-  { value: 'quick', label: 'Quick add' },
+  { value: 'search', label: 'Search', icon: 'search' },
+  { value: 'scan', label: 'Scan', icon: 'scan-barcode' },
+  { value: 'recent', label: 'Recent', icon: 'history' },
+  { value: 'meals', label: 'Meals', icon: 'bookmark' },
+  { value: 'quick', label: 'Quick add', icon: 'pencil' },
 ];
 const TAB_KEY = 'tracker.food.addTab';
 const OFF_AUTO_MS = 1100;   // pause before an automatic OFF search
@@ -37,7 +40,7 @@ export async function mountAdd(container, params, ctx) {
   const cleanups = [];
   let done = false;
 
-  container.append(pageHeader({ title: `Add to ${mealLabel(meal)}`, subtitle: fmtDay(date), back: `diary/${date}` }));
+  container.append(pageHeader({ title: `Add to ${mealLabel(meal)}`, subtitle: fmtDate(date), back: `diary/${date}` }));
 
   /** After a successful log, go back to the diary. */
   const finished = () => { if (!done) { done = true; back(`diary/${date}`); } };
@@ -60,14 +63,14 @@ export async function mountAdd(container, params, ctx) {
   async function pick(food, { kcalConverted = false } = {}) {
     const f = await preferStored(food);
     if (!isComplete(f)) {
-      return toEditorThenPortion(f, { kcalConverted, note: `Some values are missing (${missingFields(f).join(', ')}). Fill them in from the label.` });
+      return toEditorThenPortion(f, { kcalConverted, note: `Missing: ${missingFields(f).join(', ')}. Copy them from the label.` });
     }
     return toPortion(f, { kcalConverted: f === food && kcalConverted });
   }
 
   const panels = {};
   const body = el('div', { class: 'add-body' });
-  const tabs = segmented(TABS, 'search', (t) => show(t), 'Add food');
+  const tabs = iconTabs({ tabs: TABS, value: 'search', onChange: (t) => show(t), ariaLabel: 'Add food' });
   tabs.classList.add('add-tabs');
   container.append(tabs, body);
 
@@ -79,19 +82,20 @@ export async function mountAdd(container, params, ctx) {
     rememberTab(t);
     tabs.setValue(t);
     if (!panels[t]) panels[t] = builders[t]();
-    body.replaceChildren(panels[t].el);
+    replaceChildren(body, panels[t].el);
     if (panels[t].show) panels[t].show();
   }
 
   // ------------------------------------------------------------ search
   function buildSearch() {
-    const input = el('input', { class: 'input', type: 'search', placeholder: 'Search foods', autocomplete: 'off', enterkeyhint: 'search', 'aria-label': 'Search foods' });
+    const input = el('input', { type: 'search', placeholder: 'Search foods', autocomplete: 'off', enterkeyhint: 'search', 'aria-label': 'Search foods' });
+    const searchField = el('label', { class: 'search-field' }, icon('search'), input);
     const localSec = el('div', { class: 'stack' });
     const genericSec = el('div', { class: 'stack' });
     const offSec = el('div', { class: 'stack' });
-    const offBtn = el('button', { type: 'button', class: 'btn btn-sm', hidden: true, onClick: () => runOff(true) }, 'Search Open Food Facts');
-    const createBtn = el('button', { type: 'button', class: 'btn btn-sm btn-ghost', onClick: () => toEditorThenPortion({ source: 'custom', name: input.value.trim(), per100: emptyPer100(), servings: [], basis: 'g' }) }, '+ Create a food');
-    const wrap = el('div', { class: 'stack' }, input, localSec, genericSec, offSec, el('div', { class: 'row-between' }, offBtn, createBtn));
+    const offBtn = el('button', { type: 'button', class: 'btn btn-sm', hidden: true, onClick: () => runOff(true) }, icon('search'), 'Search Open Food Facts');
+    const createBtn = el('button', { type: 'button', class: 'btn btn-sm btn-ghost', onClick: () => toEditorThenPortion({ source: 'custom', name: input.value.trim(), per100: emptyPer100(), servings: [], basis: 'g' }) }, icon('plus'), 'Create a food');
+    const wrap = el('div', { class: 'stack' }, searchField, localSec, genericSec, offSec, el('div', { class: 'row-between search-actions' }, offBtn, createBtn));
 
     let localIndex = null;
     let seq = 0;
@@ -106,9 +110,9 @@ export async function mountAdd(container, params, ctx) {
 
     function section(title, items, note) {
       return [
-        el('h2', { class: 'section-title' }, title),
+        sectionHeader(title),
         items && items.length ? el('div', { class: 'card card-flush' }, el('div', { class: 'list' }, items)) : null,
-        note ? el('p', { class: 'small muted search-note' }, note) : null,
+        note ? el('p', { class: 't-sub muted search-note' }, note) : null,
       ].filter(Boolean);
     }
 
@@ -116,25 +120,26 @@ export async function mountAdd(container, params, ctx) {
       const q = input.value.trim();
       const my = ++seq;
       if (!q) {
-        localSec.replaceChildren(); genericSec.replaceChildren(); offSec.replaceChildren(); offBtn.hidden = true;
+        replaceChildren(localSec); replaceChildren(genericSec); replaceChildren(offSec); offBtn.hidden = true;
         const recent = usedFoods(await ensureLocal().then((ix) => ix.map((e) => e.item)), { limit: 8 });
         if (my !== seq) return;
-        if (recent.length) localSec.replaceChildren(...section('Recent', recent.map((f) => foodRow(f, { onClick: () => pick(f) }))));
+        if (recent.length) replaceChildren(localSec, ...section('Recent', recent.map((f) => foodRow(f, { onClick: () => pick(f) }))));
         return;
       }
       offBtn.hidden = false;
       const local = search(q, await ensureLocal(), { limit: 10 });
       if (my !== seq) return;
-      localSec.replaceChildren(...(local.length ? section('Your foods', local.map((f) => foodRow(f, { onClick: () => pick(f) }))) : []));
-      if (q.length < 2) { genericSec.replaceChildren(); return; }
-      if (!genericSec.childElementCount) genericSec.replaceChildren(el('p', { class: 'small muted' }, 'Loading generic foods…'));
+      replaceChildren(localSec, ...(local.length ? section('Your foods', local.map((f) => foodRow(f, { onClick: () => pick(f) }))) : []));
+      if (q.length < 2) { replaceChildren(genericSec); return; }
+      if (!genericSec.childElementCount) replaceChildren(genericSec, el('p', { class: 't-sub muted search-note' }, 'Loading generic foods…'));
       try {
         const gen = await searchGeneric(q, 15);
         if (my !== seq) return;
-        genericSec.replaceChildren(...(gen.length ? section('Generic foods · USDA', gen.map((f) => foodRow(f, { onClick: () => pick(f) }))) : []));
+        replaceChildren(genericSec, ...(gen.length ? section('Generic foods · USDA', gen.map((f) => foodRow(f, { onClick: () => pick(f) }))) : []));
       } catch (err) {
         if (my !== seq) return;
-        genericSec.replaceChildren(el('p', { class: 'small text-danger' }, `Generic foods could not be loaded (${navigator.onLine === false ? 'offline and not cached yet' : err.message || err}).`));
+        console.warn('Generic foods:', err);
+        replaceChildren(genericSec, el('p', { class: 't-sub text-danger search-note' }, `Generic foods unavailable${navigator.onLine === false ? ' offline' : ''}. Try again later.`));
       }
     }
 
@@ -146,7 +151,7 @@ export async function mountAdd(container, params, ctx) {
       if (offCtrl) offCtrl.abort();
       const ctrl = offCtrl = new AbortController();
       lastOffQuery = q;
-      offSec.replaceChildren(...section('Open Food Facts', null, 'Searching Open Food Facts…'));
+      replaceChildren(offSec, ...section('Open Food Facts', null, 'Searching Open Food Facts…'));
       let r;
       try {
         r = await searchProducts(q, { signal: ctrl.signal });
@@ -158,7 +163,7 @@ export async function mountAdd(container, params, ctx) {
       offCtrl = null;
       if (!r.ok) {
         lastOffQuery = '';
-        offSec.replaceChildren(...section('Open Food Facts', null), el('p', { class: 'small text-danger', role: 'status' }, r.error));
+        replaceChildren(offSec, ...section('Open Food Facts', null), el('p', { class: 't-sub text-danger search-note', role: 'status' }, r.error));
         return;
       }
       const ranked = preferMatches(q, r.results, (m) => `${m.food.name} ${m.food.brand || ''}`);
@@ -167,7 +172,7 @@ export async function mountAdd(container, params, ctx) {
         sub: m.missing.length ? 'incomplete' : (m.kcalConverted ? 'kcal from kJ' : null),
         trail: m.food.per100.kcal === null ? '– kcal' : per100Text(m.food),
       }));
-      offSec.replaceChildren(...section('Open Food Facts', rows, rows.length ? null : 'No products found.'), rows.length ? offCredit() : '');
+      replaceChildren(offSec, ...section('Open Food Facts', rows, rows.length ? null : 'No products found.'), rows.length ? offCredit() : '');
     }
 
     let localTimer = null;
@@ -176,7 +181,7 @@ export async function mountAdd(container, params, ctx) {
       localTimer = setTimeout(runLocal, 80);
       clearTimeout(offTimer);
       if (offCtrl && input.value.trim() !== lastOffQuery) { offCtrl.abort(); offCtrl = null; }
-      if (input.value.trim() !== lastOffQuery) offSec.replaceChildren();
+      if (input.value.trim() !== lastOffQuery) replaceChildren(offSec);
       if (input.value.trim().length >= OFF_MIN_CHARS) {
         offTimer = setTimeout(() => runOff(false), Math.max(OFF_AUTO_MS, searchWait()));
       }
@@ -198,20 +203,30 @@ export async function mountAdd(container, params, ctx) {
   function buildScan() {
     const video = el('video', { class: 'scan-video', muted: true, playsinline: true, autoplay: true, 'aria-label': 'Camera preview' });
     video.muted = true;
-    const status = el('p', { class: 'small muted scan-status', role: 'status' }, 'Starting…');
-    const startBtn = el('button', { type: 'button', class: 'btn btn-primary', onClick: () => scanner.start() }, 'Scan');
-    const stopBtn = el('button', { type: 'button', class: 'btn', hidden: true, onClick: () => { scanner.stop(); setStatus('Camera off.'); } }, 'Stop');
-    const box = el('div', { class: 'scan-box' }, video, el('div', { class: 'scan-guide', 'aria-hidden': 'true' }));
-    const code = el('input', { class: 'input', type: 'text', inputmode: 'numeric', autocomplete: 'off', placeholder: 'e.g. 3017620422003', 'aria-label': 'Barcode', maxlength: '14', enterkeyhint: 'search' });
-    const codeMsg = el('p', { class: 'small', role: 'status' });
+    const status = el('p', { class: 't-sub muted scan-status', role: 'status' }, 'Starting…');
+    const cameraInfo = infoButton('camera');
+    cameraInfo.hidden = true;
+    const startBtn = el('button', { type: 'button', class: 'btn btn-primary scan-toggle', onClick: () => scanner.start() }, icon('scan-barcode'), 'Scan');
+    const stopBtn = el('button', { type: 'button', class: 'btn scan-toggle', hidden: true, onClick: () => { scanner.stop(); setStatus('Camera off.'); } }, icon('x'), 'Stop');
+    const box = el('div', { class: 'scan-box' }, video,
+      el('div', { class: 'scan-frame', 'aria-hidden': 'true' }, el('div', { class: 'scan-guide' })),
+      el('div', { class: 'scan-idle', 'aria-hidden': 'true' }, icon('scan-barcode', { size: 32 })));
+    const code = el('input', { class: 'input input-num', type: 'text', inputmode: 'numeric', autocomplete: 'off', placeholder: 'e.g. 3017620422003', 'aria-label': 'Barcode', maxlength: '14', enterkeyhint: 'search' });
+    const codeMsg = el('p', { class: 't-sub', role: 'status' });
     const result = el('div', { class: 'stack scan-result' });
     const form = el('form', { class: 'row barcode-form', onSubmit: (e) => { e.preventDefault(); manual(); } },
       code, el('button', { type: 'submit', class: 'btn' }, 'Look up'));
     const wrap = el('div', { class: 'stack' },
-      box, status, el('div', { class: 'row' }, startBtn, stopBtn),
-      el('h2', { class: 'section-title' }, 'Or type the barcode'), form, codeMsg, result);
+      box,
+      el('div', { class: 'row scan-status-row' }, status, cameraInfo),
+      el('div', { class: 'row scan-buttons' }, startBtn, stopBtn),
+      sectionHeader('Or type the barcode'), form, codeMsg, result);
 
-    function setStatus(msg, isErr) { status.textContent = msg; status.className = `small scan-status ${isErr ? 'text-danger' : 'muted'}`; }
+    function setStatus(msg, isErr) {
+      status.textContent = msg;
+      status.className = `t-sub scan-status ${isErr ? 'text-danger' : 'muted'}`;
+      cameraInfo.hidden = !(isErr && /^Camera blocked/.test(msg)); // the sheet explains how to allow the camera
+    }
     const scanner = createScanner({
       video,
       force: ctx.query.decoder,
@@ -223,9 +238,9 @@ export async function mountAdd(container, params, ctx) {
 
     function manual() {
       const v = code.value.replace(/\s+/g, '');
-      codeMsg.className = 'small text-danger';
+      codeMsg.className = 't-sub text-danger';
       if (!/^\d{8}$|^\d{12,14}$/.test(v)) { codeMsg.textContent = 'Enter 8, 12, 13 or 14 digits.'; return; }
-      if (!checkDigitOk(v)) { codeMsg.textContent = 'The check digit does not match – probably a typo. Please re-check the digits.'; return; }
+      if (!checkDigitOk(v)) { codeMsg.textContent = 'Check digit does not match. Re-check the number.'; return; }
       codeMsg.textContent = '';
       code.blur();
       scanner.stop();
@@ -236,12 +251,12 @@ export async function mountAdd(container, params, ctx) {
     async function handleBarcode(c) {
       if (lookupCtrl) lookupCtrl.abort();
       const ctrl = lookupCtrl = new AbortController();
-      result.replaceChildren(el('p', { class: 'muted' }, `Looking up ${c}…`));
+      replaceChildren(result, el('p', { class: 't-sub muted num' }, `Looking up ${c}…`));
       const local = await findByBarcode(c);
       if (ctrl.signal.aborted) return;
       if (local) {
-        result.replaceChildren(el('p', { class: 'small muted' }, `${local.name} – from your foods.`));
-        const logged = isComplete(local) ? await toPortion(local) : await toEditorThenPortion(local, { note: 'Some values are missing. Fill them in from the label.' });
+        replaceChildren(result, el('p', { class: 't-sub muted' }, `${local.name} – from your foods.`));
+        const logged = isComplete(local) ? await toPortion(local) : await toEditorThenPortion(local, { note: 'Values missing. Copy them from the label.' });
         if (!logged) afterClose();
         return;
       }
@@ -250,27 +265,27 @@ export async function mountAdd(container, params, ctx) {
       if (ctrl.signal.aborted) return;
       lookupCtrl = null;
       if (r.outcome === 'complete') {
-        result.replaceChildren(el('p', { class: 'small muted' }, `${r.food.name} – Open Food Facts.`), offCredit());
+        replaceChildren(result, el('p', { class: 't-sub muted' }, `${r.food.name} – Open Food Facts.`), offCredit());
         if (!(await toPortion(r.food, { kcalConverted: r.kcalConverted }))) afterClose();
       } else if (r.outcome === 'incomplete') {
-        result.replaceChildren(el('p', { class: 'small muted' }, `${r.food.name || c} – incomplete on Open Food Facts.`), offCredit());
-        const ok = await toEditorThenPortion(r.food, { kcalConverted: r.kcalConverted, note: `Open Food Facts is missing: ${r.missing.join(', ')}. Fill in the values from the label; they are saved for next time.` });
+        replaceChildren(result, el('p', { class: 't-sub muted' }, `${r.food.name || c} – incomplete on Open Food Facts.`), offCredit());
+        const ok = await toEditorThenPortion(r.food, { kcalConverted: r.kcalConverted, note: `Missing: ${r.missing.join(', ')}. Copy them from the label; saved for next time.` });
         if (!ok) afterClose();
       } else if (r.outcome === 'not_found') {
-        result.replaceChildren(el('p', { class: 'small muted' }, `${c} is not on Open Food Facts.`));
+        replaceChildren(result, el('p', { class: 't-sub muted num' }, `${c} is not on Open Food Facts.`));
         const ok = await toEditorThenPortion({ source: 'custom', barcode: c, name: '', brand: null, basis: 'g', per100: emptyPer100(), servings: [] },
-          { note: `Barcode ${c} was not found. Enter the values from the label once – it will be found next time. (If you scanned it, compare the digits with the number under the barcode.)` });
+          { note: 'Not found. Enter it once from the label; it is saved for next time.' });
         if (!ok) afterClose();
       } else {
-        result.replaceChildren(
-          el('p', { class: 'text-danger small', role: 'alert' }, r.error),
+        replaceChildren(result,
+          el('p', { class: 'text-danger t-sub', role: 'alert' }, r.error),
           el('div', { class: 'row' },
-            el('button', { type: 'button', class: 'btn btn-sm', onClick: () => handleBarcode(c) }, 'Retry'),
+            el('button', { type: 'button', class: 'btn btn-sm', onClick: () => handleBarcode(c) }, icon('refresh-cw'), 'Retry'),
             el('button', { type: 'button', class: 'btn btn-sm btn-ghost', onClick: () => toEditorThenPortion({ source: 'custom', barcode: c, name: '', basis: 'g', per100: emptyPer100(), servings: [] }) }, 'Enter values manually')));
       }
     }
     function afterClose() {
-      if (active === 'scan' && !done) setStatus('Tap “Scan” to scan another product.');
+      if (active === 'scan' && !done) setStatus('Camera off.');
     }
 
     return {
@@ -284,15 +299,15 @@ export async function mountAdd(container, params, ctx) {
   function buildRecent() {
     let by = 'recent';
     const list = el('div');
-    const toggle = segmented([{ value: 'recent', label: 'Recent' }, { value: 'frequent', label: 'Most used' }], by, (v) => { by = v; render(); }, 'Sort');
+    const toggle = segmented({ options: [{ value: 'recent', label: 'Recent' }, { value: 'frequent', label: 'Most used' }], value: by, onChange: (v) => { by = v; render(); }, ariaLabel: 'Sort' });
     const wrap = el('div', { class: 'stack' }, toggle, list);
     async function render() {
       const foods = usedFoods(await allFoods(), { by, limit: 60 });
-      list.replaceChildren(foods.length
+      replaceChildren(list, foods.length
         ? el('div', { class: 'card card-flush' }, el('div', { class: 'list' }, foods.map((f) => foodRow(f, {
           onClick: () => pick(f),
           sub: f.lastAmount ? `last ${fmtAmount(f.lastAmount, f.basis)}` : null,
-          trail: by === 'frequent' ? `${f.useCount}×` : per100Text(f),
+          trail: by === 'frequent' ? `${fmtGrouped(f.useCount, 0)}×` : per100Text(f),
         }))))
         : emptyState('Foods you log appear here.'));
     }
@@ -302,17 +317,16 @@ export async function mountAdd(container, params, ctx) {
   // ------------------------------------------------------------ saved meals
   function buildMeals() {
     const list = el('div');
-    const wrap = el('div', { class: 'stack' }, list,
-      el('p', { class: 'small muted' }, 'Create saved meals from the diary: meal menu (⋯) › Save as meal.'));
+    const wrap = el('div', { class: 'stack' }, list);
     async function render() {
       const meals = await allMeals();
-      list.replaceChildren(meals.length
+      replaceChildren(list, meals.length
         ? el('div', { class: 'card card-flush' }, el('div', { class: 'list' }, meals.map((m) => el('div', { class: 'list-item meal-row' },
           el('button', { type: 'button', class: 'li-main meal-open', onClick: () => open(m) },
             el('div', { class: 'li-title' }, m.name),
-            el('div', { class: 'li-sub' }, `${m.items.length} item${m.items.length === 1 ? '' : 's'} · ${fmtNum(mealKcal(m), 0)} kcal`)),
-          el('button', { type: 'button', class: 'btn btn-icon btn-ghost', 'aria-label': `Edit ${m.name}`, onClick: () => edit(m) }, '✎')))))
-        : emptyState('No saved meals yet.'));
+            el('div', { class: 'li-sub num' }, `${m.items.length} item${m.items.length === 1 ? '' : 's'} · ${fmtGrouped(mealKcal(m), 0)} kcal`)),
+          iconButton('pencil', { label: `Edit ${m.name}`, onClick: () => edit(m) })))))
+        : el('div', { class: 'empty' }, el('p', null, 'No saved meals. Save one from a diary meal’s ', icon('ellipsis', { size: 16, label: 'more' }), ' menu.')));
     }
     async function open(m) {
       const r = await openLogMeal(m, { date, meal, onChange: render });
@@ -325,7 +339,7 @@ export async function mountAdd(container, params, ctx) {
 
   // ------------------------------------------------------------ quick add
   function buildQuick() {
-    const name = el('input', { class: 'input', type: 'text', placeholder: 'optional, e.g. Restaurant pasta', maxlength: '80', autocomplete: 'off' });
+    const name = el('input', { class: 'input', type: 'text', placeholder: 'Optional', maxlength: '80', autocomplete: 'off' });
     const kcal = numberInput({ min: 0, max: 10000, decimals: 0, ariaLabel: 'Calories', onInput: hint });
     const protein = numberInput({ min: 0, max: 1000, decimals: 1, ariaLabel: 'Protein', onInput: hint });
     const carbs = numberInput({ min: 0, max: 1000, decimals: 1, ariaLabel: 'Carbohydrates', onInput: hint });
@@ -343,11 +357,11 @@ export async function mountAdd(container, params, ctx) {
     for (const i of Object.values(inputs)) i.addEventListener('input', saveQuick);
     const qd = loadDraft(QUICK_DRAFT);
     const restoredNote = qd && qd.date === date && qd.meal === meal
-      ? el('p', { class: 'small editor-note', role: 'status' }, 'Restored the values you typed before the app was reloaded.') : null;
+      ? el('p', { class: 't-sub editor-note', role: 'status' }, 'Draft restored.') : null;
     if (restoredNote) { for (const [k, i] of Object.entries(inputs)) i.value = typeof qd[k] === 'string' ? qd[k] : ''; hint(); }
     function hint() {
       const m = macroKcal({ protein: protein.getNumber(), carbs: carbs.getNumber(), fat: fat.getNumber() });
-      hintEl.textContent = m ? `Macros add up to ${fmtNum(m, 0)} kcal.` : '';
+      hintEl.textContent = m ? `Macros = ${fmtGrouped(m, 0)} kcal` : '';
       if (kcal.getNumber() !== null) kcalField.classList.remove('is-missing');
     }
     async function add() {
@@ -357,11 +371,11 @@ export async function mountAdd(container, params, ctx) {
       const e = quickAddEntry({ id: crypto.randomUUID(), date, meal, name: name.value, kcal: k, protein: protein.getNumber(), carbs: carbs.getNumber(), fat: fat.getNumber(), now: Date.now() });
       await putEntry(e);
       clearDraft(QUICK_DRAFT);
-      toast(`Added ${fmtNum(k, 0)} kcal to ${mealLabel(meal)}`, { type: 'success' });
+      toast(`Added ${fmtGrouped(k, 0)} kcal to ${mealLabel(meal)}`, { type: 'success' });
       finished();
     }
     const manualCard = el('div', { class: 'card stack quick-manual' },
-      el('h2', { class: 'section-title' }, 'Enter by hand'),
+      cardHeader('Enter by hand'),
       restoredNote,
       field('Name', name),
       kcalField,

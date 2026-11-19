@@ -1,9 +1,9 @@
 // Food editor: name, brand, basis, every per-100 value, servings. Also used for a diary entry's values.
-import { el, openSheet, numberInput, field, toast, fmtNum } from '../ui/index.js';
+import { el, openSheet, numberInput, field, toast, fmtGrouped, segmented, iconButton, icon, sectionHeader } from '../ui/index.js';
 import { missingFields, kjToKcal, macroKcal, NUTRIENTS } from '../core/nutrition.js';
 import { copyPer100 } from '../core/food-diary.js';
 import { round } from '../core/numbers.js';
-import { segmented, offCredit } from './widgets.js';
+import { offCredit } from './widgets.js';
 
 const LABELS = {
   kcal: 'Energy', protein: 'Protein', carbs: 'Carbohydrates', fat: 'Fat',
@@ -23,7 +23,7 @@ export function openFoodEditor({ food, title = 'Edit values', note, kcalConverte
   let basis = draft.basis === 'ml' ? 'ml' : 'g';
 
   const name = el('input', { class: 'input', type: 'text', value: draft.name || '', autocomplete: 'off', placeholder: 'e.g. Skyr natural', maxlength: '120' });
-  const brand = el('input', { class: 'input', type: 'text', value: draft.brand || '', autocomplete: 'off', placeholder: 'optional', maxlength: '80' });
+  const brand = el('input', { class: 'input', type: 'text', value: draft.brand || '', autocomplete: 'off', placeholder: 'Optional', maxlength: '80' });
   const nameField = field('Name', name);
   const brandField = field('Brand', brand);
 
@@ -36,16 +36,18 @@ export function openFoodEditor({ food, title = 'Edit values', note, kcalConverte
     fields[k] = f;
   }
   if (kcalConverted) {
-    fields.kcal.append(el('div', { class: 'field-hint' }, el('span', { class: 'badge badge-warning' }, 'from kJ'), ' Converted from kJ (÷ 4.184). Check the label.'));
+    fields.kcal.querySelector('.field-label-row').append(el('span', { class: 'badge badge-warning' }, 'from kJ'));
   }
   const kj = numberInput({ min: 0, max: 4000, decimals: 0, ariaLabel: 'Energy in kJ',
     onInput: (n) => { if (n !== null) { inputs.kcal.setNumber(round(kjToKcal(n), 0)); refresh(); } } });
   const kjField = field('or kJ', kj, { unit: 'kJ', hint: 'Fills kcal' });
 
-  const per100Title = el('h3', { class: 'section-title' }, `Per 100 ${basis}`);
-  const basisCtl = segmented([{ value: 'g', label: 'per 100 g' }, { value: 'ml', label: 'per 100 ml' }], basis, (v) => {
-    basis = v; per100Title.textContent = `Per 100 ${basis}`; for (const u of units) u.textContent = basis;
-  }, 'Basis');
+  const per100Head = sectionHeader(`Per 100 ${basis}`);
+  const per100Title = per100Head.querySelector('.section-title');
+  const basisCtl = segmented({
+    options: [{ value: 'g', label: 'per 100 g' }, { value: 'ml', label: 'per 100 ml' }], value: basis, ariaLabel: 'Basis',
+    onChange: (v) => { basis = v; per100Title.textContent = `Per 100 ${basis}`; for (const u of units) u.textContent = basis; },
+  });
 
   const macroHint = el('p', { class: 'field-hint' });
   const missingNote = el('p', { class: 'field-error', role: 'alert' });
@@ -62,7 +64,7 @@ export function openFoodEditor({ food, title = 'Edit values', note, kcalConverte
     for (const k of ['kcal', 'protein', 'carbs', 'fat']) fields[k].classList.toggle('is-missing', missing.includes(k));
     const m = macroKcal(c.per100);
     macroHint.textContent = c.per100.protein !== null || c.per100.carbs !== null || c.per100.fat !== null
-      ? `Macros give about ${fmtNum(m, 0)} kcal per 100 ${basis}.` : '';
+      ? `Macros = ${fmtGrouped(m, 0)} kcal / 100 ${basis}` : '';
     missingNote.textContent = missing.length && showAll ? `Missing: ${missing.map((x) => (x === 'name' ? 'name' : LABELS[x].toLowerCase())).join(', ')}.` : '';
     return missing;
   }
@@ -78,7 +80,7 @@ export function openFoodEditor({ food, title = 'Edit values', note, kcalConverte
     units.push(unit);
     const row = el('div', { class: 'serving-row' }, label,
       el('div', { class: 'input-unit' }, amount, unit),
-      el('button', { type: 'button', class: 'btn btn-icon btn-ghost', 'aria-label': 'Remove serving', onClick: () => row.remove() }, '×'));
+      iconButton('x', { label: 'Remove serving', onClick: () => row.remove() }));
     row.read = () => ({ label: label.value.trim() || 'Serving', amount: amount.getNumber() });
     servingRows.append(row);
   };
@@ -90,18 +92,18 @@ export function openFoodEditor({ food, title = 'Edit values', note, kcalConverte
     note ? el('p', { class: 'editor-note' }, note) : null,
     nameField,
     mode === 'food' ? brandField : null,
-    draft.barcode ? el('p', { class: 'small muted' }, `Barcode ${draft.barcode}`) : null,
+    draft.barcode ? el('p', { class: 't-sub muted num' }, `Barcode ${draft.barcode}`) : null,
     draft.source === 'off' ? offCredit() : null,
     basisCtl,
-    per100Title,
+    per100Head,
     el('div', { class: 'grid-2' }, fields.kcal, kjField, fields.protein, fields.carbs, fields.fat, fields.sugars, fields.satFat, fields.fibre, fields.salt),
     macroHint,
     mode === 'food' ? el('div', { class: 'stack' },
-      el('h3', { class: 'section-title' }, 'Servings'),
+      sectionHeader('Servings'),
       servingRows,
-      el('button', { type: 'button', class: 'btn btn-sm', onClick: () => addServingRow() }, '+ Add serving')) : null,
+      el('button', { type: 'button', class: 'btn btn-sm btn-ghost add-serving', onClick: () => addServingRow() }, icon('plus'), 'Add serving')) : null,
     mode === 'entry' && canUpdateFood ? el('label', { class: 'row check-row', htmlFor: alsoUpdate.id }, alsoUpdate, el('span', 'Also update the saved food')) : null,
-    mode === 'entry' ? el('p', { class: 'small muted' }, 'Changes apply to this diary entry only' + (canUpdateFood ? ' unless you tick the box.' : '.')) : null,
+    mode === 'entry' && !canUpdateFood ? el('p', { class: 't-sub muted' }, 'This entry only.') : null,
     missingNote,
   ];
   const sheet = openSheet({ title, content, className: 'food-editor' });

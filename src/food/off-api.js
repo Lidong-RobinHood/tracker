@@ -8,9 +8,9 @@ const searchCache = new Map(); // query -> results (this session only)
 
 function offlineMessage() {
   return typeof navigator !== 'undefined' && navigator.onLine === false
-    ? 'You are offline. Open Food Facts needs a connection; your foods, generic foods and quick add still work.'
+    ? 'Offline. Your foods, generic foods and Quick add still work.'
     // A rate-limit/overload answer from OFF has no CORS header, so the browser reports it as a network error too.
-    : 'Could not reach Open Food Facts. The service may be busy or rate-limiting (wait a minute), or the connection dropped.';
+    : 'Could not reach Open Food Facts. Try again in a minute.';
 }
 
 async function fetchJson(url, signal) {
@@ -25,7 +25,7 @@ async function fetchJson(url, signal) {
     return { status: res.status, json };
   } catch (err) {
     if (signal && signal.aborted) throw err;              // caller cancelled: propagate AbortError
-    if (ctrl.signal.aborted) return { status: 0, error: 'Open Food Facts did not answer within 15 s. Try again.' };
+    if (ctrl.signal.aborted) return { status: 0, error: 'Open Food Facts timed out. Try again.' };
     return { status: 0, error: offlineMessage() };
   } finally {
     clearTimeout(timer);
@@ -56,7 +56,7 @@ export async function searchProducts(query, { signal } = {}) {
   const key = query.trim().toLowerCase();
   if (searchCache.has(key)) return { ok: true, results: searchCache.get(key) };
   const wait = searchWait();
-  if (wait > 0) return { ok: false, error: `Open Food Facts allows only a few searches per minute. Try again in ${Math.ceil(wait / 1000)} s.`, retryInMs: wait };
+  if (wait > 0) return { ok: false, error: `Search limit reached. Try again in ${Math.ceil(wait / 1000)} s.`, retryInMs: wait };
   searchTimes.push(Date.now());
   const r = await fetchJson(searchUrl(query), signal);
   if (r.status === 0) return { ok: false, error: r.error };

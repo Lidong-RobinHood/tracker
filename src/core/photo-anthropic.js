@@ -139,9 +139,8 @@ export const anthropic = Object.freeze({
   keyFormatNote: 'it does not look like an Anthropic key (sk-ant-…)',
   pricingUrl: 'https://platform.claude.com/docs/en/about-claude/pricing',
   notes: [
-    'The photo and your hint are sent to Anthropic. Each analysis is billed to your Anthropic account.',
-    'For Fable, Opus 5.5/5 and Sonnet 5.5 the request allows Anthropic’s automatic fallback to another model if the first one declines; that run is billed too.',
-    'Organisations with zero data retention cannot call the API from a browser.',
+    'Each analysis is billed to your Anthropic account.',
+    'Fable, Opus 5.5/5 and Sonnet 5.5 may fall back to another model; that run is billed too.',
   ],
   structured: true,
   buildAnalyse: buildAnthropicRequest,

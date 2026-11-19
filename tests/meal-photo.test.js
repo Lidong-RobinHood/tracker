@@ -155,7 +155,7 @@ test('prompt helpers: hint quoting and schema-in-prompt fallback', () => {
 
 test('errors name the provider and never show a key', () => {
   const e = photoError('billing', 'Incorrect API key provided: sk-proj-abcdefghijklmnop1234', { provider: 'OpenAI' });
-  assert.match(e.message, /OpenAI account/);
+  assert.match(e.message, /at OpenAI/);
   assert.ok(!e.detail.includes('sk-proj-abcdefghijklmnop1234'));
   assert.match(photoError('auth').message, /the API provider/);
   assert.equal(photoError('nope').kind, 'unusable');

@@ -1,7 +1,9 @@
 // "Scan meal photo" section at the top of the Quick add tab:
 // photo → AI estimate (user's own key) → editable review → diary (one entry per item, or one quick-add entry).
 // The manual Quick add form below stays usable; while an estimate is shown it is hidden (never cleared).
-import { el, numberInput, toast, fmtNum, fmtAmount, href, emptyState, replaceChildren, confirmDialog } from '../ui/index.js';
+import {
+  el, numberInput, toast, fmtGrouped, fmtAmount, href, emptyState, replaceChildren, confirmDialog, cardHeader, icon, iconButton,
+} from '../ui/index.js';
 import { scale, sumEntries, isComplete } from '../core/nutrition.js';
 import { itemWarnings, HINT_MAX, setPortionValue, photoMealName, photoMealTotals, ENTRY_NAME_MAX } from '../core/meal-photo.js';
 import { getAdapter } from '../core/photo-providers.js';
@@ -24,11 +26,12 @@ export const PHOTO_DRAFT = 'photo-review';
 
 const CONF_LABEL = { high: 'high confidence', medium: 'medium confidence', low: 'low confidence', unknown: 'confidence unknown', manual: 'added by you' };
 const CONF_CLASS = { high: 'badge-conf-high', medium: 'badge-conf-medium', low: 'badge-conf-low', unknown: 'badge-conf-low', manual: 'badge-edited' };
+// kcal shares the top line with the amount; the macros sit in a row of three below (P/C/F swatches).
 const VALUE_FIELDS = [
-  { key: 'kcal', label: 'kcal', decimals: 0, max: 10000 },
-  { key: 'protein', label: 'Protein g', decimals: 1, max: 1000 },
-  { key: 'carbs', label: 'Carbs g', decimals: 1, max: 1000 },
-  { key: 'fat', label: 'Fat g', decimals: 1, max: 1000 },
+  { key: 'kcal', label: 'kcal', unit: 'kcal', decimals: 0, max: 10000 },
+  { key: 'protein', label: 'Protein', unit: 'g', decimals: 1, max: 1000 },
+  { key: 'carbs', label: 'Carbs', unit: 'g', decimals: 1, max: 1000 },
+  { key: 'fat', label: 'Fat', unit: 'g', decimals: 1, max: 1000 },
 ];
 
 /**
@@ -50,12 +53,13 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
   cleanups.push(() => { if (ctrl) ctrl.abort(); clearInterval(timer); dropPhoto(); });
 
   function dropPhoto() { if (photo) { URL.revokeObjectURL(photo.url); photo = null; } }
-  const settingsLink = (label = 'Photo settings') => el('a', { class: 'btn btn-sm', href: href('food/photo-settings?from=add') }, label);
+  const settingsLink = (label = 'Photo settings') => el('a', { class: 'btn btn-sm', href: href('food/photo-settings?from=add') }, icon('settings'), label);
+  const settingsIcon = () => el('a', { class: 'btn btn-icon btn-ghost', href: href('food/photo-settings?from=add'), 'aria-label': 'Photo settings' }, icon('settings'));
   /** Estimate on screen → manual form hidden (values kept); otherwise visible. */
   const setEstimateMode = (on) => { wrap.classList.toggle('is-estimate', on); manual.setHidden(on); };
 
   // ------------------------------------------------------------ capture
-  const hint = el('textarea', { class: 'textarea photo-hint', rows: '2', maxlength: String(HINT_MAX), placeholder: 'Optional hint, e.g. “about 200 g rice, chicken thigh”', 'aria-label': 'Hint for the analysis' });
+  const hint = el('textarea', { class: 'textarea photo-hint', rows: '2', maxlength: String(HINT_MAX), placeholder: 'e.g. 200 g rice, chicken thigh', 'aria-label': 'Hint for the analysis' });
 
   function fileInput(capture) {
     const i = el('input', { type: 'file', accept: 'image/*', class: 'visually-hidden-file', tabindex: '-1', 'aria-hidden': 'true', ...(capture ? { capture: 'environment' } : {}) });
@@ -65,53 +69,51 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
   const camIn = fileInput(true);
   const libIn = fileInput(false);
 
-  const scanTitle = () => el('h2', { class: 'section-title photo-scan-title' }, 'Scan meal photo');
+  /** Card title row: 'Scan meal photo' ⓘ (+ settings link on the right). */
+  const scanHead = (withSettings = true) => cardHeader('Scan meal photo', { info: 'photo', trail: withSettings ? settingsIcon() : null });
+  /** The one muted line under the title: who bills the analysis. */
+  const billedLine = (cfg) => el('p', { class: 't-sub muted photo-billed' }, `Your API key · billed by ${getAdapter(cfg.provider).name}`);
 
-  const SETUP_TEXT = { key: 'No API key is set for it yet.', model: 'No model is chosen for it yet.', baseUrl: 'Its base URL is not set yet.' };
+  const SETUP_TEXT = { key: 'No key yet.', model: 'No model yet.', baseUrl: 'No base URL yet.' };
   function renderNoKey() {
     setEstimateMode(false);
     const cfg = activePhotoConfig();
     const a = getAdapter(cfg.provider);
-    replaceChildren(wrap, el('div', { class: 'card stack photo-scan-card' },
-      scanTitle(),
-      el('p', { class: 'small' }, 'Fill in this meal from a photo: an AI model estimates the foods, portions, calories and macros, and you can change every number before anything is added.'),
-      el('p', { class: 'small muted' }, `It uses your own API key from a provider you choose (Anthropic, Google Gemini, OpenAI or an OpenAI-compatible service); usage is billed by that provider. Selected: ${a.label}. ${SETUP_TEXT[cfg.missing] || ''}`),
-      settingsLink('Set up provider and key')));
-  }
-
-  /** "Anthropic (Claude) · claude-opus-5-5" for the active provider. */
-  function activeLine(cfg) {
-    const a = getAdapter(cfg.provider);
-    return `${a.label} · ${cfg.model || 'no model'}`;
+    replaceChildren(wrap, el('div', { class: 'card photo-scan-card' },
+      scanHead(false),
+      el('div', { class: 'stack' },
+        el('p', null, 'AI estimates the meal from a photo. You check every value before adding.'),
+        el('p', { class: 't-sub muted' }, `Needs your own API key · billed by ${a.label}. ${SETUP_TEXT[cfg.missing] || ''}`.trim()),
+        el('a', { class: 'btn btn-secondary btn-block', href: href('food/photo-settings?from=add') }, icon('key-round'), 'Add API key'))));
   }
 
   function renderCapture(msg) {
     setEstimateMode(false);
-    const pickRow = el('div', { class: 'grid-2' },
-      el('button', { type: 'button', class: ['btn', photo ? null : 'btn-primary'], onClick: () => camIn.click() }, photo ? 'Retake photo' : '📷 Take photo'),
-      el('button', { type: 'button', class: 'btn', onClick: () => libIn.click() }, 'Choose photo'));
+    const pickRow = el('div', { class: 'grid-2 photo-pick' },
+      el('button', { type: 'button', class: 'btn btn-secondary', onClick: () => camIn.click() }, icon('camera'), photo ? 'Retake photo' : 'Take photo'),
+      el('button', { type: 'button', class: 'btn btn-secondary', onClick: () => libIn.click() }, icon('image'), 'Choose photo'));
     const cfg = activePhotoConfig();
     if (!photo) {
-      replaceChildren(wrap, el('div', { class: 'card stack photo-scan-card' },
-        scanTitle(),
-        el('p', { class: 'small muted' }, 'Estimate calories and macros from a photo, then adjust them before adding. Or type the values below.'),
-        msg || null,
-        pickRow, camIn, libIn,
-        el('p', { class: 'small muted row-between photo-model-line' },
-          el('span', { class: 'photo-active-provider' }, activeLine(cfg)), settingsLink('Settings'))));
+      replaceChildren(wrap, el('div', { class: 'card photo-scan-card' },
+        scanHead(),
+        el('div', { class: 'stack' },
+          billedLine(cfg),
+          msg || null,
+          pickRow, camIn, libIn)));
       return;
     }
-    replaceChildren(wrap, el('div', { class: 'card stack photo-scan-card' },
-      el('div', { class: 'row-between' }, scanTitle(),
-        el('button', { type: 'button', class: 'btn btn-sm btn-ghost', onClick: () => { dropPhoto(); renderCapture(); } }, 'Remove photo')),
-      el('div', { class: 'photo-preview is-small' }, el('img', { src: photo.url, alt: 'Selected meal photo' })),
-      pickRow, camIn, libIn,
-      el('div', { class: 'field' }, el('label', { class: 'field-label' }, 'Hint (optional)', hint),
-        el('span', { class: 'field-hint' }, 'Anything you know for sure – amounts, ingredients, how it was cooked. It is taken as fact.')),
-      msg || null,
-      el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: analyse }, 'Analyse'),
-      el('p', { class: 'small muted row-between photo-model-line' },
-        el('span', { class: 'photo-active-provider' }, `${activeLine(cfg)} · billed by the provider`), settingsLink('Settings'))));
+    replaceChildren(wrap, el('div', { class: 'card photo-scan-card' },
+      scanHead(),
+      el('div', { class: 'stack' },
+        billedLine(cfg),
+        el('div', { class: 'photo-preview is-small' },
+          el('img', { src: photo.url, alt: 'Selected meal photo' }),
+          iconButton('x', { label: 'Remove photo', class: 'photo-remove', onClick: () => { dropPhoto(); renderCapture(); } })),
+        pickRow, camIn, libIn,
+        el('div', { class: 'field' }, el('label', { class: 'field-label' }, 'Hint (optional)', hint),
+          el('span', { class: 'field-hint' }, 'Treated as fact.')),
+        msg || null,
+        el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: analyse }, 'Analyse'))));
   }
 
   async function choose(file) {
@@ -123,7 +125,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
       photo = { ...p, url: URL.createObjectURL(p.blob) };
       renderCapture();
     } catch (err) {
-      renderCapture(el('p', { class: 'small text-danger', role: 'alert' }, err.message || String(err)));
+      renderCapture(el('p', { class: 't-sub text-danger', role: 'alert' }, err.message || String(err)));
     }
   }
 
@@ -136,17 +138,18 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
     const started = Date.now();
     const { model } = cfg;
     const providerName = getAdapter(cfg.provider).name;
-    const status = el('p', { class: 'muted', role: 'status' });
+    const status = el('p', { class: 't-sub num', role: 'status' });
     const tick = () => { status.textContent = `Analysing with ${providerName} · ${model}… ${Math.round((Date.now() - started) / 1000)} s`; };
     tick();
     timer = setInterval(tick, 1000);
-    replaceChildren(wrap, el('div', { class: 'card stack photo-scan-card' },
-      scanTitle(),
-      el('div', { class: 'photo-preview is-small is-busy' }, el('img', { src: photo.url, alt: 'Meal photo being analysed' })),
-      el('div', { class: 'progress-indeterminate', role: 'progressbar', 'aria-label': 'Analysing' }),
-      status,
-      el('p', { class: 'small muted' }, 'This usually takes 10–60 seconds. Cancelling stops waiting; a request already received by the API may still be billed.'),
-      el('button', { type: 'button', class: 'btn btn-block', onClick: () => c.abort() }, 'Cancel')));
+    replaceChildren(wrap, el('div', { class: 'card photo-scan-card' },
+      scanHead(false),
+      el('div', { class: 'stack' },
+        el('div', { class: 'photo-preview is-small is-busy' }, el('img', { src: photo.url, alt: 'Meal photo being analysed' })),
+        el('div', { class: 'progress-indeterminate', role: 'progressbar', 'aria-label': 'Analysing' }),
+        status,
+        el('p', { class: 't-sub muted' }, 'Usually 10–60 s. A cancelled request may still be billed.'),
+        el('button', { type: 'button', class: 'btn btn-block', onClick: () => c.abort() }, 'Cancel'))));
     const r = await analyseMealPhoto(photo.blob, { provider: cfg.provider, apiKey: cfg.apiKey, model, baseUrl: cfg.baseUrl, useSchema: cfg.useSchema, hint: hint.value, signal: c.signal });
     clearInterval(timer);
     if (ctrl !== c) return;
@@ -158,7 +161,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
       lastNote = r.note;
       rows = r.items.map((it) => ({ ...it, remember: false }));
       nameTouched = false;
-      renderReview(r.dropped ? `Only the first ${rows.length} items are shown.` : null);
+      renderReview(r.dropped ? `First ${rows.length} items shown.` : null);
     } else {
       renderError(r);
     }
@@ -167,63 +170,61 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
   function renderError(r) {
     setEstimateMode(false);
     const actions = [];
-    if (r.retry && r.kind !== 'cancelled') actions.push(el('button', { type: 'button', class: 'btn btn-primary', onClick: analyse }, 'Try again'));
+    if (r.retry && r.kind !== 'cancelled') actions.push(el('button', { type: 'button', class: 'btn btn-primary', onClick: analyse }, icon('refresh-cw'), 'Try again'));
     if (r.kind === 'cancelled') actions.push(el('button', { type: 'button', class: 'btn btn-primary', onClick: analyse }, 'Analyse again'));
     if (['auth', 'billing', 'permission', 'model', 'no_key', 'bad_request', 'network'].includes(r.kind)) actions.push(settingsLink());
     actions.push(el('button', { type: 'button', class: 'btn btn-ghost', onClick: () => { rows = []; lastNote = ''; nameTouched = false; renderReview(); addManual(); } }, 'Add items manually'));
     actions.push(el('button', { type: 'button', class: 'btn btn-ghost', onClick: () => renderCapture() }, 'Back to photo'));
     const isInfo = r.kind === 'cancelled' || r.kind === 'empty';
-    replaceChildren(wrap, el('div', { class: ['card stack photo-scan-card', isInfo ? null : 'photo-error'] },
-      scanTitle(),
-      photo ? el('div', { class: 'photo-preview is-small' }, el('img', { src: photo.url, alt: 'Meal photo' })) : null,
-      el('div', { class: 'stack', role: 'alert' },
-        el('p', { class: isInfo ? null : 'text-danger' }, r.message),
-        r.note ? el('p', { class: 'small muted' }, `Model note: ${r.note}`) : null,
-        r.detail ? el('p', { class: 'small muted' }, `Details: ${r.detail}`) : null),
-      el('div', { class: 'row photo-actions' }, actions),
-      el('p', { class: 'small muted' }, 'You can still enter the values by hand below.')));
+    replaceChildren(wrap, el('div', { class: ['card photo-scan-card', isInfo ? null : 'error-card'] },
+      scanHead(),
+      el('div', { class: 'stack' },
+        photo ? el('div', { class: 'photo-preview is-small' }, el('img', { src: photo.url, alt: 'Meal photo' })) : null,
+        el('div', { class: 'stack', role: 'alert' },
+          el('p', { class: isInfo ? null : 'text-danger' }, r.message),
+          r.note ? el('p', { class: 't-sub muted' }, `Model note: ${r.note}`) : null,
+          r.detail ? el('p', { class: 't-sub muted' }, `Details: ${r.detail}`) : null),
+        el('div', { class: 'row photo-actions' }, actions),
+        el('p', { class: 't-sub muted' }, 'Or enter the values below.'))));
   }
 
   // ------------------------------------------------------------ review
-  const reviewList = el('div', { class: 'stack' });
-  const totalsEl = el('div', { class: 'card photo-totals', 'aria-live': 'polite' });
-  const blocker = el('p', { class: 'small field-error' });
+  const reviewList = el('div', { class: 'photo-items' });
+  const totalsEl = el('div', { class: 'photo-totals', 'aria-live': 'polite' });
+  const blocker = el('p', { class: 'field-error' });
   const mealSel = mealSelect(meal);
   const addBtn = el('button', { type: 'button', class: 'btn btn-primary btn-block photo-add-items', onClick: addAll });
   const oneName = el('input', { class: 'input', type: 'text', maxlength: String(ENTRY_NAME_MAX), autocomplete: 'off', 'aria-label': 'Name of the single entry',
     onInput: () => { nameTouched = true; persist(); } });
-  const oneBtn = el('button', { type: 'button', class: 'btn btn-block photo-add-one', onClick: addOne });
+  const oneBtn = el('button', { type: 'button', class: 'btn btn-secondary btn-block photo-add-one', onClick: addOne });
   mealSel.addEventListener('change', updateTotals);
 
   function renderReview(info) {
     setEstimateMode(true);
     if (!nameTouched) oneName.value = suggestedName();
     const kept = manual.hasValues();
+    if (!mealSel.id) mealSel.id = `pm-${Math.random().toString(36).slice(2)}`;
+    if (!oneName.id) oneName.id = `pn-${Math.random().toString(36).slice(2)}`;
     replaceChildren(wrap,
-      el('div', { class: 'row-between' },
-        el('h2', { class: 'section-title' }, 'Photo estimate – check and adjust'),
-        photo ? el('img', { class: 'photo-thumb', src: photo.url, alt: 'Meal photo' }) : null),
-      el('p', { class: 'small muted' }, 'These are estimates. Change the grams, calories or macros of any item before adding; nothing is saved yet.'),
-      kept ? el('p', { class: 'small editor-note' }, 'The values you typed in Quick add are kept. “Discard estimate” brings them back.') : null,
-      lastNote ? el('p', { class: 'small editor-note' }, lastNote) : null,
-      info ? el('p', { class: 'small editor-note', role: 'status' }, info) : null,
-      reviewList,
-      el('button', { type: 'button', class: 'btn btn-sm photo-add-item', onClick: addManual }, '+ Add item'),
-      totalsEl,
-      el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Meal'), mealSel),
-      blocker,
-      el('section', { class: 'card stack photo-log-option', 'aria-label': 'Add as separate items' },
-        el('div', { class: 'field-label' }, 'Separate items'),
-        el('p', { class: 'small muted' }, 'One diary entry per item with its grams. Ticked items are saved to your foods; you can save the whole meal afterwards.'),
-        addBtn),
+      el('section', { class: 'card photo-review', 'aria-label': 'Photo estimate' },
+        cardHeader('Photo estimate', { info: 'photo', trail: photo ? el('img', { class: 'photo-thumb', src: photo.url, alt: 'Meal photo' }) : null }),
+        el('div', { class: 'stack photo-review-notes' },
+          el('p', { class: 't-sub muted' }, 'AI estimate. Nothing is saved until you add.'),
+          kept ? el('p', { class: 't-sub editor-note' }, 'Discard restores your typed values.') : null,
+          lastNote ? el('p', { class: 't-sub editor-note' }, lastNote) : null,
+          info ? el('p', { class: 't-sub editor-note', role: 'status' }, info) : null),
+        reviewList,
+        el('button', { type: 'button', class: 'btn btn-sm btn-ghost photo-add-item', onClick: addManual }, icon('plus'), 'Add item'),
+        totalsEl,
+        el('div', { class: 'stack photo-log' },
+          el('div', { class: 'field' }, el('label', { class: 'field-label', htmlFor: mealSel.id }, 'Meal'), mealSel),
+          blocker,
+          addBtn,
+          el('p', { class: 't-sub muted' }, 'One entry per item. Ticked items are saved to your foods.'))),
       el('section', { class: 'card stack photo-log-option', 'aria-label': 'Add as one entry' },
-        el('div', { class: 'field-label' }, 'One quick-add entry'),
-        el('p', { class: 'small muted' }, 'Just the meal totals (calories, protein, carbs, fat) as a single Quick add entry.'),
-        el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'Entry name'), oneName),
+        el('div', { class: 'field' }, el('label', { class: 'field-label', htmlFor: oneName.id }, 'One Quick add entry'), oneName),
         oneBtn),
-      el('div', { class: 'row-between photo-review-foot' },
-        el('button', { type: 'button', class: 'btn btn-sm btn-ghost', onClick: discard }, 'Discard estimate'),
-        usedModel ? el('span', { class: 'small muted' }, `Estimated by ${usedModel}`) : null));
+      el('button', { type: 'button', class: 'btn btn-ghost text-danger photo-discard', onClick: discard }, icon('trash-2'), 'Discard'));
     renderRows();
   }
 
@@ -233,18 +234,19 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
   }
 
   function renderRows() {
-    replaceChildren(reviewList, ...(rows.length ? rows.map(rowEl) : [emptyState('No items. Add one manually, or discard the estimate.')]));
+    replaceChildren(reviewList, ...(rows.length ? rows.map(rowEl) : [emptyState('No items.')]));
     updateTotals();
   }
 
   function rowEl(row, idx) {
-    const subEl = el('span');
-    const warnEl = el('ul', { class: 'small photo-warnings' });
+    const subEl = el('span', { class: 'num' });
+    const warnEl = el('ul', { class: 't-sub photo-warnings' });
     const uid = `${idx}-${Math.random().toString(36).slice(2)}`;
     const valueInputs = {};
-    const valueCells = VALUE_FIELDS.map((f) => {
+    const valueCells = {};
+    for (const f of VALUE_FIELDS) {
       const id = `pv-${f.key}-${uid}`;
-      const input = numberInput({ min: 0, max: f.max, decimals: f.decimals, id, ariaLabel: `${f.label} of ${row.name}`,
+      const input = numberInput({ min: 0, max: f.max, decimals: f.decimals, id, ariaLabel: `${f.key === 'kcal' ? 'kcal' : `${f.label} g`} of ${row.name}`,
         onInput: (n) => {
           if (!(typeof row.amount === 'number' && row.amount > 0)) return;
           row.per100 = setPortionValue(row.per100, row.amount, f.key, n);
@@ -254,28 +256,31 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
           updateTotals();
         } });
       valueInputs[f.key] = input;
-      return el('div', { class: 'photo-value' }, el('label', { class: 'photo-value-label small muted', htmlFor: id }, f.label), input);
-    });
+      const box = el('div', { class: 'input-unit' }, input, el('span', { class: 'unit', 'aria-hidden': 'true' }, f.unit));
+      valueCells[f.key] = f.key === 'kcal' ? box
+        : el('div', { class: 'photo-value' }, el('label', { class: 't-cap muted photo-value-label', htmlFor: id },
+          el('i', { class: `swatch is-${f.key}`, 'aria-hidden': 'true' }), f.label), box);
+    }
     const amount = numberInput({ value: row.amount, min: 0.1, max: 5000, decimals: 1, ariaLabel: `Amount of ${row.name}`,
       onInput: (n) => { row.amount = n; refreshRow(); updateTotals(); } });
     const remember = el('input', { type: 'checkbox', checked: row.remember, id: `rem-${uid}`,
       onChange: () => { row.remember = remember.checked; persist(); } });
-    const card = el('div', { class: ['card stack photo-item'], dataset: { idx: String(idx) } },
+    const card = el('div', { class: 'photo-item', dataset: { idx: String(idx) } },
       el('div', { class: 'photo-item-head' },
         el('div', { class: 'li-main' },
           el('div', { class: 'li-title' }, row.name),
           el('div', { class: 'li-sub' },
             el('span', { class: ['badge', CONF_CLASS[row.confidence] || 'badge-conf-low'] }, CONF_LABEL[row.confidence] || row.confidence),
             ' ', subEl)),
-        el('button', { type: 'button', class: 'btn btn-sm btn-ghost edit-values', onClick: () => editRow(row), 'aria-label': `Edit name and all values of ${row.name}` }, '✎ More'),
-        el('button', { type: 'button', class: 'btn btn-icon btn-ghost', 'aria-label': `Remove ${row.name}`, onClick: () => { rows.splice(rows.indexOf(row), 1); renderRows(); } }, '×')),
+        iconButton('pencil', { label: `Edit name and all values of ${row.name}`, onClick: () => editRow(row) }),
+        iconButton('x', { label: `Remove ${row.name}`, onClick: () => { rows.splice(rows.indexOf(row), 1); renderRows(); } })),
       el('div', { class: 'photo-item-amount' },
-        el('div', { class: 'input-unit' }, amount, el('span', { class: 'unit' }, row.basis)),
-        el('span', { class: 'small muted' }, 'for this amount:')),
-      el('div', { class: 'photo-values' }, valueCells),
+        el('div', { class: 'input-unit' }, amount, el('span', { class: 'unit', 'aria-hidden': 'true' }, row.basis)),
+        valueCells.kcal),
+      el('div', { class: 'photo-values' }, valueCells.protein, valueCells.carbs, valueCells.fat),
       warnEl,
-      row.assumptions ? el('p', { class: 'small muted' }, row.assumptions) : null,
-      el('label', { class: 'row check-row small', htmlFor: remember.id }, remember, el('span', null, 'Remember this food (add to my foods)')));
+      row.assumptions ? el('p', { class: 't-sub muted' }, row.assumptions) : null,
+      el('label', { class: 'row check-row t-sub', htmlFor: remember.id }, remember, el('span', null, 'Save to my foods')));
 
     /** Re-derive the portion values; `typing` is the field being edited (left alone). */
     function refreshRow(typing) {
@@ -287,7 +292,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
         if (f.key === typing) continue;
         i.setNumber(ok && typeof v[f.key] === 'number' ? Number(v[f.key].toFixed(f.decimals)) : null);
       }
-      subEl.textContent = `${fmtNum(row.per100.kcal, 0)} kcal / 100 ${row.basis}`;
+      subEl.textContent = `${fmtGrouped(row.per100.kcal, 0)} kcal / 100 ${row.basis}`;
       row.warnings = itemWarnings(row);
       replaceChildren(warnEl, ...[...(row.fixes || []), ...row.warnings].map((w) => el('li', null, w)));
       card.classList.toggle('has-warning', row.warnings.length > 0);
@@ -300,7 +305,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
     const r = await openFoodEditor({
       food: { name: row.name, brand: null, basis: row.basis, per100: row.per100, servings: [] },
       mode: 'entry', title: 'Edit item values',
-      note: row.confidence === 'manual' ? null : 'Values per 100 as estimated. Correct anything you know better (e.g. from a label).',
+      note: row.confidence === 'manual' ? null : `Values per 100 ${row.basis}.`,
     });
     if (!r) return;
     Object.assign(row, { name: r.food.name, basis: r.food.basis, per100: r.food.per100, fixes: [] });
@@ -318,7 +323,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
   }
 
   async function discard() {
-    const ok = await confirmDialog({ title: 'Discard the estimate?', message: 'The photo estimate and your changes to it are removed. Nothing has been added to the diary.', confirmLabel: 'Discard', cancelLabel: 'Keep' });
+    const ok = await confirmDialog({ title: 'Discard the estimate?', message: 'Nothing has been added to the diary.', confirmLabel: 'Discard', cancelLabel: 'Keep' });
     if (!ok) return;
     reset();
   }
@@ -336,17 +341,19 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
   function updateTotals() {
     const t = photoMealTotals(rows);
     replaceChildren(totalsEl,
-      el('div', { class: 'row-between' }, el('span', { class: 'field-label' }, 'Meal total'), el('span', { class: 'num photo-total-kcal' }, `${fmtNum(t.kcal, 0)} kcal`)),
-      el('div', { class: 'small muted num photo-total-macros' }, macroText(t)));
+      el('div', { class: 'row-between photo-total-line' },
+        el('span', { class: 't-sub muted' }, usedModel ? `Estimated by ${usedModel}` : 'Meal total'),
+        el('span', { class: 't-head num photo-total-kcal' }, `${fmtGrouped(t.kcal, 0)} kcal`)),
+      el('div', { class: 't-sub muted num photo-total-macros' }, macroText(t)));
     const incomplete = rows.length - readyRows().length;
-    if (incomplete) totalsEl.append(el('div', { class: 'small text-warning' }, 'Incomplete items are not fully counted.'));
+    if (incomplete) totalsEl.append(el('div', { class: 't-sub text-warning' }, 'Incomplete items not counted.'));
     blocker.textContent = incomplete ? `${incomplete} item${incomplete === 1 ? ' needs' : 's need'} an amount or values before adding.` : '';
     const n = rows.length;
     const blocked = n === 0 || incomplete > 0;
     addBtn.disabled = blocked;
     oneBtn.disabled = blocked;
     addBtn.textContent = n === 0 ? 'No items to add' : `Add ${n} item${n === 1 ? '' : 's'} to ${mealLabel(mealSel.value)}`;
-    oneBtn.textContent = n === 0 ? 'Nothing to add' : `Add as one entry · ${fmtNum(t.kcal, 0)} kcal`;
+    oneBtn.textContent = n === 0 ? 'Nothing to add' : `Add as one entry · ${fmtGrouped(t.kcal, 0)} kcal`;
     if (!nameTouched && oneName.isConnected) oneName.value = suggestedName();
     persist();
   }
@@ -375,7 +382,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
     if (d.mealChoice) mealSel.value = d.mealChoice;
     const at = estimate && estimate.at ? new Date(estimate.at) : null;
     const when = at ? ` from ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` : '';
-    renderReview(`Restored: this is the estimate${when} with your changes, as you left it before the app was reloaded. The photo itself is not kept.`);
+    renderReview(`Estimate restored${when}. Photo not kept.`);
     return true;
   }
 
@@ -406,7 +413,7 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
       await putEntry(e);
       rows = [];
       clearDraft(PHOTO_DRAFT);
-      toast(`Added ${fmtNum(t.kcal, 0)} kcal to ${mealLabel(mealId)}`, { type: 'success' });
+      toast(`Added ${fmtGrouped(t.kcal, 0)} kcal to ${mealLabel(mealId)}`, { type: 'success' });
       onFinished();
     } catch (err) {
       console.error(err);
@@ -423,15 +430,19 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
     rows = [];
     clearDraft(PHOTO_DRAFT);
     setEstimateMode(true);
-    replaceChildren(wrap, el('div', { class: 'card stack' },
-      el('h2', { class: 'section-title' }, `Added to ${mealLabel(mealId)}`),
-      el('ul', { class: 'plain-list small' }, entries.map((e) => el('li', null, `${e.name} · ${fmtAmount(e.amount, e.basis)} · ${fmtNum(scale(e.per100, e.amount).kcal, 0)} kcal`))),
-      el('p', { class: 'num' }, `${fmtNum(t.kcal, 0)} kcal · ${macroText(t)}`),
-      remembered ? el('p', { class: 'small muted' }, `${remembered} food${remembered === 1 ? '' : 's'} added to your foods.`) : null,
-      el('div', { class: 'row photo-actions' },
-        el('button', { type: 'button', class: 'btn', onClick: async () => { if (await openSaveAsMeal(entries, `${mealLabel(mealId)} photo`)) onFinished(); } }, 'Save as meal…'),
-        el('button', { type: 'button', class: 'btn btn-primary', onClick: () => onFinished() }, 'Done')),
-      el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: reset }, 'Scan another photo')));
+    replaceChildren(wrap, el('div', { class: 'card photo-done' },
+      cardHeader(`Added to ${mealLabel(mealId)}`),
+      el('div', { class: 'stack' },
+        el('div', { class: 'list' }, entries.map((e) => el('div', { class: 'list-item' },
+          el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, e.name), el('div', { class: 'li-sub num' }, fmtAmount(e.amount, e.basis))),
+          el('div', { class: 'li-trail num' }, `${fmtGrouped(scale(e.per100, e.amount).kcal, 0)} kcal`)))),
+        el('div', { class: 'row-between photo-total-line' },
+          el('span', { class: 't-sub muted num' }, macroText(t)), el('span', { class: 't-head num' }, `${fmtGrouped(t.kcal, 0)} kcal`)),
+        remembered ? el('p', { class: 't-sub muted' }, `${remembered} food${remembered === 1 ? '' : 's'} added to your foods.`) : null,
+        el('div', { class: 'row photo-actions photo-done-actions' },
+          el('button', { type: 'button', class: 'btn', onClick: async () => { if (await openSaveAsMeal(entries, `${mealLabel(mealId)} photo`)) onFinished(); } }, icon('bookmark'), 'Save as meal…'),
+          el('button', { type: 'button', class: 'btn btn-primary', onClick: () => onFinished() }, icon('check'), 'Done')),
+        el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: reset }, icon('camera'), 'Scan another photo'))));
   }
 
   return {

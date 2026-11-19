@@ -106,7 +106,7 @@ export function interpretProductResponse(status, json) {
     if (json && json.status === 0) return { outcome: 'not_found', error: json.status_verbose || 'product not found' };
     return { outcome: 'error', error: `Unexpected response from Open Food Facts (HTTP ${status}).` };
   }
-  return { outcome: 'error', error: `Open Food Facts returned HTTP ${status}${status >= 500 ? ' (server problem, try again later)' : ''}.` };
+  return { outcome: 'error', error: `Open Food Facts error (HTTP ${status}). Try again later.` };
 }
 
 /**
@@ -129,9 +129,7 @@ export function parseSearchResponse(json) {
 }
 
 export function rateLimitMessage(status) {
-  return status === 503
-    ? 'Open Food Facts is busy or rate-limiting requests (HTTP 503). Wait a minute and try again.'
-    : 'Too many requests to Open Food Facts (HTTP 429). Wait a minute and try again.';
+  return `Open Food Facts is busy (HTTP ${status === 503 ? 503 : 429}). Try again in a minute.`;
 }
 
 /**

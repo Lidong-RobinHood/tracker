@@ -171,7 +171,7 @@ test('Gemini: documented error shapes', () => {
   assert.equal(classifyGeminiError(402, g(402, 'RESOURCE_EXHAUSTED', 'Your Prepay credit balance is depleted.')).kind, 'billing');
   const rl = classifyGeminiError(429, g(429, 'RESOURCE_EXHAUSTED', 'You exceeded your current quota.'));
   assert.equal(rl.kind, 'rate_limit');
-  assert.match(rl.message, /free-tier/);
+  assert.match(rl.message, /quota reached \(429\)/);
   assert.equal(classifyGeminiError(429, g(429, 'RESOURCE_EXHAUSTED', 'You exceeded your current quota, please check your plan and billing details.')).kind, 'rate_limit');
   assert.equal(classifyGeminiError(404, g(404, 'NOT_FOUND', 'models/gemini-x is not found')).kind, 'model');
   assert.equal(classifyGeminiError(503, g(503, 'UNAVAILABLE', 'The model is overloaded.')).kind, 'overloaded');

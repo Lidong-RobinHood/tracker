@@ -55,10 +55,10 @@ export function getDecoder(force) {
 
 export function cameraErrorText(e) {
   const n = e && e.name;
-  if (n === 'NotAllowedError' || n === 'PermissionDeniedError') return 'Camera permission denied. Allow camera access for this site in the browser settings (iPhone: Settings › Safari › Camera, or the "aA" menu; Android: lock icon in the address bar › Permissions), then try again. You can also type the barcode below.';
-  if (n === 'NotFoundError' || n === 'DevicesNotFoundError' || n === 'OverconstrainedError') return 'No suitable camera found on this device. Type the barcode below.';
-  if (n === 'NotReadableError' || n === 'TrackStartError') return 'The camera is in use by another app or could not be started. Close other camera apps and retry.';
-  if (n === 'SecurityError') return 'Camera blocked for security reasons (the page must be opened over https).';
+  if (n === 'NotAllowedError' || n === 'PermissionDeniedError') return 'Camera blocked. Allow it for this site in browser settings, or type the barcode.';
+  if (n === 'NotFoundError' || n === 'DevicesNotFoundError' || n === 'OverconstrainedError') return 'No camera found. Type the barcode.';
+  if (n === 'NotReadableError' || n === 'TrackStartError') return 'Camera busy. Close other camera apps and retry.';
+  if (n === 'SecurityError') return 'The camera needs https. Type the barcode.';
   return `Could not start the camera: ${n ? `${n} – ` : ''}${e && e.message || e}`;
 }
 
@@ -82,8 +82,8 @@ export function createScanner({ video, onStatus, onCode, onState = () => {}, for
 
   async function start() {
     if (st.stream || st.starting || st.destroyed) return;
-    if (!window.isSecureContext) { onStatus('The camera only works over https:// (or localhost). Type the barcode below.', true); return; }
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { onStatus('This browser does not provide camera access. Type the barcode below.', true); return; }
+    if (!window.isSecureContext) { onStatus('The camera needs https. Type the barcode.', true); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { onStatus('No camera access in this browser. Type the barcode.', true); return; }
     st.starting = true;
     onStatus('Starting camera…');
     try {
@@ -100,7 +100,7 @@ export function createScanner({ video, onStatus, onCode, onState = () => {}, for
       await video.play().catch(() => { /* muted + playsinline normally suffices */ });
       const dec = await decP;
       if (!st.stream) return;
-      if (dec.kind === 'none') { stop(); onStatus(`Barcode decoder failed to load (${dec.note}). Type the barcode below.`, true); return; }
+      if (dec.kind === 'none') { stop(); onStatus('Scanner did not load. Type the barcode.', true); return; }
       st.decoder = dec;
       st.scanning = true; st.candidate = null; st.errors = 0;
       onStatus('Point the camera at a barcode.');
@@ -129,7 +129,7 @@ export function createScanner({ video, onStatus, onCode, onState = () => {}, for
     }, (e) => {
       st.busy = false;
       if (!st.scanning) return;
-      if (++st.errors >= 5) { stop(); onStatus(`The decoder keeps failing (${e && e.message || e}). Type the barcode below.`, true); return; }
+      if (++st.errors >= 5) { stop(); onStatus('Scanner keeps failing. Type the barcode.', true); return; }
       st.timer = setTimeout(tick, 300);
     });
   }
@@ -145,7 +145,7 @@ export function createScanner({ video, onStatus, onCode, onState = () => {}, for
     return true;
   }
 
-  const onHidden = () => { if (document.hidden && st.stream) { stop(); onStatus('Camera stopped while the app was in the background. Tap “Scan” to resume.'); } };
+  const onHidden = () => { if (document.hidden && st.stream) { stop(); onStatus('Camera paused. Tap Scan to resume.'); } };
   document.addEventListener('visibilitychange', onHidden);
 
   return {

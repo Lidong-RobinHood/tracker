@@ -100,7 +100,7 @@ export function classifyGeminiError(status, body) {
   if (status === 401 || st === 'UNAUTHENTICATED' || reasons.includes('API_KEY_INVALID') || /api key not valid/i.test(msg)) return photoError('auth', '', o);
   if (status === 403 && /api key|leaked|blocked/i.test(msg)) return photoError('auth', msg, o);
   if (status === 429) {
-    return photoError('rate_limit', msg, { ...o, message: 'Gemini’s rate limit or your free-tier / daily quota was reached (429). Wait and try again later, or check your limits in Google AI Studio.' });
+    return photoError('rate_limit', msg, { ...o, message: 'Gemini limit or quota reached (429). Try later or check Google AI Studio.' });
   }
   if (status === 402 || (st === 'FAILED_PRECONDITION' && /billing|free tier/i.test(msg)) || /prepay|credit balance/i.test(msg)) return photoError('billing', msg, o);
   if (status === 403 || st === 'PERMISSION_DENIED') return photoError('permission', msg, o);
@@ -148,9 +148,8 @@ export const gemini = Object.freeze({
   keyFormatNote: '',
   pricingUrl: 'https://aistudio.google.com/docs/pricing',
   notes: [
-    'The photo and your hint are sent to Google. Usage is billed to your Google project, or limited by the Gemini free tier if billing is not enabled.',
-    'On the free tier Google may use what you send to improve its products (see Google’s pricing page).',
-    'Google does not document direct browser calls; if “Test key” reports a network error, the browser may be blocked from calling the API directly.',
+    'Billed to your Google project, or free-tier limits without billing.',
+    'On the free tier Google may use your photos to improve its products.',
   ],
   structured: true,
   buildAnalyse: buildGeminiRequest,
