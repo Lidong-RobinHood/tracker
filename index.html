@@ -16,7 +16,22 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Tracker">
 <link rel="stylesheet" href="app.css">
-<script type="module" src="src/app.js"></script>
+<script>
+// If the app's code cannot be loaded (offline on first visit, or the host is briefly unavailable),
+// show a message with a reload button instead of a blank page.
+window.__bootFail = function () {
+  var m = document.getElementById('main');
+  if (!m || m.childElementCount) return;
+  var p = document.createElement('p'); p.className = 'empty';
+  p.textContent = 'The app could not be loaded. Check your connection and try again.';
+  var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-primary';
+  b.textContent = 'Reload'; b.onclick = function () { location.reload(); };
+  var d = document.createElement('div'); d.className = 'view'; d.appendChild(p); d.appendChild(b);
+  m.appendChild(d);
+};
+window.addEventListener('load', function () { setTimeout(window.__bootFail, 8000); });
+</script>
+<script type="module" src="src/app.js" onerror="window.__bootFail && (document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', window.__bootFail) : window.__bootFail())"></script>
 </head>
 <body>
 <main id="main" class="app-main"></main>

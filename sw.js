@@ -3,7 +3,7 @@
 // Release: set CACHE_VERSION to the same string as APP_VERSION in src/version.js (npm test checks it).
 // Changing this file is what makes browsers install the new worker; old caches are deleted on activate.
 // See docs/RELEASE.md.
-const CACHE_VERSION = '0.4.0';
+const CACHE_VERSION = '0.4.1';
 const CACHE = `tracker-${CACHE_VERSION}`;
 
 // Small shell so the app opens offline after the first visit. Everything else is cached as it is fetched.
@@ -48,7 +48,18 @@ async function networkFirst(req) {
   const cache = await caches.open(CACHE);
   try {
     // 'no-cache' revalidates with the server (ETag), so a stale HTTP cache never hides an update.
-    const res = await fetch(req, { cache: 'no-cache' });
+    let res = await fetch(req, { cache: 'no-cache' });
+    // The host occasionally answers 5xx for a moment (e.g. while a deploy rolls out). One failed
+    // module would leave the app blank, so retry once, then prefer a cached copy over the error.
+    if (res.status >= 500) {
+      await new Promise((r) => setTimeout(r, 900));
+      const again = await fetch(req, { cache: 'no-cache' }).catch(() => null);
+      if (again && again.status < 500) res = again;
+      else {
+        const hit = await cache.match(req, { ignoreSearch: req.mode === 'navigate' });
+        if (hit) return hit;
+      }
+    }
     if (res.ok && res.type === 'basic') cache.put(req, res.clone()).catch(() => {});
     return res;
   } catch (err) {
