@@ -3,7 +3,7 @@
 // Release: set CACHE_VERSION to the same string as APP_VERSION in src/version.js (npm test checks it).
 // Changing this file is what makes browsers install the new worker; old caches are deleted on activate.
 // See docs/RELEASE.md.
-const CACHE_VERSION = '0.4.1';
+const CACHE_VERSION = '0.4.2';
 const CACHE = `tracker-${CACHE_VERSION}`;
 
 // Small shell so the app opens offline after the first visit. Everything else is cached as it is fetched.
