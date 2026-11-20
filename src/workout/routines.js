@@ -1,6 +1,12 @@
 // Routines: list (reorder, start, create) and editor (autosaved). Routes: workout/routines, workout/routines/:id
 import * as db from '../db/db.js';
-import { el, append, replaceChildren, pageHeader, numberInput, toast, navigate, href, emptyState, icon, iconButton, sectionHeader } from '../ui/index.js';
+import {
+  el, append, replaceChildren, pageHeader, numberInput, toast, navigate, href, emptyState, icon, iconButton, sectionHeader,
+  cardHeader, segmented, setBodyMapValues, fmtNum,
+} from '../ui/index.js';
+import { MUSCLES } from '../core/muscles.js';
+import { routineSets, sessionStep, sessionBands, mapSteps } from '../core/routine-sets.js';
+import { setsGlyph, setsMap, setsMapRow, setsRow, setsList } from './muscle-map.js';
 import { normaliseTarget, formatTarget, DEFAULT_TARGET, lastEntryFor, MAX_TARGET_WEIGHT } from '../core/workout.js';
 import {
   ensureCss, loadExercises, loadRoutines, loadWorkouts, startWorkout, newRoutine, nextRoutineOrder, createSaver, exName,
@@ -17,9 +23,28 @@ const createRoutine = () => navAction(async () => {
   return true;
 });
 
+/** Small two-figure map of one session of a routine, shaded by its sets per muscle. */
+export function routineGlyph(routine, exMap, weights) {
+  return setsGlyph(mapSteps(routineSets(routine, exMap, weights)));
+}
+
+/**
+ * Where the editor's Back goes: `?back=` when it is an in-app route path (e.g. 'workout/splits/custom:…'
+ * from a split being edited), else the routines list. No scheme, no '//', no leading '/' or '#'.
+ */
+export function backPath(q) {
+  const p = typeof q === 'string' ? q.trim() : '';
+  if (!p || p.length > 300 || /^[a-z][a-z0-9+.-]*:\/\//i.test(p) || /^(javascript|data):/i.test(p) || p.includes('//')
+    || /^[/#\\]/.test(p) || /[\s<>"'`\\]/.test(p)) return 'workout/routines';
+  return p;
+}
+
+/** Map / Sets of the routine editor, kept while the app runs. */
+const view = { sets: 'map' };
+
 export async function mountRoutines(container) {
   ensureCss();
-  const [routines, exMap] = await Promise.all([loadRoutines(), loadExercises()]);
+  const [routines, exMap, weights] = await Promise.all([loadRoutines(), loadExercises(), db.getSetting('volume')]);
   const list = el('div', { class: 'list' });
 
   async function swap(i, d) {
@@ -35,10 +60,12 @@ export async function mountRoutines(container) {
   function render() {
     replaceChildren(list, ...routines.map((r, i) => el('div', { class: 'list-item wk-routine-row' },
       el('a', { class: 'li-main wk-routine-link', href: href(`workout/routines/${encodeURIComponent(r.id)}`) },
-        el('div', { class: 'li-title' }, r.name),
-        el('div', { class: 'li-sub' }, r.items.length
-          ? r.items.map((it) => `${exName(exMap, it.exerciseId)} ${formatTarget(it).replace(/ /g, '\u00a0')}`).join(' · ')
-          : 'No exercises')),
+        routineGlyph(r, exMap, weights),
+        el('div', { class: 'wk-routine-text' },
+          el('div', { class: 'li-title' }, r.name),
+          el('div', { class: 'li-sub' }, r.items.length
+            ? r.items.map((it) => `${exName(exMap, it.exerciseId)} ${formatTarget(it).replace(/ /g, '\u00a0')}`).join(' · ')
+            : 'No exercises'))),
       iconButton('arrow-up', { label: `Move ${r.name} up`, class: 'wk-icon-sm', disabled: i === 0, onClick: () => swap(i, -1) }),
       iconButton('arrow-down', { label: `Move ${r.name} down`, class: 'wk-icon-sm', disabled: i === routines.length - 1, onClick: () => swap(i, 1) }),
       el('button', { type: 'button', class: 'btn btn-sm', onClick: navAction(() => startWorkout(r)) }, 'Start'))));
@@ -58,9 +85,9 @@ export async function mountRoutines(container) {
 
 export async function mountRoutineEdit(container, { id }, ctx) {
   ensureCss();
-  const [routine, exMap, workouts] = await Promise.all([db.get('routines', id), loadExercises(), loadWorkouts()]);
+  const [routine, exMap, workouts, weights] = await Promise.all([db.get('routines', id), loadExercises(), loadWorkouts(), db.getSetting('volume')]);
   if (!routine) {
-    append(container, pageHeader({ title: 'Routine', back: 'workout/routines' }), emptyState('Routine not found.'));
+    append(container, pageHeader({ title: 'Routine', back: backPath(ctx.query.back) }), emptyState('Routine not found.'));
     return undefined;
   }
   let gone = false;
@@ -68,8 +95,9 @@ export async function mountRoutineEdit(container, { id }, ctx) {
     (err) => toast(`Could not save: ${err && err.message}`, { type: 'error' }));
   const save = () => saver.save();
 
+  const backTo = backPath(ctx.query.back);
   const header = pageHeader({
-    title: routine.name, subtitle: 'Saved automatically', back: 'workout/routines',
+    title: routine.name, subtitle: 'Saved automatically', back: backTo,
     actions: [el('a', { class: 'btn btn-icon btn-ghost', href: href(`workout/routines/${encodeURIComponent(routine.id)}/progress`), 'aria-label': 'Routine progress' }, icon('chart-line'))],
   });
   const titleEl = header.querySelector('.page-title');
@@ -83,11 +111,34 @@ export async function mountRoutineEdit(container, { id }, ctx) {
   });
   const itemsEl = el('div', { class: 'stack' });
 
+  // Muscles: sets per muscle of one session of this routine (map or list), live with every change.
+  const map = setsMap();
+  const musBody = el('div');
+  const musToggle = segmented({
+    small: true, ariaLabel: 'Show sets as', value: view.sets,
+    options: [{ value: 'map', label: 'Map' }, { value: 'list', label: 'Sets' }],
+    onChange: (v) => { view.sets = v; paintMuscles(); },
+  });
+  const musCard = el('section', { class: 'card wk-rmus' }, cardHeader('Muscles', { trail: musToggle }), musBody);
+  function paintMuscles() {
+    musCard.hidden = !routine.items.length;
+    const sets = routineSets(routine, exMap, weights);
+    const trained = MUSCLES.filter((m) => sets[m.id].total > 0);
+    map.setAttribute('aria-label', `Sets per session: ${trained.map((m) => `${m.name} ${fmtNum(sets[m.id].total, 1)}`).join(', ') || 'none'}`);
+    setBodyMapValues(map, mapSteps(sets));
+    replaceChildren(musBody, view.sets === 'map'
+      ? setsMapRow(map, sessionBands(weights), 'Sets per session', { caption: 'Sets / session' })
+      : trained.length
+        ? setsList(trained.map((m) => setsRow(m.name, sets[m.id], { step: sessionStep(sets[m.id].total) })))
+        : el('p', { class: 't-sub muted' }, 'No sets.'));
+  }
+
   function render() {
     replaceChildren(itemsEl, ...routine.items.map((it, i) => {
       const upd = () => {
         const t = normaliseTarget({ targetSets: sets.getNumber(), targetReps: reps.getNumber(), targetRepsMax: max.getNumber(), targetWeight: wt.getNumber() });
         Object.assign(it, t);
+        paintMuscles();
         save();
       };
       const sets = numberInput({ value: it.targetSets, min: 1, max: 20, integer: true, ariaLabel: 'Target sets', onInput: upd });
@@ -116,6 +167,7 @@ export async function mountRoutineEdit(container, { id }, ctx) {
           el('label', { class: 'field-label' }, 'kg', wt)));
     }));
     if (!routine.items.length) append(itemsEl, el('p', { class: 't-sub muted wk-pad-x' }, 'No exercises yet.'));
+    paintMuscles();
   }
   const mv = (i, d) => { const a = routine.items; [a[i], a[i + d]] = [a[i + d], a[i]]; render(); save(); };
   const rm = (i) => {
@@ -136,12 +188,13 @@ export async function mountRoutineEdit(container, { id }, ctx) {
     gone = true;
     await saver.flush();
     await db.remove('routines', routine.id);
-    navigate('workout/routines', { replace: true });
+    navigate(backTo, { replace: true });
   };
   render();
 
   append(container, header,
     el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'Name'), name),
+    musCard,
     el('div', { class: 'section' }, sectionHeader('Exercises'), itemsEl),
     el('button', { type: 'button', class: 'btn btn-block', onClick: add }, icon('plus'), 'Add exercise'),
     el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: navAction(async () => { await saver.flush(); return startWorkout(routine); }) }, 'Start this routine'),
@@ -151,7 +204,9 @@ export async function mountRoutineEdit(container, { id }, ctx) {
   if (ctx.query.new) {
     name.focus(); name.select();
     // Use the flag once: a reload must not focus the name (and open the keyboard) again.
-    history.replaceState(history.state, '', `#/workout/routines/${encodeURIComponent(routine.id)}`);
+    // ?back= stays, so Back still returns to where the editor was opened from after a reload.
+    const keep = backTo !== 'workout/routines' ? `?back=${encodeURIComponent(backTo)}` : '';
+    history.replaceState(history.state, '', `#/workout/routines/${encodeURIComponent(routine.id)}${keep}`);
   }
   return () => { saver.save(); };
 }

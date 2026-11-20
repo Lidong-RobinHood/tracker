@@ -21,6 +21,13 @@ swap exercises, and follow one split as ordinary routines with a "Next up" rotat
 - **Setting `activeSplit`**: `{ splitId, level: 'minimum'|'standard'|'high', routineIds: [ids in rotation
   order], adoptedAt }`. Absent = no split followed. "Stop following" removes it and keeps the routines.
   It lives in `settings`, so export / import carry it with no schema change.
+- **Setting `activeSplit`, custom split**: `{ kind: 'custom', splitId: 'custom:<uuid>', level: 'standard',
+  routineIds, adoptedAt }`; `routineIds` is a copy of the custom split's rotation at the last save (the app
+  reads the live rotation from `customSplits`). Values without `kind` are library splits (the 0.6.0 shape,
+  unchanged). Both kinds may carry `skips: [{ date: 'YYYY-MM-DD', at: ms }]` (Next up › Skip, at most 60).
+- **Setting `customSplits`**: see Custom splits below.
+- **`routines.splitCopy: true`**: routines made by Customise (copy of a library split); they also carry
+  `splitId`, but "Replace" never deletes them.
 - Unsaved choices on a split detail (volume level, swaps) are a 24 h draft in localStorage
   (`tracker.draft.split:<id>`), like other drafts; never in the backup.
 
@@ -136,10 +143,30 @@ routines), `activeSplit`, and — only when ticked — `volumeTargets` = planned
 whole sets for muscles with ≥ 4 (replacing the previous targets). "Replace" deletes routines that carry a
 `splitId` (earlier adopted ones); "Keep" deletes nothing. Routines the user made are never touched.
 
-Next up (`nextUp()`): the routine after the most recent logged workout (`isLoggedWorkout`: finished, ≥ 1
-done set; never the starting point) whose `routineId` is in the rotation, ordered by date then start
-time (`byRecent`); wraps around; no such workout → the first. Workouts of other routines, empty and
-unfinished workouts do not move it; a missed day needs no handling. Deleted routines leave the rotation.
+Next up (`nextUp()` → `rotationNext()`), recomputed from history every time (nothing is counted or
+stored, so backdating, "Change date, time, duration", editing or deleting a workout gives the same result
+as if history had always been that way). Events, oldest first by workout date, then start time: every
+logged workout (`isLoggedWorkout`: finished, ≥ 1 done set; never the starting point, never empty,
+unfinished or discarded ones) whose routine is in the rotation, and every Next up skip. From position 0:
+
+- a workout of routine R moves to just after the occurrence of R **nearest at or after the current
+  position** (wrapping). Done in order that is +1; done out of order, the rotation continues after the
+  session actually done. With a repeated routine (Upper, Lower, Upper, Lower) the nearest occurrence
+  ahead is the one meant: after Upper(1) comes Lower(2), after Upper(3) comes Lower(4); a Lower done
+  while Upper(3) is due counts as Lower(4).
+- a skip (Next up › Other session › Skip) moves on by one.
+
+Workouts of other routines do not move it; deleted routines leave the rotation (positions count the
+rest); the rotation is read as it is now, so reordering a followed custom split takes effect at once,
+continuing after the last session done. A workout logged for a past date before the latest session
+never becomes "the latest". Change from 0.6.0 for library splits: none for workouts (with distinct
+routines "nearest occurrence ahead" is "the session after the most recent one"); skips are new.
+Known limit: with a repeated routine, inserting an older workout can change which occurrence later
+workouts resolve to (the step indicator may show "2 of 4" instead of "4 of 4"); in a rotation like
+U, L, U, L the next routine stays the same.
+
+**Other session.** The Next up card has "Other session": the rotation in order, tap one to start it
+today (it then counts like any workout of that routine), and "Skip <session>" (Undo in the toast).
 
 **Mounting.** `src/splits/next-up.js` exports `async nextUpCard({ onChange, showChange = true })` →
 `HTMLElement | null` (null when no split is followed or all its routines are gone). The workout home can
@@ -174,3 +201,41 @@ Conventions, not findings: the deload bullets ("every 6–8 weeks, one week, hal
 sources. Originality: exercise routines are methods / systems and not protected as such (17 USC 102(b);
 US Copyright Office, Federal Register 22 June 2012, doc. 2012-15235); text and names are, so all wording is original and names are
 generic. Not legal advice.
+
+## Custom splits
+
+The user's own fixed rotation of ordinary routines (screens `src/splits/custom.js`, creation
+`src/splits/custom-new.js`, route `workout/splits/custom/:id`; logic in `src/core/splits.js` › custom splits,
+tests `tests/custom-splits.test.js`). No weekly planning: Next up follows the rotation as above.
+
+**Stored** in the setting `customSplits` (so export / import carry it, no schema change):
+
+```
+[ { id: 'custom:<uuid>', name, sessionsPerWeek: 1–7 | null, sessions: [routineId …],
+    createdAt, updatedAt, sourceSplitId?: '<library id>' } ]
+```
+
+- `sessions`: rotation order; the same routine may appear several times; at most 21. An id whose routine
+  was deleted stays until the user removes or replaces it: shown as "Missing routine", left out of coverage
+  and Next up.
+- `sessionsPerWeek`: null = the rotation length (capped at 7); a number when the user sets it (the rotation
+  and the week need not match: 3 sessions trained 4 days a week).
+- Routines stay ordinary routines; a routine may belong to several custom splits. Only routines made by
+  copying a library split carry `splitId` (plus `splitCopy: true`).
+
+**Create** (library › + / "New split"): From my routines (pick in order, repeats allowed), From scratch
+(a new split named "My split"; "Add session › New routine" creates an ordinary routine and opens the
+existing routine editor; the split is saved before leaving, so the round trip and a reload lose nothing),
+Copy a library split (one routine per session at the level and swaps chosen on its screen, rotation = its
+sessions, sessions per week = its days; also "Customise" on a library split). The editor saves every change.
+
+**Coverage**: `rotationCoverage()`: each position is done sessionsPerWeek / rotation length times a week
+(a routine twice in the rotation counts twice); per session the library rule (direct × primary weight,
+partial × secondary weight). For a library split it equals `splitCoverage()`. Same card, bands and Sets list
+as a library split ("days" may be fractional, e.g. 1.3). Quiet note (`coverageNotes()`): muscles with no
+sets, and muscles at least 2.5 × the median of the trained muscles and at least 8 sets above it (no library
+split triggers it).
+
+**Follow**: writes `activeSplit` (custom shape) and, when ticked, the weekly set targets; copies and deletes
+nothing. Adopting a library split later: "Replace" deletes only adopted routines, never routines used by a
+custom split nor `splitCopy` routines. Deleting a custom split keeps its routines (and stops following it).

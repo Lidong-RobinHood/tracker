@@ -17,15 +17,11 @@
 .sp-row .li-chevron { align-self: center; }
 .sp-row-sub { font-size: var(--fs-sub); line-height: var(--lh-sub); color: var(--ink-2); margin-top: 2px; }
 .sp-tags { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s2); }
-.bm.sp-glyph { width: 40px; height: 44px; margin-top: 2px; }
+.sp-row .wk-glyph { margin-top: 2px; }
 
 /* detail */
 .sp-head .sp-tags { margin-top: 0; margin-bottom: var(--s2); }
-.sp-map-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
-.sp-legend { flex: 1 1 96px; padding-left: var(--s1); }
 .sp-level { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s4); }
-.sp-muscles .list-item:first-child { border-top: 0; }
-.sp-total { font-size: var(--fs-head); font-weight: var(--fw-semibold); }
 .sp-day-head { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4) var(--s2); }
 .sp-day-head .card-title { margin: 0; }
 .sp-day-n {
@@ -43,22 +39,8 @@
 .sp-src-link, .sp-next-split { position: relative; display: inline-block; }
 .sp-src-link::after, .sp-next-split::after { content: ""; position: absolute; inset: -13px -4px; }
 
-/* planned weekly sets (map, legend, list, library glyphs): a ramp whose neighbours differ ≥ 1.5:1 in
-   light and dark, the lowest step clearly apart from "none" (--map-idle). Tokens only (color-mix). */
-:root {
-  --sp-heat-1: color-mix(in srgb, var(--accent) 60%, var(--surface));
-  --sp-heat-2: color-mix(in srgb, var(--accent) 85%, var(--surface));
-  --sp-heat-3: color-mix(in srgb, var(--accent) 85%, var(--ink));
-  --sp-heat-4: color-mix(in srgb, var(--accent) 40%, var(--ink));
-}
-.sp-map .is-1, .sp-glyph .is-1 { fill: var(--sp-heat-1); }
-.sp-map .is-2, .sp-glyph .is-2 { fill: var(--sp-heat-2); }
-.sp-map .is-3, .sp-glyph .is-3 { fill: var(--sp-heat-3); }
-.sp-map .is-4, .sp-glyph .is-4 { fill: var(--sp-heat-4); }
-.sp-legend .swatch.is-1, .sp-muscles .swatch.is-1 { background: var(--sp-heat-1); }
-.sp-legend .swatch.is-2, .sp-muscles .swatch.is-2 { background: var(--sp-heat-2); }
-.sp-legend .swatch.is-3, .sp-muscles .swatch.is-3 { background: var(--sp-heat-3); }
-.sp-legend .swatch.is-4, .sp-muscles .swatch.is-4 { background: var(--sp-heat-4); }
+/* planned weekly sets: map, legend, list and library glyphs use the shared ramp (src/workout/muscle-map.js,
+   .wk-ramp in workout.css). */
 
 /* alternatives sheet */
 .sp-alt { gap: var(--s2); padding: 0; }
@@ -92,10 +74,34 @@
 .sp-step.is-next { background: var(--accent); }
 .sp-next-links { display: flex; flex-wrap: wrap; gap: var(--s2); margin: calc(-1 * var(--s2)) 0 calc(-1 * var(--s2)) calc(-1 * var(--s3)); }
 
-@media (max-width: 359px) {
-  .sp-map-row { justify-content: center; }
-  .sp-legend { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; gap: var(--s1) var(--s4); padding: 0; justify-content: center; }
-}
-
 /* exercise names wrap instead of truncating on narrow screens */
 .sp-ex .li-title, .sp-alt .li-title, .sp-row .li-title { white-space: normal; }
+
+/* ---- custom splits (src/splits/custom.js, custom-new.js) ---- */
+.sp-go { flex: none; color: var(--accent-ink); font-weight: var(--fw-semibold); }
+.sp-day-n.is-next { background: var(--accent); color: var(--on-accent); }
+.sp-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s2); }
+.sp-note { display: flex; align-items: flex-start; gap: var(--s2); margin: var(--s3) 0 0; }
+.sp-note .ic { flex: none; margin-top: 1px; }
+.sp-stepper-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2) var(--s4); }
+.sp-stepper { display: inline-flex; align-items: center; gap: var(--s2); }
+.sp-stepper-val { min-width: 2ch; text-align: center; font-size: var(--fs-head); font-weight: var(--fw-semibold); }
+.sp-rot { margin: 0; padding: 0; list-style: none; }
+.sp-rot-row { gap: var(--s2); padding-right: var(--s1); }
+.sp-rot-main { min-width: 0; min-height: var(--tap); display: flex; flex-direction: column; justify-content: center;
+  color: inherit; text-decoration: none; background: none; border: 0; padding: 0; text-align: left; font: inherit; cursor: pointer; }
+.sp-rot-main .li-title { white-space: normal; overflow-wrap: anywhere; }
+.sp-rot-btns { flex: none; display: flex; }
+.sp-missing { display: flex; align-items: center; gap: var(--s1); color: var(--warn-text); }
+.sp-add { margin-top: var(--s3); }
+.sp-danger, .sp-danger .li-lead { color: var(--bad-text); }
+.sp-pick-row .li-title { white-space: normal; }
+.sp-pick-ic { flex: none; color: var(--accent-ink); }
+.sp-pick-order { margin: 0 0 var(--s2); padding: 0; list-style: none; }
+.sp-pick-empty { margin: 0 0 var(--s3); }
+.sp-pick-sheet .list-item:first-child, .sp-new-options .list-item:first-child, .sp-pick-order .list-item:first-child { border-top: 0; }
+.sp-other-list { margin: 0; padding: 0; list-style: none; }
+.sp-other-list .list-item { width: 100%; gap: var(--s3); }
+.sp-actions .text-danger { color: var(--bad-text); }
+.sp-next-links { row-gap: 0; }
+.sp-rot-main .li-sub { white-space: normal; }

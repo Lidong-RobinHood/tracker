@@ -88,7 +88,9 @@ export async function mountHelp(container, params, ctx) {
       ul([a('workout/splits', 'Splits'), ': ready-made weekly plans by days, style, level and equipment.'],
         ['Follow creates one routine per session; you can edit them like your own.'],
         ['Next up on the Workout tab runs the sessions in order.'],
-        ['Stop following keeps the routines.'])),
+        ['Stop following keeps the routines.'],
+        ['New split: build your own rotation from your routines, from scratch or from a library split.'],
+        ['Did a different session, or changed a date? Next up continues from the last session done.'])),
 
     topic('sets', 'activity', 'Direct and partial sets',
       p(infoSheet('sets').paragraphs[0]),

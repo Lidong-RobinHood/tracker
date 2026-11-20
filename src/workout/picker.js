@@ -2,9 +2,10 @@
 import * as db from '../db/db.js';
 import { el, append, replaceChildren, openSheet, toast, icon } from '../ui/index.js';
 import { MUSCLES } from '../core/muscles.js';
-import { activeExercises, musclesLine, newExercise, findByName, shortDate, navAction, swallowTaps } from './data.js';
+import { activeExercises, newExercise, findByName, shortDate, navAction, swallowTaps } from './data.js';
 import { exerciseUsage, recentExercises, rankExercises, RECENT_LIMIT } from '../core/exercise-usage.js';
 import { exerciseForm } from './exercise-form.js';
+import { rowMuscleIcon, musclesText, muscleChip } from './muscle-map.js';
 
 /** Case-insensitive match of every search word against name, equipment and primary muscles. */
 export function matches(ex, q) {
@@ -37,10 +38,7 @@ export function pickExercise({ title = 'Add exercise', exMap, workouts = null })
   const chips = el('div', { class: 'chips chips-scroll' });
   const renderChips = () => replaceChildren(chips, 
     el('button', { type: 'button', class: 'chip', 'aria-pressed': muscle ? 'false' : 'true', onClick: () => { muscle = null; renderChips(); render(); } }, 'All'),
-    ...MUSCLES.map((m) => el('button', {
-      type: 'button', class: 'chip', 'aria-pressed': muscle === m.id ? 'true' : 'false',
-      onClick: () => { muscle = muscle === m.id ? null : m.id; renderChips(); render(); },
-    }, m.name)));
+    ...MUSCLES.map((m) => muscleChip(m, muscle === m.id, () => { muscle = muscle === m.id ? null : m.id; renderChips(); render(); })));
   renderChips();
 
   // Search + chips form a fixed header; only the list below them scrolls.
@@ -48,10 +46,11 @@ export function pickExercise({ title = 'Add exercise', exMap, workouts = null })
 
   const item = (e) => {
     const u = usage.get(e.id);
-    return el('button', { type: 'button', class: 'list-item', onClick: () => sheet.close(e) },
+    return el('button', { type: 'button', class: 'list-item wk-ex-row', onClick: () => sheet.close(e) },
+      rowMuscleIcon((e.primary || [])[0]),
       el('div', { class: 'li-main' },
         el('div', { class: 'li-title' }, e.name),
-        el('div', { class: 'li-sub' }, musclesLine(e))),
+        el('div', { class: 'li-sub' }, musclesText(e))),
       u ? el('span', { class: 'li-trail t-sub muted wk-last-used' }, `last ${shortDate(u.lastDate)}`) : null);
   };
   const head = (text) => el('div', { class: 'wk-pick-head t-cap', role: 'presentation' }, text);
@@ -80,7 +79,7 @@ export function pickExercise({ title = 'Add exercise', exMap, workouts = null })
   render();
 
   function createNew() {
-    const form = exerciseForm({ name: query }, { compact: true });
+    const form = exerciseForm({ name: query }, { compact: true, preview: true });
     const s2 = openSheet({ title: 'New exercise', content: form.node });
     append(s2.footer, 
       el('button', { type: 'button', class: 'btn', onClick: () => s2.close() }, 'Cancel'),

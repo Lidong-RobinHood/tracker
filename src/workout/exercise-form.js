@@ -5,6 +5,7 @@ import { volumeWeights } from '../core/volume.js';
 import { MUSCLES } from '../core/muscles.js';
 import { DEFAULT_INCREMENT } from '../data/exercises.js';
 import { parseVideoUrl } from '../core/exercise-video.js';
+import { musclesBlock } from './muscle-map.js';
 
 export const EQUIPMENT = [
   ['barbell', 'Barbell'], ['dumbbell', 'Dumbbell'], ['machine', 'Machine'],
@@ -13,10 +14,12 @@ export const EQUIPMENT = [
 
 /**
  * @param {object} [initial] exercise or partial ({ name })
- * @param {{compact?: boolean}} [opts] compact: hide notes and tutorial link (picker)
+ * @param {{compact?: boolean, preview?: boolean, onMuscles?: (primary: string[], secondary: string[]) => void}} [opts]
+ *   compact: hide notes and tutorial link (picker); preview: a small body map of the chosen muscles
+ *   above the muscle chips; onMuscles: runs after every change of the direct / partial muscles
  * @returns {{node: HTMLElement, read: () => {ok: true, value: object}|{ok: false, error: string}, focusName: () => void}}
  */
-export function exerciseForm(initial = {}, { compact = false } = {}) {
+export function exerciseForm(initial = {}, { compact = false, preview = false, onMuscles = null } = {}) {
   const primary = new Set(initial.primary || []);
   const secondary = new Set(initial.secondary || []);
   let incrementEdited = initial.increment !== undefined;
@@ -41,9 +44,16 @@ export function exerciseForm(initial = {}, { compact = false } = {}) {
 
   const primaryChips = el('div', { class: 'chips' });
   const secondaryChips = el('div', { class: 'chips' });
+  const order = (set) => MUSCLES.map((m) => m.id).filter((id) => set.has(id));
+  const previewBlock = preview ? musclesBlock({ primary: order(primary), secondary: order(secondary), small: true }) : null;
   const renderChips = () => {
     replaceChildren(primaryChips, ...MUSCLES.map((m) => chip(m, primary, secondary)));
     replaceChildren(secondaryChips, ...MUSCLES.map((m) => chip(m, secondary, primary)));
+  };
+  const changed = () => {
+    renderChips();
+    if (previewBlock) previewBlock.update(order(primary), order(secondary));
+    if (onMuscles) onMuscles(order(primary), order(secondary));
   };
   // Selecting a muscle in one group removes it from the other.
   const chip = (m, set, other) => el('button', {
@@ -51,7 +61,7 @@ export function exerciseForm(initial = {}, { compact = false } = {}) {
     onClick: () => {
       if (set.has(m.id)) set.delete(m.id);
       else { set.add(m.id); other.delete(m.id); }
-      renderChips();
+      changed();
     },
   }, m.name);
   renderChips();
@@ -67,6 +77,7 @@ export function exerciseForm(initial = {}, { compact = false } = {}) {
   const primaryField = el('div', { class: 'field' }, directLabel, primaryChips);
   const node = el('div', { class: 'stack' },
     field('Name', name),
+    previewBlock ? previewBlock.node : null,
     primaryField,
     el('div', { class: 'field' }, partialLabel, secondaryChips),
     el('div', { class: 'grid-2' },
@@ -88,7 +99,6 @@ export function exerciseForm(initial = {}, { compact = false } = {}) {
       const video = parseVideoUrl(compact ? initial.videoUrl : videoUrl.value);
       videoField.classList.toggle('is-missing', !video.ok);
       if (!video.ok) { videoUrl.setAttribute('aria-invalid', 'true'); videoUrl.focus(); return { ok: false, error: `Tutorial link: ${video.error}` }; }
-      const order = (s) => MUSCLES.map((m) => m.id).filter((id) => s.has(id));
       return {
         ok: true,
         value: { name: n, primary: order(primary), secondary: order(secondary), equipment: equipment.value, increment: inc, notes: notes.value.trim(), videoUrl: video.value },

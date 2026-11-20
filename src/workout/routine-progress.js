@@ -5,6 +5,7 @@ import { el, replaceChildren, append, pageHeader, href, emptyState, fmtDate, fmt
 import { routineProgress, compareSession } from '../core/workout-progress.js';
 import { ensureCss, loadExercises, loadWorkouts, exName, shortDate, startWorkout } from './data.js';
 import { lineChart } from './chart.js';
+import { workoutGlyph } from './muscle-map.js';
 import { pctBadge, pctWords, fmtTonnage, topText, comparisonBlock, durationParts } from './progress-ui.js';
 
 /** Sessions shown side by side per exercise. */
@@ -14,7 +15,7 @@ const PAGE = 15;
 
 export async function mountRoutineProgress(container, { id }) {
   ensureCss();
-  const [routine, exMap, workouts] = await Promise.all([db.get('routines', id), loadExercises(), loadWorkouts()]);
+  const [routine, exMap, workouts, weights] = await Promise.all([db.get('routines', id), loadExercises(), loadWorkouts(), db.getSetting('volume')]);
   if (!routine) {
     append(container, pageHeader({ title: 'Progress', back: 'workout' }), emptyState('Routine not found.'));
     return;
@@ -22,10 +23,12 @@ export async function mountRoutineProgress(container, { id }) {
   const rp = routineProgress(workouts, routine);
   const n = rp.sessions.length;
   append(container, pageHeader({
+    // the latest session's muscles at a glance
     title: routine.name,
     subtitle: `Progress · ${n} session${n === 1 ? '' : 's'}`,
     back: `workout/routines/${encodeURIComponent(routine.id)}`,
-    actions: [el('a', { class: 'btn btn-icon btn-ghost', href: href(`workout/routines/${encodeURIComponent(routine.id)}`), 'aria-label': 'Edit routine' }, icon('pencil'))],
+    actions: [n ? workoutGlyph(rp.sessions[0].workout, exMap, weights) : null,
+      el('a', { class: 'btn btn-icon btn-ghost', href: href(`workout/routines/${encodeURIComponent(routine.id)}`), 'aria-label': 'Edit routine' }, icon('pencil'))].filter(Boolean),
   }));
 
   if (!n) {

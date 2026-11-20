@@ -7,7 +7,7 @@
 // Style: ≤ ~60 words, plain words, glossary terms (sets, direct / partial, tonnage, target, goal,
 // expenditure, starting point, check-in, done, complete day, est. 1RM, weight step, calorie floor),
 // units like kg / week and kcal / day, '−' for minus, thin space in thousands, no emojis.
-import { RECOVERY_CONFIG } from '../core/recovery.js';
+import { RECOVERY_CONFIG, CHECKIN_CONFIG } from '../core/recovery.js';
 import { DEFAULT_VOLUME } from '../core/volume.js';
 import { KCAL_PER_KG, GOAL_RATE_MIN, GOAL_RATE_MAX, ADAPTIVE_DEFAULTS } from '../core/adaptive.js';
 import { BACKUP_DUE_DAYS } from '../core/backup-reminder.js';
@@ -19,6 +19,7 @@ export function fmtInfoNumber(n) {
 }
 const n = fmtInfoNumber;
 const R = RECOVERY_CONFIG;
+const C = CHECKIN_CONFIG;
 const A = ADAPTIVE_DEFAULTS;
 const doseAt = (sets) => Math.min(R.doseFactorMax, Math.max(R.doseFactorMin, Math.round((R.doseIntercept + R.doseSlope * sets) * 100) / 100));
 const PHOTO_LONG_EDGE = 1568; // src/food/photo-image.js LONG_EDGE (not imported: that module is DOM code)
@@ -34,17 +35,23 @@ const PHOTO_LONG_EDGE = 1568; // src/food/photo-image.js LONG_EDGE (not imported
 export const INFO_SHEETS = Object.freeze({
   recovery: {
     title: 'Muscle recovery',
-    defaults: { faster: R.paces.faster, slower: R.paces.slower },
-    text: (v) => [
-      'A rule of thumb, not a measurement. A hard-trained muscle usually gets 48–72 h; smaller muscles less, legs more. More sets lengthen the window. Sleep, food, effort and soreness change real recovery.',
-      `Recovering = before the range · likely ready = inside · recovered = past it. Still sore or weak? Give it more time. Pace: faster × ${n(v.faster)}, slower × ${n(v.slower)}.`,
+    text: () => [
+      'An estimate, not a measurement. Ranges start as a rule of thumb: hard-trained muscles usually get 48–72 h, smaller ones less, legs more.',
+      `Recovering = before the range · likely ready = inside · recovered = past it. Tap a muscle to check in; after about ${C.minPoints} check-ins the range is yours. Pace only scales the rule of thumb.`,
     ],
   },
   'recovery-math': {
     title: 'How sets scale the window',
     text: () => [
       `Sets count like weekly sets. Ranges are for ${R.referenceDose} hard sets: 1 set × ${n(doseAt(1))}, 8 sets × ${n(doseAt(8))}, 9 or more × ${n(R.doseFactorMax)}. Under ${R.minDose} counted set does not restart the clock.`,
-      `If you train again inside the window, the leftover load carries over. Defaults stay within ${R.capMin}–${R.capMax} h; your own ranges within ${R.custom.min}–${R.custom.max} h. Only the last ${R.lookbackDays} days count.`,
+      `Training again inside the window carries the leftover load over. Rule-of-thumb ranges stay within ${R.capMin}–${R.capMax} h, yours within ${R.custom.min}–${R.custom.max} h. Only the last ${R.lookbackDays} days count.`,
+    ],
+  },
+  'recovery-yours': {
+    title: 'Your ranges',
+    text: () => [
+      `Still sore means recovery took longer; recovered means shorter. Answers are scaled to ${R.referenceDose} sets, recent workouts count more, and contradicting answers within one workout are left out.`,
+      `After ${C.minPoints} useful check-ins from ${C.minBouts} workouts, with both answers, the range becomes yours: the middle of your answers, wider while they are few. A hand-set range still wins.`,
     ],
   },
   sets: {

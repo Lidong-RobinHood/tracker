@@ -38,6 +38,7 @@ test('the 23 sheets of the copy audit and the split / workout sheets exist and a
     'adaptive-macros', 'goal', 'backup', 'storage', 'import-weights', 'import-workouts'];
   ids.push('split-choose', 'split-sets', 'split-run'); // split library (docs/SPLITS.md)
   ids.push('sets-workout'); // sets per muscle of one workout
+  ids.push('recovery-yours'); // recovery ranges learned from check-ins
   assert.deepEqual([...INFO_SHEET_IDS].sort(), [...ids].sort());
   for (const id of ids) {
     const s = infoSheet(id);

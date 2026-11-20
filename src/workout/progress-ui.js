@@ -5,8 +5,8 @@ import { formatWeight } from '../core/workout.js';
 import { exName, shortDate } from './data.js';
 import { isBaseline } from '../core/baseline.js';
 
-/** '12 Nov', or 'starting point 12 Nov' when the earlier entry is the starting point. */
-const prevWhen = (w) => (isBaseline(w) ? `starting point ${shortDate(w.date)}` : shortDate(w.date));
+/** '12 Nov', or 'Start 12 Nov' when the earlier entry is the starting point. */
+const prevWhen = (w) => (isBaseline(w) ? `Start ${shortDate(w.date)}` : shortDate(w.date));
 
 /** '+2.5 %' with a true minus and a narrow no-break space before %. */
 export const pctText = (p) => formatPct(p).replace(' ', ' ');
@@ -112,10 +112,12 @@ export function comparisonBlock(cmp, exMap) {
         ...list.map((r) => el('a', {
           class: 'wk-cmp-row', href: href(`workout/exercises/${encodeURIComponent(r.exerciseId)}`),
         },
+        // the % sits on the name line, so the now / before values get the full width below it
         el('div', { class: 'grow wk-min0' },
-          el('div', { class: 'wk-cmp-name' }, exName(exMap, r.exerciseId), ...recordBadges(r.records)),
-          el('div', { class: 't-sub muted' }, rowDetail(r))),
-        status === 'skipped' || status === 'new' ? null : pctBadge(r.cmp && r.cmp.pct),
+          el('div', { class: 'wk-cmp-top' },
+            el('div', { class: 'wk-cmp-name' }, exName(exMap, r.exerciseId), ...recordBadges(r.records)),
+            status === 'skipped' || status === 'new' ? null : pctBadge(r.cmp && r.cmp.pct)),
+          rowDetail(r)),
         icon('chevron-right', { class: 'li-chevron' }))));
     }));
 }
@@ -125,11 +127,17 @@ export function comparisonSection(title, cmp, exMap) {
   return el('section', { class: 'section' }, sectionHeader(title, { info: 'tonnage' }), el('div', { class: 'card' }, comparisonBlock(cmp, exMap)));
 }
 
+/**
+ * Per-exercise line(s): 'top 100 × 8 · 2 300 kg'; with an earlier entry two aligned rows, now and
+ * before (labelled with its date): the top set and the tonnage / reps of each.
+ */
 function rowDetail(r) {
-  if (r.status === 'skipped') return `Last: top ${topText(r.prevMetrics.top)} · ${shortDate(r.prevWorkout.date)}`;
+  if (r.status === 'skipped') return el('div', { class: 't-sub muted' }, `Last: top ${topText(r.prevMetrics.top)} · ${shortDate(r.prevWorkout.date)}`);
   const value = r.cmp ? basisValue(r.cmp.basis, r.cmp.cur)
     : r.metrics.bodyweight ? basisValue('reps', r.metrics.reps) : basisValue('load', r.metrics.load);
-  const now = `top ${topText(r.metrics.top)} · ${value}`;
-  if (!r.prevMetrics) return now;
-  return `${now} (was ${topText(r.prevMetrics.top)} · ${basisValue(r.cmp.basis, r.cmp.prev)}, ${prevWhen(r.prevWorkout)})`;
+  if (!r.prevMetrics) return el('div', { class: 't-sub muted' }, `top ${topText(r.metrics.top)} · ${value}`);
+  const val = (top, v) => el('span', { class: 'wk-cmp-val' }, el('span', { class: 'wk-nowrap' }, topText(top)), ' · ', el('span', { class: 'wk-nowrap' }, v));
+  return el('div', { class: 'wk-cmp-vals t-sub' },
+    el('span', { class: 'muted' }, 'Now'), val(r.metrics.top, value),
+    el('span', { class: 'muted' }, prevWhen(r.prevWorkout)), val(r.prevMetrics.top, basisValue(r.cmp.basis, r.cmp.prev)));
 }

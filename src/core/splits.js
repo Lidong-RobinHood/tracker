@@ -17,13 +17,19 @@
 //
 // Alternatives: candidates for swapping an exercise, by movement pattern first (see alternatives()).
 //
-// Rotation ("next up"): nextUp(active, workouts) — the routine after the one of the most recent
-//   logged workout (isLoggedWorkout: finished with ≥ 1 done set, never the starting point) whose
-//   routineId is in the rotation, by date then start time (byRecent); wraps around; none yet → first.
-//   Workouts of other routines do not move the rotation.
+// Rotation ("next up"): nextUp(active, workouts) → rotationNext(), recomputed from history every time:
+//   logged workouts of rotation routines and Next up skips, oldest first by date then time; a workout
+//   moves the position to just after the nearest occurrence of its routine at or after the current
+//   position (in order: +1; out of order: continue after the session done), a skip moves it on by one.
+//   Wraps; none yet → first. Workouts of other routines do not move the rotation.
+//
+// Custom splits (the user's own rotation of routines): cleanCustomSplits, rotationCoverage,
+//   coverageNotes, rotationState — see the section at the end.
 import { MUSCLE_IDS } from './muscles.js';
 import { muscleVolumeBreakdown, volumeWeights, sanitiseTargets } from './volume.js';
-import { isLoggedWorkout, byRecent } from './workout.js';
+import { bandStep, bandLegend, WEEK_BAND_EDGES } from './set-bands.js';
+import { isLoggedWorkout } from './workout.js';
+import { round } from './numbers.js';
 import { isBaseline } from './baseline.js';
 import { compareUsage } from './exercise-usage.js';
 import { BASE_LIFTS, EXERCISE_PATTERN, RELATED_PATTERNS, fitsHome } from '../data/exercises.js';
@@ -131,39 +137,20 @@ export function splitCoverage(sessions, times, exercises, weights) {
 }
 
 /**
- * Body-map step 0–4 for a planned weekly total, fixed bands of weighted sets:
+ * Body-map step 0–4 for a planned weekly total, fixed bands of weighted sets (set-bands.js, week):
  * ≥ 12 → 4, ≥ 8 → 3, ≥ 4 → 2, > 0 → 1, 0 → 0. (The split is not the user's week, so the map shows
  * planned sets, not progress towards the user's targets; the Sets list shows those.)
  */
 export function coverageStep(total) {
-  if (!(total > 0)) return 0;
-  return total >= BAND_EDGES[0] ? 4 : total >= BAND_EDGES[1] ? 3 : total >= BAND_EDGES[2] ? 2 : 1;
+  return bandStep(total, WEEK_BAND_EDGES);
 }
 
-/** Lower edges of coverageStep's bands (steps 4, 3, 2). */
-const BAND_EDGES = Object.freeze([12, 8, 4]);
-
 /**
- * Legend of coverageStep (highest first), bands that do not overlap. Weekly totals move in steps of
- * the smallest set weight (0.5 with the default partial weight), so the upper end of a band is the
- * edge above minus that step: '12+', '8–11.5', '4–7.5', 'Under 4', 'None'. With weights that are
- * not multiples of 0.5 the upper ends read 'under 12' / 'under 8'.
+ * Legend of coverageStep (highest first): '12+', '8–11.5', '4–7.5', 'Under 4', 'None' (see bandLegend).
  * @param {{primary?: number, secondary?: number}} [weights] settings.volume
  */
 export function coverageBands(weights) {
-  const w = volumeWeights(weights);
-  const unit = [w.primary, w.secondary].filter((x) => x > 0)
-    .every((x) => Number.isInteger(x)) ? 1 : [w.primary, w.secondary].filter((x) => x > 0).every((x) => Number.isInteger(x * 2)) ? 0.5 : null;
-  const fmt = (n) => String(n);
-  const upTo = (edge) => (unit ? fmt(edge - unit) : `under ${edge}`);
-  const [e4, e3, e2] = BAND_EDGES;
-  return [
-    { step: 4, label: `${e4}+` },
-    { step: 3, label: `${e3}–${upTo(e4)}` },
-    { step: 2, label: `${e2}–${upTo(e3)}` },
-    { step: 1, label: `Under ${e2}` },
-    { step: 0, label: 'None' },
-  ];
+  return bandLegend(weights, WEEK_BAND_EDGES);
 }
 
 /** Bands with the default set weighting (kept for callers without weights). */
@@ -321,36 +308,284 @@ export function autoSwaps(split, { exercises, usage, swaps = {} }) {
 
 // ---------------------------------------------------------------- rotation
 
+/** Most skips kept in activeSplit (older ones are dropped; they no longer change the position much). */
+export const MAX_SKIPS = 60;
+
 /**
- * Clean a stored activeSplit setting. @returns {{splitId: string, level: string, routineIds: string[], adoptedAt: number}|null}
+ * Clean a stored activeSplit setting.
+ * Library split (the shape since 0.6.0, no `kind`): { splitId, level, routineIds, adoptedAt }.
+ * Custom split: { kind: 'custom', splitId: 'custom:…', level: 'standard', routineIds, adoptedAt } —
+ * routineIds is a copy of the custom split's rotation at the last save (readers that know custom splits
+ * use the live rotation, see store.js loadActiveSplit).
+ * Both may carry `skips: [{ date: 'YYYY-MM-DD', at: ms }]` (Next up › Skip; see rotationNext). Old values
+ * without `kind` / `skips` stay valid; the keys are only present when used.
+ * @returns {{splitId: string, level: string, routineIds: string[], adoptedAt: number, kind?: 'custom', skips?: {date: string, at: number}[]}|null}
  */
 export function cleanActiveSplit(v) {
   if (!v || typeof v !== 'object' || typeof v.splitId !== 'string' || !Array.isArray(v.routineIds)) return null;
   const routineIds = v.routineIds.filter((id) => typeof id === 'string' && id);
   if (!routineIds.length) return null;
-  return {
+  const out = {
     splitId: v.splitId,
     level: VOLUME_LEVELS.includes(v.level) ? v.level : 'standard',
     routineIds,
     adoptedAt: typeof v.adoptedAt === 'number' ? v.adoptedAt : 0,
   };
+  if (v.kind === 'custom' || isCustomSplitId(v.splitId)) out.kind = 'custom';
+  const skips = cleanSkips(v.skips);
+  if (skips.length) out.skips = skips;
+  return out;
+}
+
+/** Valid skips, oldest first, at most MAX_SKIPS (the newest). */
+export function cleanSkips(v) {
+  return (Array.isArray(v) ? v : [])
+    .filter((x) => x && typeof x.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x.date) && Number.isFinite(x.at))
+    .map((x) => ({ date: x.date, at: x.at }))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.at - b.at))
+    .slice(-MAX_SKIPS);
 }
 
 /**
- * Next routine of the rotation.
- * @param {{routineIds: string[]}} active
+ * Next routine of the followed split (see rotationNext for the rule).
+ * @param {{routineIds: string[], skips?: {date: string, at: number}[]}} active
  * @param {object[]} workouts
  * @param {Set<string>|null} [existing] routine ids that still exist; deleted ones leave the rotation
  * @returns {{routineId: string, index: number, count: number, lastIndex: number|null}|null}
  *   index within the (remaining) rotation; null when no routine is left
  */
 export function nextUp(active, workouts, existing = null) {
-  const ids = (active && active.routineIds ? active.routineIds : []).filter((id) => !existing || existing.has(id));
+  return rotationNext(active && active.routineIds ? active.routineIds : [], workouts, { existing, skips: active && active.skips });
+}
+
+/**
+ * Position in a fixed rotation, always recomputed from history (nothing is counted or stored, so
+ * backdating, changing a workout's date, editing or deleting a workout gives the same result as if
+ * history had always been that way).
+ *
+ * Events, oldest first by workout date, then start time (finish time breaks ties):
+ *   - every logged workout (isLoggedWorkout: finished with ≥ 1 done set; never the starting point,
+ *     never empty, unfinished or discarded ones) whose routine is in the rotation, and
+ *   - every Next up skip ({ date, at }: the day and moment the user skipped).
+ * Starting at position 0:
+ *   - a workout of routine R moves the position to just after the occurrence of R nearest at or after
+ *     the current position (wrapping). Done in order, that is the expected session (+1); done out of
+ *     order, the rotation continues after the session actually done. With a routine that appears several
+ *     times (Upper, Lower, Upper, Lower) the nearest occurrence ahead is the one meant;
+ *   - a skip moves the position on by one.
+ * Wraps around. Workouts of other routines never move it. Deleted routines leave the rotation first
+ * (positions count the remaining ones). The rotation order is read as it is now, so reordering takes
+ * effect at once. Without repeated routines the result is "the session after the most recent one"
+ * (the 0.6.0 rule), plus skips after it.
+ * @param {readonly string[]} routineIds rotation order
+ * @param {object[]} workouts
+ * @param {{existing?: Set<string>|null, skips?: {date: string, at: number}[]|null}} [opts]
+ * @returns {{routineId: string, index: number, count: number, lastIndex: number|null}|null}
+ */
+export function rotationNext(routineIds, workouts, { existing = null, skips = null } = {}) {
+  const ids = (routineIds || []).filter((id) => typeof id === 'string' && id && (!existing || existing.has(id)));
   if (!ids.length) return null;
-  const last = (workouts || [])
-    .filter((w) => w && !isBaseline(w) && isLoggedWorkout(w) && ids.includes(w.routineId))
-    .sort(byRecent)[0];
-  const lastIndex = last ? ids.indexOf(last.routineId) : null;
-  const index = last ? (lastIndex + 1) % ids.length : 0;
-  return { routineId: ids[index], index, count: ids.length, lastIndex };
+  const n = ids.length;
+  const inRotation = new Set(ids);
+  const events = [];
+  for (const w of workouts || []) {
+    if (!w || isBaseline(w) || !isLoggedWorkout(w) || !inRotation.has(w.routineId) || typeof w.date !== 'string') continue;
+    events.push({ date: w.date, t: w.startedAt || 0, t2: w.finishedAt || 0, routineId: w.routineId });
+  }
+  for (const s of cleanSkips(skips)) events.push({ date: s.date, t: s.at, t2: s.at, routineId: null });
+  events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.t - b.t) || (a.t2 - b.t2)));
+  let p = 0;
+  let lastIndex = null;
+  for (const e of events) {
+    if (e.routineId === null) { p = (p + 1) % n; continue; }
+    let d = 0;
+    while (ids[(p + d) % n] !== e.routineId) d++;
+    lastIndex = (p + d) % n;
+    p = (lastIndex + 1) % n;
+  }
+  return { routineId: ids[p], index: p, count: n, lastIndex };
+}
+
+// ---------------------------------------------------------------- custom splits
+//
+// A custom split is the user's own fixed rotation of ordinary routines (docs/SPLITS.md › Custom splits),
+// stored in the setting CUSTOM_SPLITS_KEY as an array of
+//   { id: 'custom:<uuid>', name, sessionsPerWeek: 1–7 | null, sessions: [routineId …], createdAt, updatedAt,
+//     sourceSplitId?: library split id it was copied from }
+// sessions: rotation order; a routine may appear several times; ids of deleted routines stay until the
+// user removes or replaces them (they show as missing, coverage and Next up skip them).
+// sessionsPerWeek: null = the rotation length (capped at 7); a number = how many sessions a week the user
+// trains, which need not match the rotation (3 sessions trained 4 days a week).
+
+export const CUSTOM_SPLITS_KEY = 'customSplits';
+export const CUSTOM_PREFIX = 'custom:';
+export const MIN_PER_WEEK = 1;
+export const MAX_PER_WEEK = 7;
+export const MAX_ROTATION = 21;
+export const MAX_NAME = 60;
+
+/** true for ids of custom splits ('custom:…'); library ids never have the prefix. */
+export function isCustomSplitId(id) {
+  return typeof id === 'string' && id.startsWith(CUSTOM_PREFIX) && id.length > CUSTOM_PREFIX.length;
+}
+
+const isPerWeek = (n) => Number.isInteger(n) && n >= MIN_PER_WEEK && n <= MAX_PER_WEEK;
+
+/**
+ * Validate one stored custom split. Invalid records → null; fixable fields are fixed: name trimmed (empty →
+ * 'My split', ≤ MAX_NAME), sessionsPerWeek outside 1–7 → null, non-string session ids dropped, rotation
+ * capped at MAX_ROTATION, timestamps default 0.
+ * @returns {{id: string, name: string, sessionsPerWeek: number|null, sessions: string[], createdAt: number, updatedAt: number, sourceSplitId?: string}|null}
+ */
+export function cleanCustomSplit(v) {
+  if (!v || typeof v !== 'object' || !isCustomSplitId(v.id)) return null;
+  const name = (typeof v.name === 'string' ? v.name.trim() : '').slice(0, MAX_NAME) || 'My split';
+  const sessions = (Array.isArray(v.sessions) ? v.sessions : []).filter((id) => typeof id === 'string' && id).slice(0, MAX_ROTATION);
+  const out = {
+    id: v.id,
+    name,
+    sessionsPerWeek: isPerWeek(v.sessionsPerWeek) ? v.sessionsPerWeek : null,
+    sessions,
+    createdAt: typeof v.createdAt === 'number' ? v.createdAt : 0,
+    updatedAt: typeof v.updatedAt === 'number' ? v.updatedAt : 0,
+  };
+  if (typeof v.sourceSplitId === 'string' && v.sourceSplitId) out.sourceSplitId = v.sourceSplitId;
+  return out;
+}
+
+/** The stored list, cleaned; duplicates of an id keep the first. @returns {ReturnType<typeof cleanCustomSplit>[]} */
+export function cleanCustomSplits(v) {
+  const seen = new Set();
+  const out = [];
+  for (const x of Array.isArray(v) ? v : []) {
+    const c = cleanCustomSplit(x);
+    if (!c || seen.has(c.id)) continue;
+    seen.add(c.id);
+    out.push(c);
+  }
+  return out;
+}
+
+/** Sessions trained per week: the stored number, else the rotation length (1–7). */
+export function sessionsPerWeekOf(cs) {
+  if (cs && isPerWeek(cs.sessionsPerWeek)) return cs.sessionsPerWeek;
+  const n = cs && Array.isArray(cs.sessions) ? cs.sessions.length : 0;
+  return Math.min(MAX_PER_WEEK, Math.max(MIN_PER_WEEK, n));
+}
+
+/**
+ * Rotation state against the routines that exist.
+ * @param {{sessions: string[]}} cs
+ * @param {Set<string>|Map<string, any>} existing routine ids
+ * @returns {{ids: string[], missing: number[], ok: boolean}} ids = present ones in order; missing = positions
+ *   (0-based) of deleted routines; ok = at least one session can be trained
+ */
+export function rotationState(cs, existing) {
+  const ids = [];
+  const missing = [];
+  (cs && cs.sessions ? cs.sessions : []).forEach((id, i) => { if (existing.has(id)) ids.push(id); else missing.push(i); });
+  return { ids, missing, ok: ids.length > 0 };
+}
+
+/** All routine ids used by custom splits (never deleted by "Replace" when a library split is adopted). */
+export function customRoutineIds(customSplits) {
+  const out = new Set();
+  for (const cs of customSplits || []) for (const id of cs.sessions || []) out.add(id);
+  return out;
+}
+
+/** A routine as a planned session for coverage: { id, name, items: [{ exerciseId, sets }] }. */
+export function routineAsSession(routine) {
+  return {
+    id: routine.id,
+    name: routine.name,
+    items: (routine.items || []).filter((it) => it && typeof it.exerciseId === 'string')
+      .map((it) => ({ exerciseId: it.exerciseId, sets: Number.isInteger(it.targetSets) && it.targetSets > 0 ? it.targetSets : 0 })),
+  };
+}
+
+/**
+ * Weekly sets per muscle of a rotation trained `sessionsPerWeek` times a week. Each position is done
+ * sessionsPerWeek / rotation length times a week, so a session's weekly frequency is that times its
+ * occurrences in the rotation. Counting per session is splitCoverage's (direct = sets × primary weight,
+ * partial = sets × secondary weight); results are summed and rounded to 2 decimals. daysHit = sessions per
+ * week in which the muscle is a primary muscle (may be fractional, e.g. 1.33).
+ * For a library split (distinct sessions, days per week) this equals splitCoverage(sessions, days / n).
+ * @param {readonly {id?: string, items: readonly {exerciseId: string, sets: number}[]}[]} rotation positions in order
+ * @param {number} sessionsPerWeek
+ * @returns same shape as splitCoverage
+ */
+export function rotationCoverage(rotation, sessionsPerWeek, exercises, weights) {
+  const out = Object.fromEntries(MUSCLE_IDS.map((m) => [m, { total: 0, direct: 0, partial: 0, directSets: 0, partialSets: 0, daysHit: 0 }]));
+  const n = rotation.length;
+  if (!n || !(sessionsPerWeek > 0)) return out;
+  const f = sessionsPerWeek / n;
+  for (const s of rotation) {
+    const c = splitCoverage([s], 1, exercises, weights);
+    for (const m of MUSCLE_IDS) for (const k of Object.keys(out[m])) out[m][k] += c[m][k] * f;
+  }
+  for (const m of MUSCLE_IDS) for (const k of Object.keys(out[m])) out[m][k] = round(out[m][k], 2);
+  return out;
+}
+
+/** "Far more than the others": at least NOTE_HIGH_RATIO × the median of the trained muscles and at least NOTE_HIGH_GAP sets above it. */
+export const NOTE_HIGH_RATIO = 2.5;
+export const NOTE_HIGH_GAP = 8;
+
+/**
+ * Quiet notes for a planned week (custom split editor). Rule:
+ *   none = muscles with 0 weekly sets;
+ *   high = muscles whose total is ≥ NOTE_HIGH_RATIO × the median total of the muscles that get sets AND
+ *          ≥ NOTE_HIGH_GAP sets above that median (both, so small weeks and even spreads never trigger it).
+ * Nothing when no muscle gets any set (an empty rotation).
+ * @returns {{none: string[], high: string[]}} muscle ids in MUSCLE_IDS order
+ */
+export function coverageNotes(coverage) {
+  const totals = MUSCLE_IDS.map((m) => (coverage[m] ? coverage[m].total : 0));
+  const trained = totals.filter((t) => t > 0).sort((a, b) => a - b);
+  if (!trained.length) return { none: [], high: [] };
+  const mid = trained.length >> 1;
+  const median = trained.length % 2 ? trained[mid] : (trained[mid - 1] + trained[mid]) / 2;
+  return {
+    none: MUSCLE_IDS.filter((m, i) => totals[i] === 0),
+    high: MUSCLE_IDS.filter((m, i) => totals[i] >= NOTE_HIGH_RATIO * median && totals[i] - median >= NOTE_HIGH_GAP),
+  };
+}
+
+/**
+ * A custom split copied from a library split: rotation = its sessions (the routines created for them,
+ * in order), sessions per week = its days, so the coverage is the library split's.
+ * @param {{id: string, name: string, days: number}} split
+ * @param {{id: string, routineIds: string[], now: number, name?: string}} opts
+ */
+export function customFromLibrary(split, { id, routineIds, now, name }) {
+  return cleanCustomSplit({
+    id, name: name || `${split.name} (custom)`, sessionsPerWeek: split.days,
+    sessions: routineIds, createdAt: now, updatedAt: now, sourceSplitId: split.id,
+  });
+}
+
+/** activeSplit value for following a custom split (rotation copied, see cleanActiveSplit). */
+export function activeForCustom(cs, now) {
+  return { kind: 'custom', splitId: cs.id, level: 'standard', routineIds: [...cs.sessions], adoptedAt: now };
+}
+
+/** Rotation edits (new arrays). */
+export function moveSession(sessions, i, d) {
+  const a = [...sessions];
+  const j = i + d;
+  if (i < 0 || i >= a.length || j < 0 || j >= a.length) return a;
+  [a[i], a[j]] = [a[j], a[i]];
+  return a;
+}
+export function duplicateSession(sessions, i) {
+  const a = [...sessions];
+  if (i >= 0 && i < a.length && a.length < MAX_ROTATION) a.splice(i + 1, 0, a[i]);
+  return a;
+}
+export function removeSession(sessions, i) {
+  return sessions.filter((_, k) => k !== i);
+}
+export function replaceSession(sessions, i, routineId) {
+  return sessions.map((id, k) => (k === i ? routineId : id));
 }

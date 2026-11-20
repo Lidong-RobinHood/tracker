@@ -113,7 +113,8 @@ first run; user edits to seeded exercises are kept.
 `3 x 6` = `targetSets 3, targetReps 6`. Optional range `3 x 6–8` uses `targetRepsMax 8`.
 `splitId` (optional string): set on routines created by adopting a split (the split id, e.g.
 `'ul4-b'`). Otherwise the record has the shape above and is an ordinary, editable routine. Routines
-the user made never have it, so "replace" can only remove adopted ones.
+the user made never have it, so "replace" can only remove adopted ones. `splitCopy: true` (optional) marks routines made by
+copying a library split into a custom split (Customise); they keep `splitId` but "replace" never removes them.
 
 ### `workouts` (sessions; key `id`; index `date`)
 ```
@@ -172,6 +173,21 @@ negative = lose), `targets` (kcal, protein, carbs, fat; source 'manual'|'adaptiv
 `activeSplit` (optional): `{ splitId, level: 'minimum'|'standard'|'high', routineIds: [ids in rotation
 order], adoptedAt }`. Absent = no split followed. "Stop following" removes it and keeps the routines.
 It lives in `settings`, so export / import carry it with no schema change.
+A followed **custom split** is `{ kind: 'custom', splitId: 'custom:<uuid>', level: 'standard', routineIds,
+adoptedAt }` (values without `kind` keep the shape above); either kind may carry `skips: [{ date, at }]`
+(Next up › Skip). `customSplits` (optional): the user's own splits, `[{ id: 'custom:<uuid>', name,
+sessionsPerWeek: 1–7|null, sessions: [routineId…] (rotation order, repeats allowed), createdAt, updatedAt,
+sourceSplitId? }]`; routines stay ordinary routines (a routine may be in several splits; routines copied from
+a library split carry `splitId` and `splitCopy: true`). Rules: `docs/SPLITS.md` › Custom splits.
+`recovery` (optional): `{ pace: 'faster'|'average'|'slower', base?: { [muscleId]: [minH, maxH] },
+rule?: [muscleIds] }` — pace scales rule-of-thumb ranges only; `base` = ranges set by hand (whole hours,
+6–240 h, max ≥ min + 4); `rule` = muscles kept on the rule of thumb although a range was learned.
+`recoveryCheckins` (optional): array of recovery check-ins, oldest first (newest last), at most 2 000
+(the oldest are dropped): `{ id, muscle, answer: 'recovered'|'sore', at, boutAt, hours, dose, sets,
+range: [minH, maxH], source: 'rule'|'yours'|'set' }` — `boutAt` = time of the muscle's last counted
+session, `hours` since then, `dose` = effective weighted sets the model used (carry-over included),
+`sets` = that session's weighted sets, `range` / `source` = the window shown at that moment. User data:
+in backups, no schema change. Learned ranges are derived from it on every render, never stored.
 
 **Split library.** Training splits are a catalogue in code (`src/data/splits.js`), not a store.
 Adopting one writes ordinary `routines` (with `splitId`) and the `activeSplit` setting, and may
@@ -264,6 +280,14 @@ Dropset 5x 80    5 reps at 80 kg
   session, scaled by the session's weighted sets and a personal pace, with carry-over between close
   sessions; shown as recovering / likely ready / recovered with a range, never as a measurement. The
   model, its parameters and edge cases are documented in the module's header comment.
+  **Check-ins:** tapping a trained muscle (map, chip, list row) lets the user say *Recovered* or *Still
+  sore* (no prompts). The latest answer of the current bout changes the shown status ("you said … ·
+  6 h ago"). After ≥ 5 informative answers from ≥ 3 bouts, with both kinds, the muscle's base range
+  becomes the user's own, learned per muscle (dose-normalised, interval-censored, isotonic median,
+  recency-weighted; rules in `src/core/recovery.js`). Precedence: hand-set > learned ("yours") > rule of
+  thumb; pace applies to the rule of thumb only (also no longer on hand-set ranges). The detail screen
+  shows each range's source, progress to the minimum, Use / Reset to rule of thumb, and the check-in
+  history (filter, delete, per-muscle chart).
 
 ## 6. Adaptive targets and Trends (step 4)
 

@@ -220,6 +220,18 @@ the generated file). Recovery: `values = { quads: 'recovering', back: 'ready', c
 Recovered muscles are never green: neutral on the map and legend (no value / plain `swatch`), and wherever else recovery
 state is shown (home chips, recovery detail list) `muscleIcon(id, { state: 'neutral' })`, a `--map-idle` dot and a neutral bar;
 red / amber only for recovering / likely ready, always with the status label.
+Shared map pieces of the workout and split screens: `src/workout/muscle-map.js` (loads `workout.css`, so splits use
+it too). Exercise muscles: `musclesBlock({ primary, secondary, small })` → `{ node, update(p, s) }` (map with direct in
+`--accent`, partial in `--accent-2`, legend Direct · Partial with the names), `openMusclesSheet(ex)`, `rowMuscleIcon(id, size)`
+(cached `muscleIcon` clone for list rows), `musclesText(ex)`, `muscleChip(m, pressed, onClick)`. Sets per muscle on the
+four-step ramp (`.wk-ramp`, `--wk-ramp-1..4`): `setsGlyph(steps)` (40 × 44 decorative), `setsMap()`,
+`setsMapRow(map, bands, label, { caption })`, `setsRow(name, c, { step, extra, target })`, `setsList(rows)`. One logged workout: `workoutGlyph(workout, exMap, weights)`,
+`withGlyph(tile, glyph)` (glyph in a stat tile), `selectableMap(map, describe)` → `{ line, select, refresh }` (tappable
+muscles, one fixed-height line with the figures).
+Bands: `src/core/set-bands.js` `bandStep(total, edges)` / `bandLegend(weights, edges)` with `WEEK_BAND_EDGES` 12 / 8 / 4
+(splits) and `SESSION_BAND_EDGES` 6 / 4 / 2 (one routine session: `src/core/routine-sets.js` `routineSets`, `sessionStep`,
+`sessionBands`, `mapSteps`, `workoutSets` (= `workoutVolume` per muscle, with direct / partial / drop),
+`tonnageStep(t, max)` / `tonnageBands(max, fmt)`: quarters of the workout's largest muscle tonnage).
 Muscle chips: `muscleIcon(id, { state })` next to the muscle name and a `dot is-<state>`. At 320 px two maps (2 × 88 px) leave
 ≈ 80 px: put the legend under the maps there (e.g. a `legend legend-row`).
 

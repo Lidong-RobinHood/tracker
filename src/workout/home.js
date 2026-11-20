@@ -18,8 +18,8 @@ import { workoutNav } from './subnav.js';
 import { recoverySection, loadRecoverySetting } from './recovery.js';
 import { ensureCss, loadExercises, loadWorkouts, loadRoutines, unfinishedWorkouts, isLiveOpen, startWorkout, shortDate, navAction } from './data.js';
 import { nextUpCard } from '../splits/next-up.js';
-import { splitById } from '../data/splits.js';
-import { loadActiveSplit } from '../splits/store.js';
+import { loadActiveSplit, followedName } from '../splits/store.js';
+import { routineGlyph } from './routines.js';
 
 /** Below this many finished workouts the home screen suggests entering a starting point. */
 const THIN_HISTORY = 3;
@@ -37,7 +37,7 @@ export async function mountHome(container) {
   const openList = unfinishedWorkouts(workouts);
   const baseline = findBaseline(workouts);
   const finishedCount = workouts.filter((w) => isLoggedWorkout(w) && !isBaseline(w)).length;
-  const followed = activeSplit && activeSplit.splitId ? splitById(activeSplit.splitId) : null;
+  const followed = followedName(activeSplit); // library or custom split name, null when none
 
   append(container, pageHeader({ title: 'Workout' }), workoutNav('train'));
 
@@ -54,7 +54,7 @@ export async function mountHome(container) {
 
   // Next up of the followed split: the first action when the user follows one. Its slot keeps the
   // order (the card arrives asynchronously); "Stop following" removes it and the split name below.
-  const splitTrail = el('span', { class: 'li-trail muted' }, followed ? followed.name : null);
+  const splitTrail = el('span', { class: 'li-trail muted' }, followed);
   const nextSlot = el('div', { class: 'wk-next-slot', hidden: true });
   append(container, nextSlot);
   const startSlot = el('div', { class: 'wk-start-slot' });
@@ -64,11 +64,20 @@ export async function mountHome(container) {
   const nextCard = await nextUpCard({
     onChange: () => { replaceChildren(nextSlot); nextSlot.hidden = true; replaceChildren(splitTrail); nextId = null; paintStart(); },
   });
-  if (nextCard) { replaceChildren(nextSlot, nextCard); nextSlot.hidden = false; nextId = nextCard.dataset.routineId || null; }
+  if (nextCard) {
+    replaceChildren(nextSlot, nextCard); nextSlot.hidden = false; nextId = nextCard.dataset.routineId || null;
+    // The card repaints itself after Skip / Undo with another routine (data-routine-id): the Start list
+    // then shows the routine that left Next up and hides the new one.
+    new MutationObserver(() => {
+      const id = nextCard.isConnected ? nextCard.dataset.routineId || null : null;
+      if (id !== nextId) { nextId = id; paintStart(); }
+    }).observe(nextCard, { attributes: true, attributeFilter: ['data-routine-id'] });
+  }
 
   // Start: one row pattern. Routines and Empty workout: label + "Start"; other rows: label + chevron.
   const start = (r) => navAction(() => startWorkout(r));
-  const startRow = (title, sub, onClick) => el('button', { type: 'button', class: 'list-item', onClick },
+  const startRow = (title, sub, onClick, lead = null) => el('button', { type: 'button', class: ['list-item', lead && 'wk-start-row'], onClick },
+    lead,
     el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, title), sub ? el('div', { class: 'li-sub' }, sub) : null),
     el('span', { class: 'wk-go', 'aria-hidden': 'true' }, 'Start'));
   const navRow = (title, props) => el(props.href ? 'a' : 'button', { class: 'list-item', ...(props.href ? {} : { type: 'button' }), ...props },
@@ -79,7 +88,7 @@ export async function mountHome(container) {
     replaceChildren(startSlot, el('section', { class: 'section' },
       sectionHeader('Start'),
       el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
-        ...others.map((r) => startRow(r.name, routineSub(r, exMap), start(r))),
+        ...others.map((r) => startRow(r.name, routineSub(r, exMap), start(r), routineGlyph(r, exMap, weights))),
         startRow('Empty workout', null, start(null)),
         navRow('Log a past workout', { onClick: () => logPastWorkout(routines) }),
         routines.length ? null : navRow('Create a routine', { href: href('workout/routines') }),

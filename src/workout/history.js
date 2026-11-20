@@ -5,6 +5,7 @@ import { el, replaceChildren, append, pageHeader, href, emptyState, toast, navig
 import { sessionStats, formatTarget, formatWeight, doneSets, applySchedule, isLoggedWorkout } from '../core/workout.js';
 import { workoutVolume, volumeWeights } from '../core/volume.js';
 import { MUSCLES } from '../core/muscles.js';
+import { workoutGlyph } from './muscle-map.js';
 import { ensureCss, loadExercises, loadWorkouts, loadRoutines, exName, confirmAction } from './data.js';
 import { changeDateTime, logPastWorkout } from './datetime.js';
 import { compareSession } from '../core/workout-progress.js';
@@ -110,7 +111,7 @@ export async function mountHistoryDetail(container, { id }) {
     title: w.name,
     subtitle: `${fmtDate(w.date)} · ${fmtTime(w.startedAt)}${w.finishedAt ? ` · ${fmtDuration(st.durationMs)}` : ' · in progress'}`,
     back: 'workout/history',
-    actions: [el('a', { class: 'btn btn-icon btn-ghost', href: editHref, 'aria-label': 'Edit workout' }, icon('pencil'))],
+    actions: [workoutGlyph(w, exMap, weights), el('a', { class: 'btn btn-icon btn-ghost', href: editHref, 'aria-label': 'Edit workout' }, icon('pencil'))],
   }));
 
   for (const e of w.exercises) {

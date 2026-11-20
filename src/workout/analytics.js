@@ -2,7 +2,14 @@
 // trend, muscle tonnage, routine and month context. Route: workout/summary/:id
 // Numbers come from core/workout-analytics.js; everything is "as of" the workout's own date.
 import * as db from '../db/db.js';
-import { el, append, pageHeader, href, emptyState, fmtDate, fmtTime, fmtNum, navigate, icon, sectionHeader, statTile, tag } from '../ui/index.js';
+import {
+  el, append, replaceChildren, pageHeader, href, emptyState, fmtDate, fmtTime, fmtNum, navigate, icon, sectionHeader, statTile, tag,
+  segmented, infoButton, setBodyMapValues,
+} from '../ui/index.js';
+import { MUSCLES } from '../core/muscles.js';
+import { volumeWeights } from '../core/volume.js';
+import { workoutSets, mapSteps, sessionBands, tonnageStep, tonnageBands } from '../core/routine-sets.js';
+import { setsMap, setsMapRow, selectableMap } from './muscle-map.js';
 import { analyseWorkout, METRICS, roundToTotal } from '../core/workout-analytics.js';
 import { trendOf } from '../core/workout-progress.js';
 import { fmtTonnage, tonnageParts, pctText, durationParts } from './progress-ui.js';
@@ -65,7 +72,7 @@ const when = (b) => (b.baseline ? `starting point, ${shortDate(b.date)}` : short
 
 export async function mountAnalytics(container, { id }) {
   ensureCss();
-  const [w, exMap, workouts] = await Promise.all([db.get('workouts', id), loadExercises(), loadWorkouts()]);
+  const [w, exMap, workouts, rawWeights] = await Promise.all([db.get('workouts', id), loadExercises(), loadWorkouts(), db.getSetting('volume')]);
   if (!w) {
     append(container, pageHeader({ title: 'Analysis', back: 'workout/history' }),
       emptyState('Workout not found.',
@@ -94,7 +101,7 @@ export async function mountAnalytics(container, { id }) {
   append(container, el('section', { class: 'section' },
     sectionHeader('Exercises', { info: 'records' }),
     res.exercises.map((r) => exerciseBlock(r, w, res, name))));
-  append(container, wholeWorkout(w, res));
+  append(container, wholeWorkout(w, res, exMap, volumeWeights(rawWeights)));
   append(container, monthSection(w, res, name));
 }
 
@@ -252,13 +259,62 @@ function muscleRows(muscles) {
   return muscles.map((m, i) => ({ label: m.name, value: m.tonnage, text: tKg(shown[i]) }));
 }
 
-function wholeWorkout(w, res) {
+/** Sets / Tonnage of the muscle map, kept while the app runs. */
+const muscleView = { mode: 'sets' };
+
+/**
+ * This workout on the body map, shaded by sets per muscle (session bands, the user's weighting) or by
+ * tonnage per muscle (primary muscles, split equally: the bars' rule), with the matching bars under it.
+ * Map, bars and the tapped muscle's line show the same numbers.
+ */
+function musclesSection(w, res, exMap, weights) {
+  const sets = workoutSets(w, exMap, weights);
+  const setRows = MUSCLES.filter((m) => sets[m.id].total > 0);
+  const tonShown = roundToTotal(res.muscles.map((m) => m.tonnage));
+  const ton = new Map(res.muscles.map((m, i) => [m.muscle, { value: m.tonnage, text: tKg(tonShown[i]) }]));
+  const maxTon = Math.max(0, ...res.muscles.filter((m) => m.muscle !== 'unknown').map((m) => m.tonnage));
+  const map = setsMap();
+  const sel = selectableMap(map, (id) => {
+    const m = MUSCLES.find((x) => x.id === id);
+    const s = sets[id];
+    const t = ton.get(id);
+    return [el('span', { class: 'strong' }, m ? m.name : id),
+      ` · ${fmtNum(s.total, 2)} ${s.total === 1 ? 'set' : 'sets'} · ${t ? t.text : '0 kg'}`];
+  });
+  const body = el('div');
+  const toggle = segmented({
+    small: true, ariaLabel: 'Shade muscles by', value: muscleView.mode,
+    options: [{ value: 'sets', label: 'Sets' }, { value: 'tonnage', label: 'Tonnage' }],
+    onChange: (v) => { muscleView.mode = v; paint(); },
+  });
+  const header = sectionHeader('Muscles', { trail: toggle });
+  const title = header.querySelector('.section-title');
+  let info = null;
+  const paint = () => {
+    const bySets = muscleView.mode === 'sets';
+    const fresh = bySets ? infoButton('sets-workout', { values: weights }) : infoButton('tonnage');
+    if (info) info.replaceWith(fresh); else title.after(fresh);
+    info = fresh;
+    setBodyMapValues(map, bySets ? mapSteps(sets) : Object.fromEntries(MUSCLES.map((m) => [m.id, tonnageStep(ton.has(m.id) ? ton.get(m.id).value : 0, maxTon)])));
+    map.setAttribute('aria-label', bySets
+      ? `Sets per muscle: ${setRows.map((m) => `${m.name} ${fmtNum(sets[m.id].total, 2)}`).join(', ') || 'none'}`
+      : `Tonnage by muscle: ${res.muscles.map((m) => `${m.name} ${ton.get(m.muscle).text}`).join(', ') || 'none'}`);
+    const bars = bySets
+      ? (setRows.length ? hBars(setRows.map((m) => ({ label: m.name, value: sets[m.id].total, text: fmtNum(sets[m.id].total, 2) }))) : el('p', { class: 't-sub muted' }, 'No done sets.'))
+      : (res.muscles.length ? hBars(muscleRows(res.muscles)) : el('p', { class: 't-sub muted' }, 'No sets with weight.'));
+    replaceChildren(body,
+      setsMapRow(map, bySets ? sessionBands(weights) : tonnageBands(maxTon, tKg), bySets ? 'Sets per muscle' : 'Tonnage by muscle'),
+      sel.line,
+      el('div', { class: 'wk-an-mbars' }, bars));
+    sel.refresh();
+  };
+  paint();
+  return el('section', { class: 'section' }, header, el('div', { class: 'card' }, body));
+}
+
+function wholeWorkout(w, res, exMap, weights) {
   const out = [];
-  out.push(el('section', { class: 'section' },
-    sectionHeader('Tonnage by muscle', { info: 'tonnage' }),
-    res.muscles.length
-      ? el('div', { class: 'card' }, hBars(muscleRows(res.muscles)))
-      : el('div', { class: 'card' }, el('p', { class: 't-sub muted' }, 'No sets with weight.'))));
+  out.push(musclesSection(w, res, exMap, weights));
   const h = res.routine.history;
   out.push(el('section', { class: 'section' },
     sectionHeader(h.length > 1 ? `Session tonnage · last ${h.length}` : 'Session tonnage', { info: 'tonnage' }),

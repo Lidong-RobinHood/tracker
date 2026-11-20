@@ -3,7 +3,7 @@
 import * as db from '../db/db.js';
 import {
   el, append, replaceChildren, pageHeader, sectionHeader, cardHeader, segmented, tag, icon, infoButton, href,
-  bodyMap, setBodyMapValues, openSheet, toast, fmtNum, navigate, emptyState, confirmDialog,
+  setBodyMapValues, openSheet, toast, fmtNum, navigate, emptyState, confirmDialog,
 } from '../ui/index.js';
 import { splitById, SHARED_BULLETS, SPLIT_DISCLAIMER } from '../data/splits.js';
 import { MUSCLES } from '../core/muscles.js';
@@ -13,9 +13,14 @@ import { exerciseUsage } from '../core/exercise-usage.js';
 import { coverageStep, coverageBands, alternatives, autoSwaps, targetsFromCoverage, VOLUME_LEVELS } from '../core/splits.js';
 import { loadExercises, loadWorkouts, musclesLine } from '../workout/data.js';
 import { tutorialFor } from '../workout/tutorial.js';
+import { setsMap, setsMapRow, setsRow, setsList } from '../workout/muscle-map.js';
+import { mapSteps } from '../core/routine-sets.js';
 import {
   ensureSplitsCss, coverageFor, loadChoices, saveChoices, loadActiveSplit, adoptedRoutines, adoptSplit, stopFollowing, TARGETS_KEY,
+  loadCustomSplits,
 } from './store.js';
+import { customRoutineIds } from '../core/splits.js';
+import { customiseAction } from './custom-new.js';
 import { styleLabel, levelLabel, equipmentLabel } from './library.js';
 
 const LEVEL_LABEL = { minimum: 'Minimum', standard: 'Standard', high: 'High' };
@@ -45,18 +50,16 @@ export async function mountDetail(container, params) {
   let current = coverageFor(split, { ...state, exMap, weights });
 
   // ------------------------------------------------ coverage card
-  const map = bodyMap({ view: 'both', class: 'sp-map' });
+  const map = setsMap();
   const setsBody = el('div', { class: 'sp-sets-body' });
   const paintSets = () => {
     const cov = current.coverage;
     map.setAttribute('aria-label', `Planned weekly sets: ${MUSCLES.map((m) => `${m.name} ${fmtNum(cov[m.id].total, 1)}`).join(', ')}`);
-    setBodyMapValues(map, Object.fromEntries(MUSCLES.map((m) => [m.id, coverageStep(cov[m.id].total)])));
+    setBodyMapValues(map, mapSteps(cov, coverageStep));
     if (view.sets === 'map') {
-      replaceChildren(setsBody, el('div', { class: 'sp-map-row' }, map,
-        el('ul', { class: 'legend sp-legend', 'aria-label': 'Weekly sets' },
-          coverageBands(weights).map((b) => el('li', el('span', { class: ['swatch', b.step ? `is-${b.step}` : null] }), b.label)))));
+      replaceChildren(setsBody, setsMapRow(map, coverageBands(weights), 'Weekly sets'));
     } else {
-      replaceChildren(setsBody, el('div', { class: 'list sp-muscles' }, MUSCLES.map((m) => muscleRow(m, cov[m.id], targets[m.id]))));
+      replaceChildren(setsBody, setsList(MUSCLES.map((m) => muscleRow(m, cov[m.id], targets[m.id]))));
     }
   };
   const levelSeg = segmented({
@@ -169,10 +172,16 @@ export async function mountDetail(container, params) {
 
   // ------------------------------------------------ follow
   const actions = el('div', { class: 'stack sp-actions' });
+  // Customise: copy this split (level and swaps as chosen here) to My splits and edit it there.
+  const customise = el('button', {
+    type: 'button', class: 'btn btn-secondary btn-block',
+    onClick: customiseAction(split, () => ({ level: state.level, swaps: state.swaps }), exMap),
+  }, icon('copy', { size: 18 }), 'Customise');
   const paintActions = () => {
     if (following) {
       replaceChildren(actions,
         el('button', { type: 'button', class: 'btn btn-secondary btn-block', onClick: openAdopt }, 'Create the routines again'),
+        customise,
         el('button', {
           type: 'button', class: 'btn btn-ghost btn-block',
           onClick: async () => {
@@ -182,13 +191,13 @@ export async function mountDetail(container, params) {
           },
         }, 'Stop following'));
     } else {
-      replaceChildren(actions, el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: openAdopt }, 'Follow this split'));
+      replaceChildren(actions, el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: openAdopt }, 'Follow this split'), customise);
     }
   };
 
   async function openAdopt() {
-    const routines = await db.getAll('routines');
-    const previous = adoptedRoutines(routines);
+    const [routines, custom] = await Promise.all([db.getAll('routines'), loadCustomSplits()]);
+    const previous = adoptedRoutines(routines, customRoutineIds(custom)); // never routines of My splits
     const n = split.sessions.length;
     const newTargets = targetsFromCoverage(current.coverage);
     const opts = { replace: previous.length > 0, setTargets: false };
@@ -255,14 +264,6 @@ export async function mountDetail(container, params) {
 }
 
 function muscleRow(m, c, target) {
-  const parts = [`${fmtNum(c.direct, 1)} direct`, `${fmtNum(c.partial, 1)} partial`, `${c.daysHit} ${c.daysHit === 1 ? 'day' : 'days'}`];
-  return el('div', { class: 'list-item sp-muscle' },
-    el('span', { class: ['swatch', `is-${coverageStep(c.total)}`] }),
-    el('div', { class: 'li-main' },
-      el('div', { class: 'li-title' }, m.name),
-      el('div', { class: 'li-sub' }, parts.join(' · '))),
-    el('span', { class: 'li-trail' },
-      el('span', { class: 'sp-total' }, fmtNum(c.total, 1)),
-      target ? el('span', { class: 'muted' }, ` / ${fmtNum(target, 1)}`) : null));
+  return setsRow(m.name, c, { step: coverageStep(c.total), extra: [`${c.daysHit} ${c.daysHit === 1 ? 'day' : 'days'}`], target });
 }
 

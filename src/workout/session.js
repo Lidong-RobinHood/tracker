@@ -22,6 +22,7 @@ import {
 } from './data.js';
 import { pickExercise } from './picker.js';
 import { tutorialMenuItem, tutorialFor } from './tutorial.js';
+import { rowMuscleIcon, openMusclesSheet, musclesLabel, withGlyph, workoutGlyph } from './muscle-map.js';
 import { liveComparison, compareSession } from '../core/workout-progress.js';
 import { pctBadge, pctWords, basisValue, comparisonSection, durationParts } from './progress-ui.js';
 import { isBaseline, workingSets, bestSetOf } from '../core/baseline.js';
@@ -318,7 +319,13 @@ export async function mountSession(container, { id }) {
 
     const t = tutorialFor(ex || { id: entry.exerciseId, name });
     const card = el('section', { class: ['card', 'wk-card'], 'aria-label': name },
-      el('div', { class: 'wk-card-head' },
+      el('div', { class: ['wk-card-head', ex && 'has-mus'] },
+        // Main muscle; opens the muscles of this exercise in a sheet (fixed size: nothing below moves).
+        ex ? el('button', {
+          type: 'button', class: 'btn btn-icon btn-ghost wk-mus-btn', 'aria-haspopup': 'dialog',
+          'aria-label': `${musclesLabel(ex.primary, ex.secondary)}. Show on body map`,
+          onClick: () => openMusclesSheet(ex),
+        }, rowMuscleIcon((ex.primary || [])[0], 32)) : null,
         el('h2', { class: 'wk-ex-name' }, name),
         el('a', {
           class: 'btn btn-icon btn-ghost', href: t.url, target: '_blank', rel: 'noopener noreferrer',
@@ -646,7 +653,8 @@ export async function mountSession(container, { id }) {
         // Tonnage once: in the comparison card, with its change beside it.
         el('div', { class: 'tiles wk-tiles-2' },
           statTile({ label: 'Duration', ...durationParts(st.durationMs) }),
-          statTile({ label: 'Sets', value: String(st.normalSets), sub: setsSub(st) })),
+          // the muscles of this session at a glance (same numbers as Sets per muscle below)
+          withGlyph(statTile({ label: 'Sets', value: String(st.normalSets), sub: setsSub(st) }), workoutGlyph(workout, exMap, volumeWeights))),
         st.setsDone ? comparisonSection(cmp.prevSession ? 'vs last time of this routine' : 'vs last time', cmp, exMap) : null,
         muscles.length ? el('section', { class: 'section' },
           withSetsInfo(sectionHeader('Sets per muscle'), volumeWeightsOf(volumeWeights), 'sets-workout'),

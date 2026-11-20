@@ -1,11 +1,14 @@
 // Split library: filter chips (days, style, level, equipment) and the matching splits. Route: workout/splits
 import * as db from '../db/db.js';
-import { el, append, replaceChildren, pageHeader, sectionHeader, emptyState, tag, icon, href, bodyMap } from '../ui/index.js';
+import { el, append, replaceChildren, pageHeader, sectionHeader, emptyState, tag, icon, iconButton, href, openSheet } from '../ui/index.js';
 import { SPLITS, STYLES, LEVELS, EQUIPMENT } from '../data/splits.js';
 import { filterSplits, coverageStep } from '../core/splits.js';
-import { MUSCLE_IDS } from '../core/muscles.js';
-import { loadExercises } from '../workout/data.js';
-import { ensureSplitsCss, coverageFor } from './store.js';
+import { mapSteps } from '../core/routine-sets.js';
+import { loadExercises, loadRoutines } from '../workout/data.js';
+import { setsGlyph } from '../workout/muscle-map.js';
+import { ensureSplitsCss, coverageFor, loadCustomSplits, customCoverage, splitPath } from './store.js';
+import { sessionsPerWeekOf } from '../core/splits.js';
+import { fillNewSplitSheet } from './custom-new.js';
 import { followingCard } from './next-up.js';
 
 const label = (list, id) => (list.find((x) => x.id === id) || {}).label || id;
@@ -18,17 +21,23 @@ const filters = { days: null, style: null, level: null, equipment: null };
 
 /** Small front + back map shaded by planned weekly sets (decorative; the row says the rest). */
 export function coverageGlyph(coverage) {
-  const svg = bodyMap({ view: 'both', values: Object.fromEntries(MUSCLE_IDS.map((m) => [m, coverageStep(coverage[m].total)])), class: 'sp-glyph' });
-  svg.removeAttribute('role');
-  svg.removeAttribute('aria-label');
-  svg.setAttribute('aria-hidden', 'true');
-  return svg;
+  return setsGlyph(mapSteps(coverage, coverageStep));
 }
 
 export async function mountLibrary(container) {
   ensureSplitsCss();
-  const [exMap, weights] = await Promise.all([loadExercises(), db.getSetting('volume')]);
+  const [exMap, weights, routines, custom] = await Promise.all([loadExercises(), db.getSetting('volume'), loadRoutines(), loadCustomSplits()]);
   const glyphs = new Map(SPLITS.map((s) => [s.id, coverageFor(s, { level: 'standard', swaps: {}, exMap, weights }).coverage]));
+  const byId = new Map(routines.map((r) => [r.id, r]));
+  const mine = custom.map((cs) => ({ cs, ...customCoverage(cs, byId, exMap, weights) }));
+  const openNew = () => {
+    const sheet = openSheet({ title: 'New split', className: 'sp-new-sheet' });
+    fillNewSplitSheet(sheet, { exMap }).catch((err) => console.error(err));
+  };
+  const newRow = () => el('button', { type: 'button', class: 'list-item', onClick: openNew },
+    icon('plus', { class: 'li-lead' }),
+    el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, 'New split')),
+    icon('chevron-right', { class: 'li-chevron' }));
 
   const nextSlot = el('div', { class: 'sp-next-slot' });
   const results = el('div', { class: 'stack' });
@@ -61,18 +70,30 @@ export async function mountLibrary(container) {
       chipRow('equipment', EQUIPMENT.map((s) => ({ value: s.id, label: s.label })), 'Equipment'));
     const list = filterSplits(SPLITS, filters);
     const any = Object.values(filters).some((v) => v != null);
+    // My splits: the days filter matches sessions per week; style, level and equipment do not apply to them,
+    // so with one of those set they are left out.
+    const other = filters.style != null || filters.level != null || filters.equipment != null;
+    const myList = other ? [] : mine.filter((m) => filters.days == null || sessionsPerWeekOf(m.cs) === filters.days);
+    const myBlock = myList.length
+      ? el('section', { class: 'section' }, sectionHeader('My splits'),
+        el('div', { class: 'card card-flush list sp-results' }, myList.map((m) => customRow(m, byId))))
+      : !any ? el('section', { class: 'section' }, sectionHeader('My splits'), el('div', { class: 'card card-flush list' }, newRow())) : null;
     replaceChildren(results,
-      sectionHeader(`${list.length} ${list.length === 1 ? 'split' : 'splits'}`, {
-        trail: any ? el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: reset }, 'Reset') : null,
-      }),
-      list.length
-        ? el('div', { class: 'card card-flush list sp-results' }, list.map((s) => row(s, glyphs.get(s.id))))
-        : el('div', { class: 'card' }, emptyState('No split matches.',
-          el('button', { type: 'button', class: 'btn', onClick: reset }, 'Reset filters'))));
+      myBlock,
+      el('section', { class: 'section' },
+        sectionHeader(`${list.length} ${list.length === 1 ? 'split' : 'splits'}`, {
+          trail: any ? el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: reset }, 'Reset') : null,
+        }),
+        list.length
+          ? el('div', { class: 'card card-flush list sp-results' }, list.map((s) => row(s, glyphs.get(s.id))))
+          : el('div', { class: 'card' }, emptyState('No split matches.',
+            el('div', { class: 'sp-empty-actions' },
+              el('button', { type: 'button', class: 'btn', onClick: reset }, 'Reset filters'),
+              el('button', { type: 'button', class: 'btn btn-ghost', onClick: openNew }, icon('plus', { size: 18 }), 'New split'))))));
   }
 
   append(container,
-    pageHeader({ title: 'Splits', back: 'workout', info: 'split-choose' }),
+    pageHeader({ title: 'Splits', back: 'workout', info: 'split-choose', actions: [iconButton('plus', { label: 'New split', onClick: openNew })] }),
     nextSlot, filterBox, results);
   paint();
   await renderNext();
@@ -87,5 +108,19 @@ function row(s, coverage) {
       el('div', { class: 'sp-tags' },
         tag(`${s.days} days`, { tone: 'accent' }), tag(styleLabel(s.style)),
         s.equipment === 'home' ? tag('Home') : null)),
+    icon('chevron-right', { class: 'li-chevron' }));
+}
+
+/** A custom split as a library row: glyph, name, its sessions, days per week. */
+function customRow({ cs, state, coverage, perWeek }, byId) {
+  const names = cs.sessions.map((id) => (byId.get(id) ? byId.get(id).name : null)).filter(Boolean);
+  return el('a', { class: 'list-item sp-row', href: href(splitPath(cs.id)) },
+    coverageGlyph(coverage),
+    el('div', { class: 'li-main' },
+      el('div', { class: 'li-title' }, cs.name),
+      el('div', { class: 'sp-row-sub' }, names.length ? names.join(' · ') : 'No sessions yet'),
+      el('div', { class: 'sp-tags' },
+        tag(`${perWeek} ${perWeek === 1 ? 'day' : 'days'}`, { tone: 'accent' }),
+        state.missing.length ? tag(`${state.missing.length} missing`, { tone: 'warn', icon: 'alert-triangle' }) : null)),
     icon('chevron-right', { class: 'li-chevron' }));
 }

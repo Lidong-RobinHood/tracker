@@ -4,8 +4,13 @@
 // equal the screens they link to. All workouts are read once and scanned once.
 import * as db from '../db/db.js';
 import {
-  el, append, pageHeader, href, fmtNum, fmtDate, icon, sectionHeader, statTile, emptyState,
+  el, append, replaceChildren, pageHeader, href, fmtNum, fmtDate, icon, iconButton, sectionHeader, statTile, emptyState, segmented,
+  setBodyMapValues,
 } from '../ui/index.js';
+import { MUSCLES } from '../core/muscles.js';
+import { bandStep, bandLegend, WEEK_BAND_EDGES } from '../core/set-bands.js';
+import { setsMap, setsMapRow, selectableMap, withGlyph, workoutGlyph } from './muscle-map.js';
+import { routineGlyph } from './routines.js';
 import { today } from '../core/dates.js';
 import { isBaseline } from '../core/baseline.js';
 import { isLoggedWorkout } from '../core/workout.js';
@@ -83,10 +88,10 @@ export async function mountAnalysisHub(container) {
     return;
   }
 
-  append(container, lastSection(last, analyseWorkout(workouts, last, exMap)));
+  append(container, lastSection(last, analyseWorkout(workouts, last, exMap), workoutGlyph(last, exMap, weights)));
   append(container, monthSection(monthComparison(scan.sessions, scan.byWorkout, now)));
   append(container, recordsSection(recentRecords(scan.records, 8), name));
-  if (routines.length) append(container, routinesSection(routines, routineOverview(workouts, routines)));
+  if (routines.length) append(container, routinesSection(routines, routineOverview(workouts, routines), exMap, weights));
   append(container, exercisesSection(topExercises(scan.histories, now, { weeks: WEEKS, limit: 6 }), name));
   append(container, setsSection(weeklyMuscleSets(workouts, exMap, weights, now, { weeks: SET_WEEKS, targets }), targets, weights));
   append(container, linksSection(targets));
@@ -94,7 +99,7 @@ export async function mountAnalysisHub(container) {
 
 // ---------------------------------------------------------------- sections
 
-function lastSection(w, res) {
+function lastSection(w, res, glyph) {
   const t = res.totals;
   const prev = res.routine.prev;
   const prs = res.records.filter((r) => r.status === 'pr').length;
@@ -106,7 +111,7 @@ function lastSection(w, res) {
         el('span', { class: 'tile-label' }, 'Tonnage'),
         el('span', { class: 'tile-value' }, ton.value, el('small', { class: 'tile-unit' }, ton.unit)),
         el('span', { class: 'tile-sub' }, prev ? [pctSpan(res.routine.pct), ` vs ${shortDate(prev.date)}`] : w.routineId ? 'first of routine' : 'no routine')),
-      statTile({ label: 'Sets', value: String(t.sets), sub: t.dropsets ? `+ ${t.dropsets} drop` : null }),
+      withGlyph(statTile({ label: 'Sets', value: String(t.sets), sub: t.dropsets ? `+ ${t.dropsets} drop` : null }), glyph),
       el('div', { class: ['tile', prs && 'is-rec'] },
         el('span', { class: 'tile-label' }, 'Records'),
         el('span', { class: 'tile-value' }, String(prs)),
@@ -147,7 +152,7 @@ function recordsSection(groups, name) {
   return sec;
 }
 
-function routinesSection(routines, rows) {
+function routinesSection(routines, rows, exMap, weights) {
   const byId = new Map(rows.map((r) => [r.routineId, r]));
   return el('section', { class: 'section' },
     sectionHeader('Routines', { info: 'tonnage', trail: 'tonnage' }),
@@ -155,6 +160,7 @@ function routinesSection(routines, rows) {
       const o = byId.get(r.id);
       const sub = o.last ? `${o.sessions} session${o.sessions === 1 ? '' : 's'} · last ${shortDate(o.last.date)}` : 'Not done yet';
       return el('a', { class: 'list-item wk-spark-row', href: href(`workout/routines/${encodeURIComponent(r.id)}/progress`) },
+        routineGlyph(r, exMap, weights),
         el('div', { class: 'li-main' },
           el('div', { class: 'li-title' }, r.name),
           el('div', { class: 'li-sub' }, sub)),
@@ -187,7 +193,65 @@ function exercisesSection(rows, name) {
 }
 
 function setsSection(data, targets, weights) {
-  const sec = el('section', { class: 'section' }, withSetsInfo(sectionHeader(`Weekly sets · ${SET_WEEKS} weeks`), weights));
+  const host = el('div');
+  const toggle = data.rows.length ? segmented({
+    small: true, ariaLabel: 'Show weekly sets as', value: hubView.sets,
+    options: [{ value: 'chart', label: 'Chart' }, { value: 'map', label: 'Map' }],
+    onChange: (v) => { hubView.sets = v; paint(); },
+  }) : null;
+  const sec = el('section', { class: 'section' }, withSetsInfo(sectionHeader(`Weekly sets · ${SET_WEEKS} weeks`, { trail: toggle }), weights), host);
+  const chart = setsChart(data, targets);
+  const map = data.rows.length ? setsWeekMap(data, targets, weights) : null;
+  const paint = () => replaceChildren(host, hubView.sets === 'map' ? map : chart);
+  if (data.rows.length) paint(); else append(host, chart);
+  return sec;
+}
+
+/** Map / Chart of the weekly sets and the week shown on the map, kept while the app runs. */
+const hubView = { sets: 'chart', week: null };
+
+/**
+ * One week of the six on the body map (weekly bands, as the split screens), a stepper for the week and
+ * the tapped muscle's figures: sets (direct · partial), and the weekly target when set. The same
+ * numbers as the chart's columns.
+ */
+function setsWeekMap(data, targets, weights) {
+  const last = data.weeks.length - 1;
+  if (hubView.week === null || hubView.week > last) hubView.week = last;
+  const byMuscle = new Map(data.rows.map((r) => [r.muscle, r]));
+  const val = (id) => { const r = byMuscle.get(id); return r ? r.values[hubView.week] : { total: 0, direct: 0, partial: 0, drop: 0 }; };
+  const map = setsMap();
+  const sel = selectableMap(map, (id) => {
+    const v = val(id);
+    const t = targets[id];
+    const m = MUSCLES.find((x) => x.id === id);
+    return [el('span', { class: 'strong' }, `${m ? m.name : id} ${fmtNum(v.total, 2)}${t ? ` / ${fmtNum(t, 1)}` : ''}`),
+      ` · ${fmtNum(v.direct, 2)} direct · ${fmtNum(v.partial, 2)} partial${v.drop ? ` · ${fmtNum(v.drop, 2)} drop` : ''}`];
+  });
+  const label = el('span', { class: 'wk-week-label', 'aria-live': 'polite' });
+  const prev = iconButton('chevron-left', { label: 'Previous week', onClick: () => go(-1) });
+  const next = iconButton('chevron-right', { label: 'Next week', onClick: () => go(1) });
+  const weekText = (i) => (i === last ? 'This week' : dayRange(data.weeks[i]));
+  const paint = () => {
+    const i = hubView.week;
+    label.textContent = weekText(i);
+    prev.disabled = i === 0;
+    next.disabled = i === last;
+    setBodyMapValues(map, Object.fromEntries(MUSCLES.map((m) => [m.id, bandStep(val(m.id).total, WEEK_BAND_EDGES)])));
+    map.setAttribute('aria-label', `Sets, ${weekText(i)}: ${MUSCLES.filter((m) => val(m.id).total > 0).map((m) => `${m.name} ${fmtNum(val(m.id).total, 2)}${targets[m.id] ? ` of ${fmtNum(targets[m.id], 1)}` : ''}`).join(', ') || 'none'}`);
+    sel.refresh();
+  };
+  const go = (d) => { hubView.week = Math.max(0, Math.min(last, hubView.week + d)); paint(); };
+  paint();
+  return el('div', { class: 'card' },
+    el('div', { class: 'wk-week-step' }, prev, label, next),
+    setsMapRow(map, bandLegend(weights, WEEK_BAND_EDGES), 'Weekly sets'),
+    sel.line);
+}
+
+/** The existing small-multiples chart: six weeks per muscle, direct / partial, target line. */
+function setsChart(data, targets) {
+  const sec = el('div');
   if (!data.rows.length) {
     append(sec, el('div', { class: 'card' }, el('p', { class: 't-sub muted' }, `No sets in the last ${SET_WEEKS} weeks.`)));
     return sec;

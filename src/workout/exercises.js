@@ -10,10 +10,11 @@ import {
 import { today } from '../core/dates.js';
 import { lineChart } from './chart.js';
 import { pctBadge, fmtTonnage, recordBadges } from './progress-ui.js';
-import { ensureCss, loadExercises, loadWorkouts, musclesLine, newExercise, shortDate, findByName, confirmAction } from './data.js';
+import { ensureCss, loadExercises, loadWorkouts, newExercise, shortDate, findByName, confirmAction } from './data.js';
 import { exerciseForm, EQUIPMENT } from './exercise-form.js';
 import { matches } from './picker.js';
 import { tutorialSection } from './tutorial.js';
+import { musclesBlock, rowMuscleIcon, musclesText, muscleChip } from './muscle-map.js';
 import { isBaseline, workingEntry, workingSets, bestSetOf } from '../core/baseline.js';
 
 // Filter state survives navigating into a detail and back.
@@ -33,10 +34,7 @@ export async function mountLibrary(container) {
   const chips = el('div', { class: 'chips chips-scroll' });
   const renderChips = () => replaceChildren(chips, 
     el('button', { type: 'button', class: 'chip', 'aria-pressed': state.muscle ? 'false' : 'true', onClick: () => { state.muscle = null; renderChips(); render(); } }, 'All'),
-    ...MUSCLES.map((m) => el('button', {
-      type: 'button', class: 'chip', 'aria-pressed': state.muscle === m.id ? 'true' : 'false',
-      onClick: () => { state.muscle = state.muscle === m.id ? null : m.id; renderChips(); render(); },
-    }, m.name)),
+    ...MUSCLES.map((m) => muscleChip(m, state.muscle === m.id, () => { state.muscle = state.muscle === m.id ? null : m.id; renderChips(); render(); })),
     el('button', {
       type: 'button', class: 'chip', 'aria-pressed': state.archived ? 'true' : 'false',
       onClick: () => { state.archived = !state.archived; renderChips(); render(); },
@@ -49,10 +47,11 @@ export async function mountLibrary(container) {
       .filter((e) => matches(e, state.query))
       .filter((e) => !state.muscle || e.primary.includes(state.muscle) || (e.secondary || []).includes(state.muscle));
     count.textContent = `${items.length} exercise${items.length === 1 ? '' : 's'}`;
-    replaceChildren(list, ...items.map((e) => el('a', { class: 'list-item', href: href(`workout/exercises/${encodeURIComponent(e.id)}`) },
+    replaceChildren(list, ...items.map((e) => el('a', { class: 'list-item wk-ex-row', href: href(`workout/exercises/${encodeURIComponent(e.id)}`) },
+      rowMuscleIcon((e.primary || [])[0]),
       el('div', { class: 'li-main' },
         el('div', { class: 'li-title' }, e.name),
-        el('div', { class: 'li-sub' }, `${musclesLine(e)} · ${equipmentName(e.equipment)}`)),
+        el('div', { class: 'li-sub' }, musclesText(e), equipmentSuffix(e))),
       e.isCustom ? tag('Custom') : null,
       icon('chevron-right', { class: 'li-chevron' }))));
     if (!items.length) append(list, el('p', { class: 't-sub muted wk-pad' }, state.archived ? 'No archived exercises.' : 'No match.'));
@@ -70,7 +69,7 @@ export async function mountLibrary(container) {
 
 export async function mountNewExercise(container, _params, ctx) {
   ensureCss();
-  const form = exerciseForm({ name: ctx.query.name || '' });
+  const form = exerciseForm({ name: ctx.query.name || '' }, { preview: true });
   const create = async () => {
     const r = form.read();
     if (!r.ok) { toast(r.error, { type: 'error' }); return; }
@@ -93,7 +92,9 @@ export async function mountExerciseDetail(container, { id }) {
     append(container, pageHeader({ title: 'Exercise', back: 'workout/exercises' }), emptyState('Exercise not found.'));
     return;
   }
-  const form = exerciseForm(ex);
+  // Muscles near the top, live while the muscles are edited in the form below (saved with Save changes).
+  const muscles = musclesBlock({ primary: ex.primary, secondary: ex.secondary });
+  const form = exerciseForm(ex, { onMuscles: (p, s) => muscles.update(p, s) });
   const save = async () => {
     const r = form.read();
     if (!r.ok) { toast(r.error, { type: 'error' }); return; }
@@ -134,6 +135,7 @@ export async function mountExerciseDetail(container, { id }) {
   let tutorial = tutorialSection(ex);
 
   append(container, header,
+    el('section', { class: 'section' }, sectionHeader('Muscles'), el('div', { class: 'card' }, muscles.node)),
     tutorial,
     ...progress,
     el('section', { class: 'section' },
@@ -297,4 +299,11 @@ function startingPointItem(workout, entry) {
 function equipmentName(id) {
   const e = EQUIPMENT.find(([v]) => v === id);
   return e ? e[1] : id;
+}
+
+/** ' · Barbell', or nothing when the name already says it ('Bench Press (Barbell)'). */
+function equipmentSuffix(e) {
+  const eq = equipmentName(e.equipment);
+  if (!eq || e.name.toLowerCase().includes(String(eq).toLowerCase())) return null;
+  return el('span', { class: 'wk-mus-p wk-eq' }, ` · ${eq}`);
 }

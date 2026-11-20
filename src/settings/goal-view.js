@@ -1,7 +1,7 @@
 // Settings › Goal and targets (#/settings/goal): weight goal (Lose / Maintain / Gain + signed amount and
 // one result line), daily targets in grams or percent, how targets are set, profile, adaptive macros.
 // Writes exactly what the single Settings screen wrote before (same records, same rules).
-import { el, pageHeader, numberInput, toast, fmtNum, fmtGrouped, sectionHeader, segmented, iconButton, field } from '../ui/index.js';
+import { el, append, pageHeader, numberInput, toast, fmtNum, fmtGrouped, sectionHeader, segmented, iconButton, field } from '../ui/index.js';
 import * as db from '../db/db.js';
 import { macroKcal } from '../core/nutrition.js';
 import { MACROS, SPLIT_PRESETS, targetMode, validateSplit, macroGrams, gramsFromPct, pctFromGrams, pctOfKcal, carbsRest } from '../core/macro-split.js';
@@ -202,7 +202,16 @@ function goalSection(targets, goal, profile, adaptive) {
   const sex = select(profile.sex, [['', 'Not set'], ['female', 'Female'], ['male', 'Male'], ['other', 'Other / prefer not to say']], 'Sex');
   const birthYear = numberInput({ value: profile.birthYear, integer: true, min: 1900, max: new Date().getFullYear() - 10, ariaLabel: 'Birth year' });
   const height = withUnit(numberInput({ value: profile.heightCm, min: 100, max: 250, decimals: 1, ariaLabel: 'Height' }), 'cm');
-  const activity = select(profile.activity, [['', 'Not set'], ...ACTIVITY_LEVELS.map((a) => [a.id, `${a.label} – ${a.hint}`])], 'Activity level');
+  // Short labels so the chosen one is always readable; its detail is the one helper line below.
+  const activity = select(profile.activity, [['', 'Not set'], ...ACTIVITY_LEVELS.map((a) => [a.id, a.label])], 'Activity level');
+  const activityHint = el('div', { class: 'field-hint' });
+  const paintActivityHint = () => {
+    const a = ACTIVITY_LEVELS.find((x) => x.id === activity.value);
+    activityHint.textContent = a ? a.hint.charAt(0).toUpperCase() + a.hint.slice(1) : '';
+    activityHint.hidden = !a;
+  };
+  activity.addEventListener('change', paintActivityHint);
+  paintActivityHint();
   const protein = withUnit(numberInput({ value: adaptive.proteinPerKg ?? ADAPTIVE_DEFAULTS.proteinPerKg, min: 0.8, max: 3.5, decimals: 2, ariaLabel: 'Protein per kg' }), 'g / kg');
   const fat = withUnit(numberInput({ value: adaptive.fatPerKg ?? ADAPTIVE_DEFAULTS.fatPerKg, min: 0.3, max: 2, decimals: 2, ariaLabel: 'Fat per kg' }), 'g / kg');
   const floor = withUnit(numberInput({ value: adaptive.kcalFloor ?? null, integer: true, min: 800, max: 4000, placeholder: 'auto', ariaLabel: 'Calorie floor' }), 'kcal');
@@ -246,7 +255,7 @@ function goalSection(targets, goal, profile, adaptive) {
     el('section', { class: 'section' }, sectionHeader('Profile', { info: 'expenditure' }),
       el('div', { class: 'card set-card' }, el('div', { class: 'set-rows' },
         row('Sex', sex), row('Birth year', birthYear), row('Height', height)),
-      el('div', { class: 'set-card-foot' }, field('Activity level', activity)))),
+      el('div', { class: 'set-card-foot' }, append(field('Activity level', activity), activityHint)))),
     el('section', { class: 'section' }, sectionHeader('Adaptive macros', { info: 'adaptive-macros' }),
       el('div', { class: 'card set-card' }, el('div', { class: 'set-rows' },
         row('Protein', protein), row('Fat, minimum', fat), row('Calorie floor', floor)),
