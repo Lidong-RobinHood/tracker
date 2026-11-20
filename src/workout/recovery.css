@@ -1,0 +1,58 @@
+/* Muscle recovery check-ins: sheet, chips marker, history list and chart. Loaded by recovery.js. Tokens only. */
+
+/* "yours": range learned from the user's check-ins */
+.rc-yours {
+  display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: var(--r-sm);
+  background: var(--accent-soft); color: var(--accent-ink);
+  font-size: var(--fs-cap); line-height: 16px; font-weight: var(--fw-semibold); letter-spacing: 0.02em; vertical-align: 1px;
+}
+.wk-mchip-st .rc-yours { margin-left: 0; flex: none; }
+.rc-chip-time { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* check-in sheet */
+.rc-ck-head { display: flex; align-items: center; gap: var(--s3); }
+.rc-ck-head > .bm-icon { flex: none; }
+.rc-ck-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rc-ck-words { font-size: var(--fs-body); line-height: var(--lh-body); }
+.rc-ck-line { margin: var(--s2) 0 0; }
+.rc-ck-ask { margin: var(--s4) 0 0; font-weight: var(--fw-semibold); }
+.rc-sheet .overlay-footer > .btn { flex: 1 1 0; min-width: 0; min-height: var(--tap); }
+
+/* range sheet */
+.rc-src-line { margin: 0 0 var(--s3); }
+.rc-offer {
+  display: flex; align-items: center; gap: var(--s3); margin: 0 0 var(--s3);
+  padding: var(--s2) var(--s3); border-radius: var(--r-md); background: var(--surface-2);
+}
+
+/* history */
+.rc-history { display: flex; flex-direction: column; gap: var(--gap-card); }
+.rc-filter { width: 100%; }
+.rc-empty { margin: 0; padding: 0 var(--s1); }
+.rc-ck-list { margin: 0; padding: 0; list-style: none; }
+.rc-ck-row { gap: var(--s3); padding-right: var(--s1); }
+.rc-ck-row .li-sub { white-space: normal; }
+.rc-mark {
+  flex: none; display: inline-block; width: 10px; height: 10px; border-radius: var(--r-full);
+  border: 2px solid var(--ink-2); box-sizing: border-box;
+}
+.rc-mark.is-rec { background: var(--ink-2); }
+.rc-mark.is-sore { background: transparent; }
+
+/* chart */
+.rc-chart-card { display: flex; flex-direction: column; gap: var(--s2); }
+.rc-chart { display: block; width: 100%; height: auto; overflow: visible; }
+.rc-band { fill: var(--fill); stroke: var(--line-2); stroke-width: 1; stroke-dasharray: 3 3; }
+.rc-row { stroke: var(--line); stroke-width: 1; }
+.rc-tick { stroke: var(--line-2); stroke-width: 1; }
+.rc-tlabel { fill: var(--ink-2); font-size: 11px; font-family: var(--font); }
+.rc-dot { stroke: var(--ink-2); stroke-width: 2; }
+.rc-dot.is-rec { fill: var(--ink-2); }
+.rc-dot.is-sore { fill: var(--surface); }
+.rc-dot.is-off { opacity: 0.4; }
+.rc-legend { gap: var(--s1) var(--s3); }
+.rc-swatch-band {
+  flex: none; display: inline-block; width: 16px; height: 10px; border-radius: 3px;
+  background: var(--fill); border: 1px dashed var(--line-2);
+}
+.rc-chart-card > .field-hint { margin: 0; }

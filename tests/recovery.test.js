@@ -245,9 +245,13 @@ test('muscleRecovery uses overrides for that muscle only and marks it custom', (
   assert.equal(get(own, 'chest').custom, true);
   assert.equal(get(own, 'triceps').custom, false);
   assert.deepEqual([get(own, 'triceps').minHours, get(own, 'triceps').maxHours], [get(def, 'triceps').minHours, get(def, 'triceps').maxHours]);
-  // Pace applies after the override.
+  // Pace is NOT applied on top of a hand-set range (it is the user's own hours; would count twice),
+  // but still applies to the other muscles.
   const slow = run(w, { base: { chest: [12, 16] }, factor: 1.25 });
-  assert.deepEqual([get(slow, 'chest').minHours, get(slow, 'chest').maxHours], [15, 20]);
+  assert.deepEqual([get(slow, 'chest').minHours, get(slow, 'chest').maxHours], [12, 16]);
+  assert.equal(get(slow, 'chest').source, 'set');
+  assert.equal(get(slow, 'triceps').source, 'rule');
+  assert.ok(get(slow, 'triceps').maxHours > get(def, 'triceps').maxHours);
 });
 
 test('item 4: recovery progress rounds exact halves up', () => {
