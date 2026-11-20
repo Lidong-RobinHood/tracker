@@ -85,9 +85,10 @@ export async function mountDiary(container, params) {
 
   // ---------------------------------------------------------------- day summary
   const kcalRing = ring({ value: 0, max: 0, size: 148, stroke: 10 });
-  const eatenVal = el('span', { class: 't-head num' });
-  const eatenPct = el('span', { class: 't-sub num' });
+  const restCap = el('span', { class: 't-cap muted' }, 'Left');
+  const restVal = el('span', { class: 't-head num' });
   const targetVal = el('span', { class: 't-head num' });
+  const targetPct = el('span', { class: 't-sub num' });
   const macroCells = Object.fromEntries(['protein', 'carbs', 'fat'].map((key) => {
     const pct = el('span', { class: 'num pct' });
     const bar = progressBar({ value: 0, max: 0, tone: key, label: LABEL[key] });
@@ -98,9 +99,9 @@ export async function mountDiary(container, params) {
   }));
   summary.append(
     el('div', { class: 'hero-row' },
-      el('div', { class: 'hero-side' }, el('span', { class: 't-cap muted' }, 'Eaten'), eatenVal, eatenPct),
+      el('div', { class: 'hero-side' }, restCap, restVal, el('span', { class: 't-sub muted' }, 'kcal')),
       kcalRing,
-      el('div', { class: 'hero-side is-right' }, el('span', { class: 't-cap muted' }, 'Target'), targetVal, el('span', { class: 't-sub muted' }, 'kcal'))),
+      el('div', { class: 'hero-side is-right' }, el('span', { class: 't-cap muted' }, 'Target'), targetVal, targetPct)),
     el('div', { class: 'macro-bars' }, Object.values(macroCells).map((c) => c.cell)));
 
   function renderSummary() {
@@ -108,13 +109,16 @@ export async function mountDiary(container, params) {
     // One rounding rule for everything shown: eaten rounded once, left/over from the rounded value.
     const st = Object.fromEntries(['kcal', 'protein', 'carbs', 'fat'].map((k) => [k, targetStatus(t[k], targets && targets[k])]));
     const kcal = st.kcal;
+    // Ring and centre number both show eaten; left/over sits beside it (no target: '–').
     kcalRing.update({
       value: kcal.eaten, max: kcal.target ?? 0, tone: kcal.isOver ? 'warn' : 'accent',
-      label: fmtGrouped(kcal.isOver ? kcal.over : kcal.left ?? 0, 0), sub: kcal.isOver ? 'kcal over' : 'kcal left',
+      label: fmtGrouped(kcal.eaten, 0), sub: 'kcal eaten',
     });
-    eatenVal.textContent = fmtGrouped(kcal.eaten, 0);
-    setPct(eatenPct, kcal);
+    restCap.textContent = kcal.isOver ? 'Over' : 'Left';
+    restVal.textContent = fmtGrouped(kcal.isOver ? kcal.over : kcal.left, 0);
+    restVal.classList.toggle('pct-over', kcal.isOver);
     targetVal.textContent = fmtGrouped(kcal.target, 0);
+    if (kcal.target === null) { targetPct.textContent = 'kcal'; targetPct.className = 't-sub num muted'; targetPct.removeAttribute('title'); } else setPct(targetPct, kcal);
     for (const [key, c] of Object.entries(macroCells)) {
       const x = st[key];
       setPct(c.pct, x);
