@@ -45,6 +45,7 @@ export const routes = [
   If the user navigated away while an async mount was still running, cleanup runs immediately.
 - A thrown error is caught and shown as an error card (and logged).
 - On every navigation the router first closes all open sheets/modals (their `onClose` runs).
+- While an overlay is open, everything behind it (page, tab bar, lower overlays; not toasts) is `inert`: not focusable or tappable.
 - Each dismissible sheet/modal adds a history entry (same URL): the phone's Back button closes only the
   top overlay. Closing it with its own controls removes the entry; `navigate()`/`back()` called right
   after a close wait for that step. For ~350 ms after an overlay closes, taps are swallowed, and a
@@ -88,13 +89,13 @@ export const routes = [
 | `segmented({ options: [{ value, label, icon, ariaLabel }], value, onChange, ariaLabel, small })` → `.setValue(v)` | segmented control (`.seg`, `aria-pressed`), 44 px; `small` = inline, content width (range picker in a card header); icons 18 px; ← → keys move |
 | `iconTabs({ tabs: [{ value, label, icon }], value, onChange, ariaLabel })` → `.setValue(v)` | icon-over-label tabs with underline (`role=tablist`, `aria-selected`, roving tabindex), e.g. Add food: Search / Scan / Recent / Meals / Quick add. The caller shows the panel |
 | `bodyMap({ view, values, title, class })`, `setBodyMapValues(svg, values)`, `BODY_MAP_MUSCLES` (in `src/ui/bodymap.js`: `bodyMap`, `setValues`, `MUSCLES`) | body-map SVG, `view`: `'front'` `'back'` `'both'`; 100 × 220 px (88 × 194 px below 400 px viewport). `values[muscleId]`: `0–4` (sets ramp), `'recovering'` `'ready'` `'fresh'` (status colours), `'hot'` (accent). Ids = `src/core/muscles.js`. `MUSCLES` = `{ front: [...], back: [...] }`: the ids each view draws |
-| `muscleIcon(muscleId, { size = 36, state, label })` | square crop of one muscle, highlighted in accent, or in the status colour with `state: 'recovering'` `'ready'` `'fresh'`; decorative unless `label` |
+| `muscleIcon(muscleId, { size = 36, state, label })` | square crop of one muscle, highlighted in accent (no `state`), red `'recovering'`, amber `'ready'`, or `'neutral'` (recovered: only subtly emphasised in `--map-idle`, as on the map; `'fresh'` = green, legacy, not used for recovery); decorative unless `label` |
 | `fmtNum(n, maxDecimals = 1)` | `'12.5'`, `null` → `'–'` |
 | `fmtKcal`, `fmtGrams`, `fmtKg`, `fmtAmount(n, basis)` | `'524 kcal'`, `'12.5 g'`, `'102.5 kg'`, `'250 ml'` |
 | `fmtDate('2026-11-18')`, `fmtDay(date)` | `'Wed 18 Nov'`; `'Today'`/`'Yesterday'`/`'Tomorrow'` else fmtDate |
 | `fmtTime(ms)`, `fmtDuration(ms)`, `fmtBytes(b)` | `'07:03'`, `'1 h 05 min'`, `'1.2 MB'` |
 | `fmtGrouped(n, maxDecimals = 0)`, `fmtSigned(n, maxDecimals = 0)` | display numbers: `'1 310'` (narrow no-break space U+202F), `'−0.5'` (true minus U+2212); `fmtSigned` adds `+` (`'+50'`, `'−50'`, `'0'`). For numbers a user reads, not for input values |
-| `fmtTonnage(kg, { kg })` | the one tonnage rule: whole kg, grouped, below 10 000 kg (`'2 340 kg'`), tonnes with two decimals from 10 000 kg (`'12.48 t'`; rounded kg decide, so 9 999.6 → `'10.00 t'`); `{ kg: true }` = always kg, for single-set and per-exercise tonnage (`'12 480 kg'`); `null` → `'–'`. Every tonnage on screen goes through it |
+| `fmtTonnage(kg, { kg })` (`src/ui/format.js`) | the one tonnage rule: whole kg, grouped, below 10 000 kg (`'2 340 kg'`), tonnes with two decimals from 10 000 kg (`'12.48 t'`; rounded kg decide, so 9 999.6 → `'10.00 t'`); `{ kg: true }` = always kg, for single-set and per-exercise tonnage (`'12 480 kg'`); `null` → `'–'`. Every tonnage on screen goes through it |
 
 ## Design system (2026-11 redesign) — `app.css`
 
@@ -108,7 +109,7 @@ Reference: the approved demo (system font, tabular figures, one indigo accent, 4
 | Group | Tokens |
 |---|---|
 | Surfaces | `--bg` page · `--surface` cards, tab bar · `--surface-2` secondary surface inside a card · `--sheet` sheets/modals · `--fill` input wells, segmented track, neutral chips, pressed rows · `--seg-on` selected segment |
-| Lines | `--line` separators · `--line-2` stronger (sheet handle, dashed outlines) |
+| Lines | `--line` separators · `--line-2` stronger (sheet handle, dashed outlines) · `--line-ctl` control outlines: inputs, wells, unticked boxes (≥ 3:1 on every surface) |
 | Text | `--ink` primary · `--ink-2` secondary (≥ 4.5:1 on `--bg`, `--surface`, `--fill`) · `--ink-3` tertiary: chevrons, placeholders, greyed "previous" values only, never sentences |
 | Accent (the only one) | `--accent` actions, selection, progress, today, record glyphs · `--accent-soft` secondary buttons, selected chips · `--accent-ink` accent text on `--accent-soft` · `--accent-2` second step (partial sets) · `--on-accent` text on `--accent` |
 | Status (state only, always with a label) | `--ok` `--warn` `--bad` fills/dots · `--ok-soft` `--warn-soft` `--bad-soft` tints · `--ok-text` `--warn-text` `--bad-text` as text on surfaces · `--on-status` text on a status fill |
@@ -159,7 +160,7 @@ Unchanged names that are part of the new system: `--bg --surface --surface-2 --a
   shadow in light only), `card-flush` (lists edge to edge), `card-header` > `card-title` (17/600); `error-card`.
 - **Rows:** `list` > `list-item` (div/button/a, 52 px min) > `li-lead` (accent icon) · `li-main` > `li-title` (16/400) + `li-sub` (13 ink-2) · `li-trail` · `li-chevron` (use `icon('chevron-right', { class: 'li-chevron' })`).
 - **Buttons:** `btn` (= secondary: accent-soft + accent-ink, 44 px, 12 px radius, 16/600) · `btn-primary` · `btn-secondary` · `btn-ghost` (text, accent) ·
-  `btn-danger` · `btn-sm` (36 px visible, 44 px hit area) · `btn-block` · `btn-icon` (44 × 44, ink-2 glyph, transparent unless primary/secondary/danger) · `btn-info` (the ⓘ, negative margins so it does not grow a title row).
+  `btn-danger` · `btn-sm` (36 px visible inside a 44 px box: 4 px transparent top/bottom borders, fill clipped to the padding box — the whole 44 px is the hit area) · `btn-block` · `btn-icon` (44 × 44, ink-2 glyph, transparent unless primary/secondary/danger) · `btn-info` (the ⓘ, negative margins so it does not grow a title row).
 - **Chips and labels:** `chips` (+ `chips-scroll`) > `chip` (interactive, 36 px + 44 px hit area, 8 px radius; selected `aria-pressed="true"` or `is-active`), `chip-success`;
   `tag` (+ `tag-accent|ok|warn|bad`, static 24 px); `badge` (+ `badge-warning|danger|dropset`, 20 px); `set-badge` (+ `set-badge-warn|bad`, 24 × 24 letter);
   `dot` / `swatch` with `is-recovering|is-ready|is-fresh`, `swatch.is-1..is-4|is-accent|is-partial|is-protein|is-carbs|is-fat`; `legend` (column) / `legend legend-row`.
@@ -167,7 +168,8 @@ Unchanged names that are part of the new system: `--bg --surface --surface-2 --a
   `icon-tabs` (grid of icon + label, underline on `aria-selected="true"`, `--n` columns).
 - **Forms:** `field` > `field-label-row` > `field-label` (13/600 ink-2) · control · `field-hint` / `field-error`; `input`, `select`, `textarea` (fill well, 8 px radius,
   accent border on focus, 16 px text), `input-num` (right aligned), `input-unit` > `.unit`, `well` (compact `<label class="well"><input><span>kg</span></label>`),
-  `search-field` (leading icon + input), `is-missing` / `aria-invalid="true"` (red), `switch`, `num-signed` + `num-sign` (numberInput's ± toggle).
+  `search-field` (leading icon + input), `is-missing` / `aria-invalid="true"` (red), `switch`, `num-signed` + `num-sign` (numberInput's ± toggle),
+  `check-box` (custom unticked box, e.g. the set done toggle: `--line-ctl` outline like the fields).
 - **Figures:** `tiles` > `tile` > `tile-label` · `tile-value` (+ `tile-unit`) · `tile-sub` (tiles inside a card use `--surface-2`); `progress` > `progress-fill` (`tone-*`);
   `ring` (`ring-track`, `ring-fill`, `ring-center`, `ring-value`, `ring-sub`, `ring-ok|warn|bad`).
 - **Body map:** `bm` (+ `bm-both`, `bm-icon`, `bm-icon-recovering|ready|fresh`), paths `bm-body` / `bm-muscle` with `is-0..is-4`, `is-hot`, `is-recovering|ready|fresh`.
@@ -200,7 +202,9 @@ help `help-circle` · storage `shield` · reorder `grip-vertical` · filter `fil
 
 All explanation text lives here, keyed by id (the 23 sheets of the copy audit): `recovery`, `recovery-math`, `sets`, `tonnage`,
 `records`, `metrics`, `top-exercises`, `progression`, `starting`, `photo`, `camera`, `expenditure`, `checkin`, `complete`, `trend`,
-`report`, `macros`, `adaptive-macros`, `goal`, `backup`, `storage`, `import-weights`, `import-workouts`. Each is a title plus
+`report`, `macros`, `adaptive-macros`, `goal`, `backup`, `storage`, `import-weights`, `import-workouts`; added since:
+`sets-workout` (sets per muscle of one workout, finish summary; takes the `sets` values), `split-choose`, `split-run`
+(running a split: order, progression, swaps, easy week), `split-sets`. Each is a title plus
 1–3 short paragraphs (≤ ~60 words); numbers come from the core constants (`RECOVERY_CONFIG`, `DEFAULT_VOLUME`,
 `ADAPTIVE_DEFAULTS`, `GOAL_RATE_MIN/MAX`, `KCAL_PER_KG`, `BACKUP_DUE_DAYS`). `sets` and `recovery` accept current user values
 (`{ primary, secondary, dropset }`, `{ faster, slower }`). Help topics should render these same texts (`infoSheet(id)` returns
@@ -213,6 +217,9 @@ Original artwork (`docs/AUTHORSHIP.md`); shapes in `src/ui/bodymap-art.js`, gene
 the generated file). Recovery: `values = { quads: 'recovering', back: 'ready', chest: 'fresh' }` with a legend
 (`legend` + `swatch is-recovering|is-ready|is-fresh`, labels Recovering / Likely ready / Recovered). Weekly sets:
 `values = { chest: 0..4 }` (4 = at target, 3 = over 2/3, 2 = over 1/3, 1 = started, 0/missing = none) with a `swatch is-1..is-4` legend.
+Recovered muscles are never green: neutral on the map and legend (no value / plain `swatch`), and wherever else recovery
+state is shown (home chips, recovery detail list) `muscleIcon(id, { state: 'neutral' })`, a `--map-idle` dot and a neutral bar;
+red / amber only for recovering / likely ready, always with the status label.
 Muscle chips: `muscleIcon(id, { state })` next to the muscle name and a `dot is-<state>`. At 320 px two maps (2 × 88 px) leave
 ≈ 80 px: put the legend under the maps there (e.g. a `legend legend-row`).
 
@@ -287,4 +294,13 @@ only while `meta.seedVersion < SEED_VERSION`, adding missing ids and never overw
   It precaches every file listed in `precache-list.js` at install; after adding, removing or changing any
   runtime file run `node tools/build-precache.mjs` (`npm test` fails otherwise).
 - Everything must work under a sub-path (`/tracker/`): never use URLs starting with `/`.
+- `dateBox(input, { placeholder })` (`src/food/widgets.js`): a native `<input type=date>` shown as the app's date
+  ('Thu 19 Nov'), the transparent native input on top keeps focus, keyboard and the system picker. Used by Food, Trends
+  (weight) and Import (workouts); it loads `food.css` (its styles live there), so importing it from another feature pulls that file in.
+- Body-weight display (`src/core/weight-format.js`): weights 1 decimal (`shownKg`); a change between two weights is the
+  difference of the two *displayed* weights (`shownKgChange`, `shownKgChangePct`, `shownKgDiff`), so `83.1 → 83.4 · +0.3 kg`
+  always adds up; rates in kg / week 2 decimals (`shownRate`), never derived from rounded weights.
+- Exercise alternatives (split library swap list, `alternatives()` in `src/core/splits.js`): movement-pattern data in
+  `src/data/exercises.js` — `EXERCISE_PATTERN` (seed id → pattern, not stored in the db) and `RELATED_PATTERNS` (second choices).
+  Same pattern first, then related patterns; custom exercises (no pattern) fall back to the same-primary-muscle rule.
 - Body-map artwork: `docs/AUTHORSHIP.md`; third-party notices: `THIRD-PARTY-NOTICES.md` (keep the Licences screen in step).

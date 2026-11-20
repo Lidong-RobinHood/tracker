@@ -117,10 +117,11 @@ export function filePicker({ label = 'Choose a file', accept = '.txt,.csv,.tsv,t
 // ---------------------------------------------------------------- small UI pieces
 
 /** "What to paste" example box. */
-export function exampleBox(title, sample) {
+export function exampleBox(title, sample, note = null) {
   return el('details', { class: 'imp-example' },
     el('summary', null, el('span', null, title), icon('chevron-down', { size: 18, class: 'imp-chev' })),
-    el('pre', { class: 'imp-pre' }, sample));
+    el('pre', { class: 'imp-pre' }, sample),
+    note ? el('p', { class: 't-sub muted imp-example-note' }, note) : null);
 }
 
 /**
@@ -152,7 +153,9 @@ export function dateInput(value, max, onChange) {
 export const dateY = (d) => (d ? `${fmtDate(d, parseDate(d))} ${d.slice(0, 4)}` : '–');
 
 /** Summary of an earlier import run. Runs saved by 0.5.0 and older can say "1 Dec 2025 2025". */
-export const runSummary = (r) => String(r.summary || '').replace(/ (\d{4}) \1\b/g, ' $1');
+export const runSummary = (r) => String(r.summary || '').replace(/ (\d{4}) \1\b/g, ' $1')
+  // One day: '12 Nov 2026 – 12 Nov 2026' → '12 Nov 2026'.
+  .replace(/(\w{3} \d{1,2} \w{3} \d{4}) – \1/g, '$1');
 
 export const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 

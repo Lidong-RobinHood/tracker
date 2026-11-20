@@ -34,7 +34,6 @@ export async function mountStartingPoint(container) {
     subtitle: stored ? `Saved · as of ${fmtDate(stored.date)}` : 'Current working sets',
     back: 'workout',
     info: 'starting',
-    actions: [el('button', { type: 'button', class: 'btn btn-ghost wk-finish', onClick: () => save() }, 'Save')],
   });
 
   const dateIn = el('input', {
@@ -55,10 +54,7 @@ export async function mountStartingPoint(container) {
       replaceChildren(listEl, el('p', { class: 't-sub muted wk-pad' }, 'No exercises yet.'));
       return;
     }
-    replaceChildren(listEl, 
-      el('div', { class: 'wk-sp-row wk-sp-head t-cap', 'aria-hidden': 'true' },
-        el('span', 'kg'), el('span', 'reps'), el('span', 'sets'), el('span', 'Best set')),
-      ...rows.map((r, i) => renderRow(r, i)));
+    replaceChildren(listEl, ...rows.map((r, i) => renderRow(r, i)));
     wireNext();
   }
 
@@ -80,6 +76,9 @@ export async function mountStartingPoint(container) {
       el('div', { class: 'wk-sp-name' },
         el('span', { class: 'grow truncate' }, name),
         iconButton('x', { label: `Remove ${name}`, onClick: () => remove(i) })),
+      // Column headings sit right above the first exercise's fields (the rows below share the columns).
+      i === 0 ? el('div', { class: 'wk-sp-row wk-sp-head t-cap', 'aria-hidden': 'true' },
+        el('span', 'kg'), el('span', 'reps'), el('span', 'sets'), el('span', 'Best set')) : null,
       el('div', { class: 'wk-sp-row' },
         c.weight || bwCell(), c.reps, c.sets, c.bestWeight || bwCell(), c.bestReps));
   }
@@ -202,10 +201,11 @@ export async function mountStartingPoint(container) {
     el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'As of'), dateIn),
     listEl,
     errorEl,
-    el('div', { class: 'grid-2' },
+    el('div', { class: ['wk-sp-add', routineCount && 'has-2'] },
       el('button', { type: 'button', class: 'btn', onClick: addExercises }, icon('plus'), 'Add exercises'),
-      el('button', { type: 'button', class: 'btn', disabled: !routineCount, onClick: addFromRoutines }, 'Add from routines')),
-    el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: () => save() }, 'Save'),
+      routineCount ? el('button', { type: 'button', class: 'btn', onClick: addFromRoutines }, 'From routines') : null),
+    // the one Save: sticky above the tab bar
+    el('div', { class: 'wk-sp-save' }, el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: () => save() }, 'Save')),
     stored ? el('button', { type: 'button', class: 'btn btn-ghost btn-block text-danger', onClick: del }, 'Delete starting point') : null,
   ].filter(Boolean));
 

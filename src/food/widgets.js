@@ -1,5 +1,5 @@
 // Small food-specific UI pieces shared by the diary, add-food and portion screens.
-import { el, fmtGrouped } from '../ui/index.js';
+import { el, fmtGrouped, fmtDate, icon } from '../ui/index.js';
 import { MEALS } from '../core/food-diary.js';
 import { isValidDate } from '../core/dates.js';
 
@@ -27,10 +27,35 @@ export function dateInput(value, { ariaLabel = 'Date', onChange } = {}) {
   return i;
 }
 
+/**
+ * A native date input shown as the app's date ('Thu 19 Nov'): the formatted date is the visible value,
+ * the native input lies transparent over it (it keeps focus, keyboard and the system picker, and is what
+ * screen readers read). The text follows every change. Used by Food, Trends and Import.
+ * @param {HTMLInputElement} input an <input type=date>
+ * @param {{placeholder?: string}} [opts]
+ */
+export function dateBox(input, { placeholder = 'Pick a date' } = {}) {
+  ensureCss();
+  input.classList.add('date-box-input');
+  const text = el('span', { class: 'date-box-text', 'aria-hidden': 'true' });
+  const sync = () => {
+    text.textContent = isValidDate(input.value) ? fmtDate(input.value) : placeholder;
+    text.classList.toggle('faint', !isValidDate(input.value));
+    box.classList.toggle('is-disabled', input.disabled);
+  };
+  const box = el('label', { class: 'input date-box' }, text, icon('calendar', { size: 18, class: 'date-box-ic' }), input);
+  // Chrome only opens its picker from the calendar glyph; open it from anywhere in the box.
+  input.addEventListener('click', () => { try { if (!input.disabled && input.showPicker) input.showPicker(); } catch { /* not allowed here */ } });
+  input.addEventListener('input', sync);
+  input.addEventListener('change', sync);
+  sync();
+  return box;
+}
+
 /** Meal + date selects side by side (portion, entry, saved-meal and copy sheets). */
 export function mealDateRow(mealSel, dateIn, { dateLabel = 'Date', mealFirst = true } = {}) {
   const meal = el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Meal'), mealSel);
-  const date = el('div', { class: 'field' }, el('span', { class: 'field-label' }, dateLabel), dateIn);
+  const date = el('div', { class: 'field' }, el('span', { class: 'field-label' }, dateLabel), dateBox(dateIn));
   return el('div', { class: 'grid-2 meal-date-row' }, mealFirst ? [meal, date] : [date, meal]);
 }
 

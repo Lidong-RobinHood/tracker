@@ -80,7 +80,7 @@ test('negative and absurd values are removed and reported', () => {
 
 test('macros summing over 100 g per 100 g are flagged', () => {
   const it = sanitiseItem({ name: 'Bad', amount: 100, per100: { kcal: 700, protein: 50, carbs: 40, fat: 30 } });
-  assert.ok(it.warnings.some((w) => /add up to 120 g/.test(w)));
+  assert.ok(it.warnings.some((w) => /Macros total 120 g \/ 100 g/.test(w)));
 });
 
 test('kcal vs 4/4/9 consistency', () => {
@@ -91,7 +91,7 @@ test('kcal vs 4/4/9 consistency', () => {
   assert.equal(energyCheck({ kcal: 20, protein: 1, carbs: 3, fat: 0.2 }).ok, true); // small absolute difference ok
   assert.equal(energyCheck({ kcal: null, protein: 1, carbs: 3, fat: 0 }).ok, true); // cannot check
   const it = sanitiseItem({ name: 'Rice?', amount: 100, per100: { kcal: 500, protein: 2.7, carbs: 28, fat: 0.3 } });
-  assert.ok(it.warnings.some((w) => /does not match the macros/.test(w)));
+  assert.ok(it.warnings.some((w) => /kcal does not fit the macros \(about [0-9 \u202f]+ kcal \/ 100 g\)/.test(w)));
   // fibre counts ~2 kcal/g
   assert.equal(energyCheck({ kcal: 60, protein: 2, carbs: 5, fat: 0.5, fibre: 10 }).ok, true);
 });

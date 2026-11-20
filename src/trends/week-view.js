@@ -8,6 +8,7 @@ import { fmtPercent } from '../core/food-percent.js';
 import { formatPct } from '../core/workout-progress.js';
 import { buildWeeklyReport, weekSummaries, normaliseWeek, weekStatus } from '../core/weekly-report.js';
 import { intakeChart } from './charts.js';
+import { shownKgChange, shownKgChangePct, shownKgDiff } from '../core/weight-format.js';
 import { fixed, ensureCss, getAdaptiveSetting, signed, goalText, tdeeText } from './data.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -138,7 +139,7 @@ const sub = (title, info) => el('h3', { class: 't-cap muted wr-sub' }, title, in
 
 function targetsNote(r) {
   const t = r.targets;
-  if (r.status === 'current') return null;
+  if (r.status === 'current') return 'Current targets';
   if (t.source === 'history') return `Target ${fmtGrouped(t.kcal)} kcal from check-in ${fmtDate(t.fromWeek)}`;
   return 'Targets: current (none recorded that week)';
 }
@@ -248,7 +249,11 @@ function weightCard(r) {
       el('a', { class: 'btn btn-sm', href: href('trends/weight') }, 'Log weight'));
   }
   const inProgress = r.status === 'current';
-  const changeCls = w.change === null ? null : w.goalRate === null ? null : Math.sign(w.change) === Math.sign(w.goalRate) ? 'text-success' : 'text-warning';
+  // Changes from the displayed (1-decimal) weights, so the figures on the card add up.
+  const change = shownKgChange(w.trendEnd, w.prevTrend);
+  const changePct = shownKgChangePct(w.trendEnd, w.prevTrend);
+  const vsGoal = shownKgDiff(change, w.expected);
+  const changeCls = change === null ? null : w.goalRate === null ? null : Math.sign(change) === Math.sign(w.goalRate) ? 'text-success' : 'text-warning';
   const kids = [
     el('div', { class: 'tiles' },
       statTile({ label: 'Weigh-ins', value: `${w.count}`, unit: inProgress ? 'so far' : '/ 7' }),
@@ -256,13 +261,13 @@ function weightCard(r) {
       statTile({ label: inProgress ? 'Trend now' : 'Trend Sun', value: w.trendEnd === null ? '–' : fixed(w.trendEnd, 1), unit: 'kg' })),
     el('div', { class: 't-sub' },
       el('span', { class: 'muted' }, inProgress ? 'vs last Sunday: ' : 'vs previous week: '),
-      w.change === null ? el('span', { class: 'muted' }, '–')
-        : el('span', { class: ['strong', changeCls] }, `${signed(w.change, 1)} kg (${signed(w.changePct, 1)} %)`)),
+      change === null ? el('span', { class: 'muted' }, '–')
+        : el('span', { class: ['strong', changeCls] }, `${signed(change, 1)} kg (${signed(changePct, 1)} %)`)),
   ];
   if (w.goalRate !== null) {
     kids.push(el('div', { class: 't-sub muted' },
       `Goal ${goalText(w.goalRate)}`,
-      w.expected !== null && w.change !== null ? ` → ${signed(w.expected, 1)} kg expected${inProgress ? ' so far' : ''} · ${goalPace(w)}` : null));
+      w.expected !== null && change !== null ? ` → ${signed(w.expected, 1)} kg expected${inProgress ? ' so far' : ''} · ${goalPace(w.goalRate, vsGoal)}` : null));
   } else {
     kids.push(el('div', { class: 't-sub muted wr-goal' }, 'Goal: maintain',
       el('a', { class: 'btn btn-sm btn-ghost', href: href('settings/goal') }, 'Set goal')));
@@ -274,10 +279,10 @@ function weightCard(r) {
 }
 
 /** 'ahead of goal by 0.1 kg' / 'behind' / 'on pace' (ahead = moved further in the goal's direction). */
-function goalPace(w) {
-  if (Math.abs(w.vsGoal) < 0.05) return 'on pace';
-  const ahead = w.goalRate < 0 ? w.vsGoal < 0 : w.vsGoal > 0;
-  return `${fmtNum(Math.abs(w.vsGoal), 1)} kg ${ahead ? 'ahead of' : 'behind'} goal`;
+function goalPace(goalRate, vsGoal) {
+  if (Math.abs(vsGoal) < 0.05) return 'on pace';
+  const ahead = goalRate < 0 ? vsGoal < 0 : vsGoal > 0;
+  return `${fmtNum(Math.abs(vsGoal), 1)} kg ${ahead ? 'ahead of' : 'behind'} goal`;
 }
 
 // ---------------------------------------------------------------- training
@@ -337,7 +342,7 @@ function compareCard(r) {
   const fmt = (row, v) => {
     if (v === null) return '–';
     if (row.key === 'load') return tonnage(v);
-    if (row.unit === 'kg') return fmtNum(v, 1);
+    if (row.unit === 'kg') return fixed(v, 1);
     if (row.unit === 'kcal' || row.unit === 'g') return fmtGrouped(v);
     return fmtNum(v, 1);
   };
@@ -349,9 +354,15 @@ function compareCard(r) {
         el('th', { scope: 'row' }, x.label, x.unit && x.key !== 'load' ? el('span', { class: 'muted t-sub' }, ` ${x.unit}`) : null),
         el('td', null, fmt(x, x.cur)),
         el('td', { class: 'muted' }, fmt(x, x.prev)),
-        el('td', null, x.key === 'trend' || x.key === 'avgWeight' ? (x.diff === null ? '–' : `${signed(x.diff, 1)} kg`) : formatPct(x.pct))))))
+        el('td', null, x.key === 'trend' || x.key === 'avgWeight' ? weightDiff(x) : formatPct(x.pct))))))
       : null,
     r.previous ? null : el('p', { class: 't-sub muted' }, 'Nothing logged the week before.'));
+}
+
+/** Weight rows: change between the two displayed weights, so This − Last = Change on screen. */
+function weightDiff(x) {
+  const d = shownKgChange(x.cur, x.prev);
+  return d === null ? '–' : `${signed(d, 1)} kg`;
 }
 
 // ---------------------------------------------------------------- check-in

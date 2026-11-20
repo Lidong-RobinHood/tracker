@@ -228,7 +228,7 @@ Dropset 5x 80    5 reps at 80 kg
 - **Start:** pick a routine (or empty workout). One card per exercise.
 - **Unfinished workouts:** at most one *live* workout (started now; no `plannedDurationMs`) is open.
   Starting another live one asks: no done set → "Discard it & start" (default) / "Keep it open";
-  done sets → "Finish it & start" (default) / "Discard it (n sets lost) & start" / "Cancel".
+  done sets → "Finish it & start" (default) / "Discard (n sets) & start" / "Cancel".
   A *past* workout ("Log a past workout", has `plannedDurationMs`) is a separate record: logging one
   never finishes or blocks the live session, and it is entered and saved on its own session screen.
   The resume banner points at the live workout; an unfinished past workout gets its own banner.

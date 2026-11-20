@@ -61,7 +61,7 @@ export function pickExercise({ title = 'Add exercise', exMap, workouts = null })
       .filter((e) => !muscle || (e.primary || []).includes(muscle) || (e.secondary || []).includes(muscle));
     const create = el('button', { type: 'button', class: 'list-item wk-create', onClick: () => createNew() },
       icon('plus', { class: 'li-lead' }),
-      el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, query ? `Create "${query}"` : 'Create new exercise')));
+      el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, query ? `Create “${query}”` : 'Create new exercise')));
     if (query) {
       const items = rankExercises(pool, query, usage);
       replaceChildren(list, create,
@@ -89,7 +89,7 @@ export function pickExercise({ title = 'Add exercise', exMap, workouts = null })
           const r = form.read();
           if (!r.ok) { toast(r.error, { type: 'error' }); return false; }
           const dup = findByName(exMap, r.value.name);
-          if (dup) { toast(`"${dup.name}" already exists${dup.archived ? ' (archived)' : ''}`, { type: 'error' }); return false; }
+          if (dup) { toast(`“${dup.name}” already exists${dup.archived ? ' (archived)' : ''}`, { type: 'error' }); return false; }
           const ex = newExercise(r.value);
           await db.put('exercises', ex);
           exMap.set(ex.id, ex);

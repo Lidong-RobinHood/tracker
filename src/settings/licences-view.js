@@ -6,6 +6,7 @@ import { ensureCss } from './css.js';
 import { KJ_PER_KCAL } from '../core/nutrition.js';
 import { ACTIVITY_LEVELS, KCAL_PER_KG } from '../core/adaptive.js';
 import { RECOVERY_CONFIG } from '../core/recovery.js';
+import { SPLIT_SOURCES, SPLIT_BASIS, SPLIT_DISCLAIMER } from '../data/splits.js';
 
 const ext = (url, text) => el('a', { class: 'lic-link', href: url, target: '_blank', rel: 'noopener noreferrer' }, text, icon('external-link', { size: 14, class: 'lic-ext' }));
 /** Licence file in this repo, relative to the app root (works under a sub-path). */
@@ -42,7 +43,18 @@ function methodsTable() {
       el('td', null, how, src ? el('div', { class: 'muted lic-src' }, src) : null)))));
 }
 
-export function mountLicences(container) {
+/** Split library: what it rests on and its verified sources (docs/SPLITS.md › Evidence). */
+function trainingSection() {
+  return el('section', { class: 'section', id: 'split-sources' },
+    sectionHeader('Training guidance'),
+    el('div', { class: 'card lic-card' },
+      SPLIT_BASIS.map((t) => p(t)),
+      el('ul', { class: 'lic-sources', style: { margin: 0, paddingLeft: 'var(--s4)', display: 'flex', flexDirection: 'column', gap: 'var(--s2)' } }, SPLIT_SOURCES.map((x) => el('li', { class: 'lic-text' },
+        `${x.cite}. `, x.title ? `${x.title} ` : null, `${x.ref}. `, ext(x.url, x.id)))),
+      p(SPLIT_DISCLAIMER)));
+}
+
+export function mountLicences(container, params, ctx) {
   ensureCss();
   container.classList.add('settings-view');
   container.append(
@@ -67,6 +79,34 @@ export function mountLicences(container) {
       sectionHeader('How the numbers are calculated'),
       el('div', { class: 'card lic-card' }, methodsTable(),
         p('All figures are estimates. This app is not a medical device and does not replace professional advice.'))),
+    trainingSection(),
     el('p', { class: 't-sub muted lic-foot' }, 'Other product names are trademarks of their owners. This app is not affiliated with them.'),
   );
+  // #/licences?section=split-sources (split detail › Methods and sources) jumps to that section.
+  const target = ctx && ctx.query && ctx.query.section ? container.querySelector(`#${CSS.escape(ctx.query.section)}`) : null;
+  if (target) scrollBelowHeader(container, target);
+}
+
+/**
+ * Scroll `target` to the top, fully below the sticky page header (its measured height + 8 px). Waits
+ * for settings.css: scrolling before it applies leaves the section partly under the header.
+ */
+function scrollBelowHeader(container, target) {
+  let cancelled = false;
+  const cancel = () => { cancelled = true; };
+  window.addEventListener('touchstart', cancel, { once: true, passive: true });
+  window.addEventListener('wheel', cancel, { once: true, passive: true });
+  const go = () => requestAnimationFrame(() => {
+    window.removeEventListener('touchstart', cancel);
+    window.removeEventListener('wheel', cancel);
+    if (cancelled || !target.isConnected) return;
+    const head = container.querySelector('.page-header');
+    target.style.scrollMarginTop = `${Math.ceil(head ? head.getBoundingClientRect().height : 0) + 8}px`;
+    target.scrollIntoView({ block: 'start' });
+  });
+  const link = /** @type {HTMLLinkElement|null} */ (document.querySelector('link[data-settings-css]'));
+  if (link && !link.sheet) {
+    link.addEventListener('load', go, { once: true });
+    link.addEventListener('error', go, { once: true });
+  } else go();
 }

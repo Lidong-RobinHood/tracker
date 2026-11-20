@@ -3,9 +3,9 @@
 // Numbers come from core/workout-analytics.js; everything is "as of" the workout's own date.
 import * as db from '../db/db.js';
 import { el, append, pageHeader, href, emptyState, fmtDate, fmtTime, fmtNum, navigate, icon, sectionHeader, statTile, tag } from '../ui/index.js';
-import { analyseWorkout, METRICS } from '../core/workout-analytics.js';
+import { analyseWorkout, METRICS, roundToTotal } from '../core/workout-analytics.js';
 import { trendOf } from '../core/workout-progress.js';
-import { fmtTonnage, tonnageParts, pctText } from './progress-ui.js';
+import { fmtTonnage, tonnageParts, pctText, durationParts } from './progress-ui.js';
 import { formatSets } from '../core/workout.js';
 import { ensureCss, loadExercises, loadWorkouts, exName, shortDate } from './data.js';
 import { trendChart, hBars, vBars } from './analytics-charts.js';
@@ -107,7 +107,7 @@ function headerStrip(w, res) {
   const ton = tonnageParts(t.load);
   return el('div', { class: 'stack' },
     el('div', { class: 'tiles' },
-      statTile({ label: 'Duration', value: t.durationMs === null ? '–' : String(Math.round(t.durationMs / 60000)), unit: t.durationMs === null ? null : 'min', sub: w.finishedAt ? null : 'in progress' }),
+      statTile({ label: 'Duration', ...durationParts(t.durationMs), sub: w.finishedAt ? null : 'in progress' }),
       el('div', { class: 'tile', title: prev ? `Tonnage versus the previous ${w.name} on ${fmtDate(prev.date)}: ${tKg(res.routine.prevTonnage)}` : null },
         el('span', { class: 'tile-label' }, 'Tonnage'),
         el('span', { class: 'tile-value' }, ton.value, el('small', { class: 'tile-unit' }, ton.unit)),
@@ -246,12 +246,18 @@ function trendBlock(r, status) {
 
 // ---------------------------------------------------------------- whole workout
 
+/** Tonnage by muscle with whole-kg rows that add up to the session total shown (largest remainder). */
+function muscleRows(muscles) {
+  const shown = roundToTotal(muscles.map((m) => m.tonnage));
+  return muscles.map((m, i) => ({ label: m.name, value: m.tonnage, text: tKg(shown[i]) }));
+}
+
 function wholeWorkout(w, res) {
   const out = [];
   out.push(el('section', { class: 'section' },
     sectionHeader('Tonnage by muscle', { info: 'tonnage' }),
     res.muscles.length
-      ? el('div', { class: 'card' }, hBars(res.muscles.map((m) => ({ label: m.name, value: m.tonnage, text: tKg(m.tonnage) }))))
+      ? el('div', { class: 'card' }, hBars(muscleRows(res.muscles)))
       : el('div', { class: 'card' }, el('p', { class: 't-sub muted' }, 'No sets with weight.'))));
   const h = res.routine.history;
   out.push(el('section', { class: 'section' },

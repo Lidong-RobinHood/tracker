@@ -80,6 +80,28 @@ function swallow(e) {
 window.addEventListener('click', swallow, true);
 window.addEventListener('touchend', swallow, { capture: true, passive: false });
 
+// ---------------------------------------------------------------- inert background
+
+// While an overlay is open, everything behind it (page, tab bar, lower overlays) is `inert`: not
+// focusable, not tappable, hidden from assistive tech. Toasts stay live (their Undo must work).
+const backdrops = new WeakMap();
+const madeInert = new Set();
+function updateInert() {
+  const any = open.size > 0;
+  for (const n of [...madeInert]) {
+    if (!any || !n.isConnected) { n.inert = false; madeInert.delete(n); }
+  }
+  if (any) {
+    for (const n of document.body.children) {
+      if (n.id === 'overlay-root' || n.id === 'toast-root' || n.tagName === 'SCRIPT' || n.tagName === 'NOSCRIPT' || n.inert) continue;
+      n.inert = true;
+      madeInert.add(n);
+    }
+  }
+  const top = [...open].pop();
+  for (const o of open) { const b = backdrops.get(o); if (b) b.inert = o !== top; }
+}
+
 function root() {
   let r = document.getElementById('overlay-root');
   if (!r) r = document.body.appendChild(el('div', { id: 'overlay-root' }));
@@ -136,6 +158,7 @@ function openOverlay(kind, { title = '', content = null, onClose = null, dismiss
       backdrop.remove();
       guardUntil = performance.now() + GUARD_MS;
       if (!open.size) document.documentElement.classList.remove('overlay-open');
+      updateInert();
       // Closed by its own controls: remove its history entry (if we are on it once pending steps are done).
       const entry = api.entry;
       if (entry && !why) {
@@ -151,8 +174,10 @@ function openOverlay(kind, { title = '', content = null, onClose = null, dismiss
     },
   };
   open.add(api);
+  backdrops.set(api, backdrop);
   document.documentElement.classList.add('overlay-open');
   root().append(backdrop);
+  updateInert();
   // A non-dismissible overlay (e.g. "Workout finished") gets no entry: Back keeps its old behaviour.
   if (dismissible) {
     _afterHistory(() => {

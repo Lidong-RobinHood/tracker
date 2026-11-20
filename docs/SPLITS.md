@@ -8,7 +8,9 @@ swap exercises, and follow one split as ordinary routines with a "Next up" rotat
 | Catalogue (data) | `src/data/splits.js` |
 | Logic (pure) | `src/core/splits.js` |
 | Screens | `src/splits/` (`workout/splits`, `workout/splits/:id`), `next-up.js` (`nextUpCard()`) |
-| Info sheets | `split-choose`, `split-sets` in `src/ui/info-sheets.js` |
+| Info sheets | `split-choose`, `split-sets`, `split-run` in `src/ui/info-sheets.js` |
+| Movement patterns, gear | `EXERCISE_PATTERN`, `RELATED_PATTERNS`, `exerciseGear()`, `HOME_GEAR` in `src/data/exercises.js` |
+| Sources (Licences screen) | `SPLIT_SOURCES`, `SPLIT_BASIS` in `src/data/splits.js` → `#/licences?section=split-sources` |
 | Tests | `tests/splits.test.js`, `tests/splits-data.test.js` |
 
 ## Data added
@@ -47,8 +49,9 @@ no authored or commercial program names (the test has a denylist). Ids are stabl
 **Rationale.** Each split has its sessions in rotation order; a session is done `days / sessions` times a
 week (A, B, A, B). Main compound lifts use 5–10 reps, secondary compounds 8–12, isolation and small
 muscles 10–20 (growth occurs across a wide range of loads). Sessions hold 5–8 exercises and 12–24 sets.
-Home splits use only dumbbell and bodyweight exercises (they assume a bench and a pull-up bar, which the
-exercise model does not record). The selection, order and set/rep choices are this app's own and copy
+Home splits use only dumbbell and bodyweight exercises that dumbbells, a bench and a pull-up bar allow
+(`HOME_GEAR`; `exerciseGear()` records what each seed exercise needs, e.g. dip bars, a low bar, a
+back-extension bench). The selection, order and set/rep choices are this app's own and copy
 no published program; exercise ids come only from `src/data/exercises.js`.
 
 **Design check** (a test, by the app's own counting with default weights): every muscle stays within a
@@ -68,6 +71,15 @@ least once a week, and splits with 4+ days give traps ≥ 2. The bands are a des
   `ppl6` Push B + pec deck, `pair6` Shoulders & arms B + rope pushdown.
 - The draft's fixed weekdays and "flexible" lines were dropped: the app runs splits in order.
 
+**Changes after verification (2026-11-20):**
+- `fb3-home`: inverted row → pull-up 3 × 5–10 (the same decision as `ul4-home`: an inverted row is awkward
+  with only a pull-up bar). Both home splits now say "Pull-ups too hard? Start with slow lowering-only reps."
+  (the swap list no longer offers inverted rows at home). Coverage stays in the bands (shoulders 13, forearms 8).
+- Descriptions claimed frequencies the app's own count does not meet: `fb2` "two sessions still train
+  everything twice" → "big muscles twice a week, arms and calves once"; `ulppl5` and `ppl6` "each muscle
+  twice" → "major muscles twice" (traps are 1 day); `ppl3` "each muscle once a week" → "most muscles once a
+  week" (shoulders and abs are 2 days). A test checks every frequency claim against `daysHit`.
+
 Remaining data effects (not split design): shoulders read 15–22 because every press lists them as a
 partial muscle; forearms get partial sets only; `ppl3` and `bp5` train most muscles once a week.
 
@@ -77,8 +89,11 @@ partial muscle; forearms get partial sets only; `ppl3` and `bp5` train most musc
 `muscleVolumeBreakdown()` from `src/core/volume.js` with the user's `volume` setting: direct =
 sets × primary weight for each primary muscle, partial = sets × secondary weight for each secondary
 muscle. "Days" = sessions a week in which the muscle is a primary muscle. The map uses fixed bands of
-weekly sets (≥ 12, 8–12, 4–8, under 4, none → `--heat-4` … idle); the Sets list shows direct, partial,
-days and the user's weekly target when one is set.
+weekly sets (≥ 12, 8 to under 12, 4 to under 8, under 4, none). The legend (`coverageBands(weights)`)
+labels them without overlap in steps of the smallest set weight: `12+`, `8–11.5`, `4–7.5`, `Under 4`,
+`None` with the default weights. The split screens use their own ramp (`--sp-heat-1..4` in `splits.css`,
+`color-mix` of the tokens) so neighbouring steps differ ≥ 1.5:1 in light and dark and the lowest step is
+clearly apart from "none". The Sets list shows direct, partial, days and the user's weekly target when one is set.
 
 ## Volume level
 
@@ -92,14 +107,29 @@ Applied per session item before coverage and routines (`applyLevel()`):
 ## Alternatives
 
 Candidates share at least one primary muscle, are not archived, not the exercise itself and not already
-in that session; custom exercises take part; home splits offer only dumbbell / bodyweight exercises.
-Ranking: same primary muscles (as a set) before partial overlap, then more shared primary muscles;
-exercises the user has logged (`exercise-usage.js`: most recent, then most often) before unused ones;
-same equipment; more shared partial muscles; common base lifts; name. Catalogue exercises the user
+in that session; custom exercises take part; home splits offer only what `HOME_GEAR` allows (no dip
+bars, cables, machines, barbell, back-extension bench, low bar).
+
+Every seed exercise has a movement pattern (`EXERCISE_PATTERN`: horizontal / incline / vertical press,
+fly, row, vertical pull, pullover, hinge, squat, lunge, leg extension, leg curl, hip thrust, glute
+isolation, calf, lateral / front raise, upright row, rear delt, curl, triceps press / extension, forearm,
+ab flexion / bracing, shrug, carry). The list shows the same pattern first, then related patterns
+(`RELATED_PATTERNS`, e.g. squat ↔ lunge, row ↔ vertical pull); it never offers a pattern another
+exercise of the session already has (the swapped exercise's own pattern stays open). "Show all" lists
+every exercise with a shared primary muscle. A custom exercise has no pattern: as the exercise being
+swapped it falls back to the muscle rule; as a candidate it counts as related when its primary muscles
+are the same. Within a tier: same primary muscles (as a set) before partial overlap, then more shared
+primary muscles; exercises the user has logged (`exercise-usage.js`: most recent, then most often) before
+unused ones; same equipment; more shared partial muscles; common base lifts; name. Catalogue exercises the user
 archived or deleted are swapped for the top alternative automatically. Swaps change the planned split
 (and the routines on adopt), never a session already logged.
 
 ## Adopt and Next up
+
+The adopt sheet says in one line each what the choices do: Replace deletes the routines of earlier
+splits (history stays), Keep deletes nothing; weekly set targets stay unless the box is ticked (then
+the new targets are listed). On the workout home Next up is the first action and the Start list holds
+the other routines and Empty workout, not the next one again.
 
 Adopt writes, in one transaction: one routine per session (`splitId` set, appended after existing
 routines), `activeSplit`, and — only when ticked — `volumeTargets` = planned weekly totals rounded to
@@ -118,7 +148,8 @@ from `src/workout/data.js`. The workout home mounts it under the resume block; t
 
 ## Evidence (sources)
 
-Only sources the research verified (abstracts read via the Europe PMC API, 2026-11-19). The app states
+Listed in the app on Licences and data sources › Training guidance (`SPLIT_SOURCES`), linked from the
+split detail ("Methods and sources"). Only sources the research verified (abstracts read via the Europe PMC API, 2026-11-19). The app states
 them in few words: weekly sets matter most; with equal weekly sets, frequency and split type make little
 measurable difference to growth; ranges are general guides, mostly from young adults, not per-muscle
 prescriptions. No outcome promises.

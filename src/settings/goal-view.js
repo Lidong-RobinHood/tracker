@@ -8,7 +8,7 @@ import { MACROS, SPLIT_PRESETS, targetMode, validateSplit, macroGrams, gramsFrom
 import { ACTIVITY_LEVELS, ADAPTIVE_DEFAULTS } from '../core/adaptive.js';
 import { rateToGoal, goalToRate, amountValid, GOAL_AMOUNT_MAX, GOAL_DEFAULT_AMOUNT } from '../core/goal-rate.js';
 import { buildTargets } from '../core/setup.js';
-import { goalSign, signedRateSpeech, signedGoalSummary } from '../core/goal-display.js';
+import { goalSign, signedAmount, signedRateSpeech, signedGoalSummary, goalAmountError, parseGoalAmount } from '../core/goal-display.js';
 import { ensureCss } from './css.js';
 
 const MACRO_LABEL = { protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
@@ -211,8 +211,7 @@ function goalSection(targets, goal, profile, adaptive) {
     const r = rate.getRate();
     if (r === null) {
       rate.amount.focus();
-      const dir = rate.getDirection();
-      toast(`Enter up to ${GOAL_AMOUNT_MAX[dir]} kg / week.`, { type: 'error' });
+      toast(`${rate.getError()}.`, { type: 'error' });
       return;
     }
     const checks = [[birthYear, 'birth year'], [height, 'height'], [protein, 'protein per kg'], [fat, 'fat per kg'], [floor, 'calorie floor']];
@@ -260,81 +259,101 @@ function goalSection(targets, goal, profile, adaptive) {
 // ---------------------------------------------------------------- goal control
 
 /**
- * Goal as Lose | Maintain | Gain plus a positive amount in kg / week (no minus key needed on a phone keypad),
- * with − / + steppers. The sign is always shown: a fixed "−" (lose) or "+" (gain) in front of the field
- * and one signed result line '−0.5 kg / week · −550 kcal / day' (core/goal-display.js); the limit appears
- * only as an error. Stored as the signed settings.goal.rateKgPerWeek (core/goal-rate.js).
- * Shared with the first-run setup (src/onboarding/welcome.js).
- * @returns {HTMLElement & {getRate: () => number|null, getDirection: () => string, amount: HTMLInputElement}}
+ * Goal as Lose | Maintain | Gain plus an amount in kg / week, shown as ONE signed number between a
+ * "less" and a "more" stepper: [−] −0.5 [+] (true minus, tabular). The number can also be typed; the sign
+ * comes from Lose / Gain (the iPhone keypad has no minus key), so only the amount is read from the field.
+ * One result line '−0.5 kg / week · −550 kcal / day' (core/goal-display.js); errors replace it:
+ * 'Enter an amount above 0' or 'Max 1 kg / week'. Stored as the signed settings.goal.rateKgPerWeek
+ * (core/goal-rate.js). Shared with the first-run setup (src/onboarding/welcome.js).
+ * @returns {HTMLElement & {getRate: () => number|null, getDirection: () => string, getError: () => string|null,
+ *   amount: HTMLInputElement}}
  */
 export function goalRateControl(storedRate) {
   ensureCss();
   const STEP = 0.05;
   const initial = rateToGoal(storedRate);
   let direction = initial.direction;
+  let typedAmount = initial.amount;
   const uid = Math.random().toString(36).slice(2);
-  const amount = numberInput({ value: initial.amount, min: 0, max: Math.max(GOAL_AMOUNT_MAX.lose, GOAL_AMOUNT_MAX.gain), decimals: 2,
-    ariaLabel: 'Amount in kg per week', id: `goal-amount-${uid}` });
+  const amount = /** @type {HTMLInputElement} */ (el('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', enterkeyhint: 'done',
+    class: 'input input-num set-goal-val', id: `goal-amount-${uid}` }));
   // Visible result line with the signed rate; screen readers get the spoken form ("minus 0.5 kilograms per week").
   const summaryText = el('span', { 'aria-hidden': 'true' });
   const summarySpeech = el('span', { class: 'vh' });
   const summary = el('div', { class: 'set-goal-result', 'aria-live': 'polite' }, summaryText, summarySpeech);
-  const signEl = el('span', { class: 'set-goal-sign', 'aria-hidden': 'true' });
   const DIRS = [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']];
   const group = segmented({ ariaLabel: 'Goal direction', value: direction,
     options: DIRS.map(([value, label]) => ({ value, label })), onChange: (d) => setDirection(d, true) });
+
+  /** Show the amount as the signed number ('−0.5', '+0.25'); keeps what was typed when it is not a number. */
+  const showSigned = () => {
+    if (typedAmount === null || direction === 'maintain') return;
+    amount.value = Math.round(typedAmount * 100) === 0 ? '0' : signedAmount(direction, typedAmount);
+  };
   const step = (sign) => {
     const max = GOAL_AMOUNT_MAX[direction];
-    const n = amount.getNumber() ?? 0;
-    const next = Math.round((Math.min(max, Math.max(STEP, n + sign * STEP))) * 100) / 100;
-    amount.setNumber(next);
+    const n = typedAmount ?? 0;
+    typedAmount = Math.round((Math.min(max, Math.max(STEP, n + sign * STEP))) * 100) / 100;
+    showSigned();
     paint();
     amount.dispatchEvent(new Event('input', { bubbles: true }));
   };
-  const less = iconButton('minus', { label: 'Less per week', class: 'set-step', onClick: () => step(-1) });
-  const more = iconButton('plus', { label: 'More per week', class: 'set-step', onClick: () => step(1) });
+  const less = iconButton('minus', { label: 'Less kg per week', class: 'set-step', onClick: () => step(-1) });
+  const more = iconButton('plus', { label: 'More kg per week', class: 'set-step', onClick: () => step(1) });
   const amountRow = el('div', { class: 'set-row set-goal-row' },
     el('label', { class: 'set-row-label set-goal-label', htmlFor: amount.id }, el('span', null, 'Amount'), el('span', { class: 't-sub muted' }, 'kg / week')),
-    el('div', { class: 'set-stepper' }, less,
-      el('div', { class: 'input-unit set-goal-signed' }, signEl, amount),
-      more));
+    el('div', { class: 'set-stepper' }, less, amount, more));
 
-  const current = () => amount.getNumber();
   function paint() {
     group.setValue(direction);
     const maintain = direction === 'maintain';
     amountRow.hidden = maintain;
     amount.disabled = maintain;
-    const n = current();
+    const n = typedAmount;
     const valid = !maintain && amountValid(direction, n);
-    // numberInput only knows 0…1; the limit depends on the direction.
-    if (!maintain && amount.value.trim() !== '' && !valid) amount.setAttribute('aria-invalid', 'true');
+    if (!maintain && !valid) amount.setAttribute('aria-invalid', 'true');
     else amount.removeAttribute('aria-invalid');
     less.disabled = maintain || n === null || n <= STEP;
     more.disabled = maintain || (n !== null && n >= GOAL_AMOUNT_MAX[direction]);
     const kcalDay = valid ? Math.round((n * ADAPTIVE_DEFAULTS.kcalPerKg) / 7 / 10) * 10 : null;
-    const line = signedGoalSummary(direction, n, { max: GOAL_AMOUNT_MAX[direction], kcalDay });
+    const line = signedGoalSummary(direction, n, { kcalDay });
     summary.classList.toggle('is-error', !maintain && !valid);
     if (!maintain && !valid) summary.setAttribute('role', 'alert'); else summary.removeAttribute('role');
     summaryText.textContent = line;
     summarySpeech.textContent = valid || maintain ? `${signedRateSpeech(direction, n)}${kcalDay ? `, ${kcalDay} kilocalories per day` : ''}` : line;
-    signEl.textContent = goalSign(direction);
-    amount.setAttribute('aria-label', direction === 'lose' ? 'Amount to lose, minus kilograms per week' : 'Amount to gain, plus kilograms per week');
+    amount.setAttribute('aria-label', direction === 'lose' ? 'Amount to lose, kilograms per week' : 'Amount to gain, kilograms per week');
   }
   function setDirection(d, byUser) {
     direction = d;
     // Switching from Maintain with nothing typed yet: start from a sensible amount.
-    if (d !== 'maintain' && byUser && amount.value.trim() === '') amount.setNumber(GOAL_DEFAULT_AMOUNT[d]);
+    if (d !== 'maintain' && byUser && typedAmount === null && amount.value.trim() === '') typedAmount = GOAL_DEFAULT_AMOUNT[d];
+    // Lose 0.75 → Gain: start at the gain limit rather than at an error.
+    if (d !== 'maintain' && byUser && typedAmount !== null && typedAmount > GOAL_AMOUNT_MAX[d]) typedAmount = GOAL_AMOUNT_MAX[d];
+    showSigned();
     paint();
   }
-  amount.addEventListener('input', paint);
+  amount.addEventListener('input', () => {
+    // The sign belongs to the number from the first digit on ('0.7' → '−0.7'); typing happens at the end.
+    const t = amount.value;
+    if (direction !== 'maintain' && /^[\d.,]/.test(t) && document.activeElement === amount) amount.value = `${goalSign(direction)}${t}`;
+    typedAmount = parseGoalAmount(amount.value);
+    paint();
+  });
+  // Typed '0,7' becomes '−0.7' once the field is left.
+  amount.addEventListener('change', () => { typedAmount = parseGoalAmount(amount.value); showSigned(); paint(); });
+  amount.addEventListener('keydown', (e) => { if (e.key === 'Enter') amount.blur(); });
+  amount.addEventListener('focus', () => {
+    amount.select();
+    setTimeout(() => { if (document.activeElement === amount) amount.setSelectionRange(0, amount.value.length); }, 0);
+  });
 
   const wrap = /** @type {any} */ (el('div', { class: 'set-goal', role: 'group', 'aria-label': 'Weight goal' },
     el('div', { class: 'set-card-top' }, group),
     amountRow,
     summary));
   wrap.getDirection = () => direction;
-  wrap.getRate = () => goalToRate(direction, current());
+  wrap.getRate = () => goalToRate(direction, typedAmount);
+  wrap.getError = () => goalAmountError(direction, typedAmount);
   wrap.amount = amount;
   setDirection(direction, false);
   return wrap;

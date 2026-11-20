@@ -16,12 +16,13 @@
   --seg-on: #FFFFFF;                     /* selected segment */
   --line: rgb(60 60 67 / .12);           /* separators, hairlines */
   --line-2: rgb(60 60 67 / .22);         /* stronger line: sheet handle, dashed outlines */
+  --line-ctl: #86868B;                   /* outline of form fields, wells and unticked boxes (≥ 3:1 on every surface) */
   --ink: #0B0B0F;                        /* primary text */
   --ink-2: rgb(60 60 67 / .78);          /* secondary text (≥ 4.5:1 on --bg, --surface and --fill) */
   --ink-3: rgb(60 60 67 / .45);          /* tertiary: chevrons, placeholders, greyed previous values; never body text */
   --accent: #4F46E5;                     /* the one accent: actions, selection, progress, today, records */
   --accent-soft: rgb(79 70 229 / .12);   /* secondary buttons, selected chips */
-  --accent-2: #B9B5F6;                   /* partial (second step of the accent), e.g. partial sets */
+  --accent-2: #8A84EE;                   /* partial (second step of the accent), e.g. partial sets (≥ 3:1 on --surface) */
   --on-accent: #FFFFFF;                  /* text/icons on --accent */
   --accent-ink: #4338CA;                 /* accent-coloured text on --accent-soft (secondary buttons, selected chips, tags) */
   --ok: #1E9E5A;                         /* status only: done, recovered (fills, dots) */
@@ -112,9 +113,9 @@
     color-scheme: dark;
     --bg: #0B0B0F; --surface: #17171C; --surface-2: #23232A; --sheet: #202027;
     --fill: rgb(118 118 128 / .24); --seg-on: #3A3A43;
-    --line: rgb(255 255 255 / .09); --line-2: rgb(255 255 255 / .16);
+    --line: rgb(255 255 255 / .09); --line-2: rgb(255 255 255 / .16); --line-ctl: #74747E;
     --ink: #F5F5F7; --ink-2: rgb(235 235 245 / .66); --ink-3: rgb(235 235 245 / .40);
-    --accent: #8B8FF8; --accent-soft: rgb(139 143 248 / .18); --accent-2: #45468F; --on-accent: #0B0B0F; --accent-ink: #AEB1FF;
+    --accent: #8B8FF8; --accent-soft: rgb(139 143 248 / .18); --accent-2: #6062C8; --on-accent: #0B0B0F; --accent-ink: #AEB1FF;
     --ok: #3DD68C; --ok-soft: rgb(61 214 140 / .14); --ok-text: #3DD68C;
     --warn: #F5B94A; --warn-soft: rgb(245 185 74 / .16); --warn-text: #F5B94A;
     --bad: #FF6B6B; --bad-soft: rgb(255 107 107 / .16); --bad-text: #FF7A7A; --on-status: #0B0B0F;
@@ -128,9 +129,9 @@
   color-scheme: dark;
   --bg: #0B0B0F; --surface: #17171C; --surface-2: #23232A; --sheet: #202027;
   --fill: rgb(118 118 128 / .24); --seg-on: #3A3A43;
-  --line: rgb(255 255 255 / .09); --line-2: rgb(255 255 255 / .16);
+  --line: rgb(255 255 255 / .09); --line-2: rgb(255 255 255 / .16); --line-ctl: #74747E;
   --ink: #F5F5F7; --ink-2: rgb(235 235 245 / .66); --ink-3: rgb(235 235 245 / .40);
-  --accent: #8B8FF8; --accent-soft: rgb(139 143 248 / .18); --accent-2: #45468F; --on-accent: #0B0B0F; --accent-ink: #AEB1FF;
+  --accent: #8B8FF8; --accent-soft: rgb(139 143 248 / .18); --accent-2: #6062C8; --on-accent: #0B0B0F; --accent-ink: #AEB1FF;
   --ok: #3DD68C; --ok-soft: rgb(61 214 140 / .14); --ok-text: #3DD68C;
   --warn: #F5B94A; --warn-soft: rgb(245 185 74 / .16); --warn-text: #F5B94A;
   --bad: #FF6B6B; --bad-soft: rgb(255 107 107 / .16); --bad-text: #FF7A7A; --on-status: #0B0B0F;
@@ -298,9 +299,13 @@ button.list-item:active, a.list-item:active { background: var(--fill); }
 .btn-danger { background: var(--bad); color: var(--on-status); }
 .btn.text-danger { color: var(--bad-text); }
 .btn-block { width: 100%; }
-/* compact: 36 px visible, 44 px hit area */
-.btn-sm { position: relative; min-height: 36px; padding: 0 var(--s3); font-size: var(--fs-sub); line-height: var(--lh-sub); border-radius: var(--r-sm); }
-.btn-sm::after { content: ""; position: absolute; inset: -4px 0; }
+/* compact: 36 px visible, 44 px box (the hit area): 4 px transparent borders above and below, the fill
+   clipped inside them; the radius keeps 8 px corners on the visible part */
+.btn-sm {
+  min-height: var(--tap); padding: 0 var(--s3); font-size: var(--fs-sub); line-height: var(--lh-sub);
+  border-block: 4px solid transparent; background-clip: padding-box;
+  border-radius: var(--r-sm) / calc(var(--r-sm) + 4px);
+}
 /* icon-only: 44 × 44, glyph 20 px, secondary ink */
 .btn-icon { padding: 0; width: var(--tap); font-size: 1.375em; line-height: 1; }
 .btn-icon .ic { width: 20px; height: 20px; }
@@ -377,7 +382,7 @@ button.chip::after, a.chip::after { content: ""; position: absolute; inset: -4px
 .legend-row { flex-direction: row; flex-wrap: wrap; gap: var(--s1) var(--s4); color: var(--ink-2); }
 
 /* ================================================================== segmented control + tabs */
-/* .seg (new) and .tabs (old name, same look): 44 px total, inner pill per option.
+/* .seg (new) and .tabs (old name, same look): 44 px pill per option inside a 2 px track.
    Selected: aria-pressed / aria-selected / aria-checked = "true", or .is-active. */
 .seg, .tabs {
   display: flex; gap: 2px; padding: 2px;
@@ -386,7 +391,7 @@ button.chip::after, a.chip::after { content: ""; position: absolute; inset: -4px
 }
 .seg::-webkit-scrollbar, .tabs::-webkit-scrollbar { display: none; }
 .seg > button, .tabs > button, .tabs > a {
-  flex: 1 0 auto; min-height: 40px; min-width: 44px; padding: 0 var(--s3);
+  flex: 1 0 auto; min-height: var(--tap); min-width: 44px; padding: 0 var(--s3);
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2);
   font-size: var(--fs-sub); line-height: var(--lh-sub); font-weight: var(--fw-semibold);
@@ -426,12 +431,13 @@ button.chip::after, a.chip::after { content: ""; position: absolute; inset: -4px
 .input, .select, .textarea {
   width: 100%; min-height: var(--tap);
   padding: 10px var(--s3);
-  border: 1px solid transparent; border-radius: var(--r-sm);
+  border: 1px solid var(--line-ctl); border-radius: var(--r-sm);
   background: var(--fill); color: var(--ink);
   font-size: var(--fs-body); line-height: var(--lh-body);   /* ≥ 16 px: stops iOS zooming on focus */
   transition: border-color var(--d-fast) var(--ease);
 }
-.input::placeholder, .textarea::placeholder { color: var(--ink-3); }
+/* placeholders: quiet but readable (ink-2, ≥ 4.5:1) */
+.input::placeholder, .textarea::placeholder { color: var(--ink-2); opacity: 1; }
 .select { accent-color: var(--accent); }
 .select option { background: var(--sheet); color: var(--ink); }
 .textarea { min-height: 88px; resize: vertical; }
@@ -444,22 +450,31 @@ button.chip::after, a.chip::after { content: ""; position: absolute; inset: -4px
 .input-unit .input { padding-right: 3.2em; }
 .input-unit .unit { position: absolute; right: var(--s3); color: var(--ink-2); font-size: var(--fs-sub); line-height: var(--lh-sub); pointer-events: none; }
 /* compact number well (set grid, inline targets): <label class="well"><input> <span>kg</span></label> */
-.well { display: flex; align-items: center; gap: 2px; min-height: var(--tap); padding: 0 var(--s2); border-radius: var(--r-sm); background: var(--fill); min-width: 0; }
+.well { display: flex; align-items: center; gap: 2px; min-height: var(--tap); padding: 0 var(--s2); border-radius: var(--r-sm); background: var(--fill); box-shadow: inset 0 0 0 1px var(--line-ctl); min-width: 0; }
 .well > input { width: 100%; min-width: 0; border: 0; background: none; outline: none; padding: 0; text-align: right; font-size: var(--fs-body); color: var(--ink); }
 .well > span { font-size: var(--fs-sub); color: var(--ink-2); }
 .well:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
 /* search field with leading icon */
-.search-field { display: flex; align-items: center; gap: var(--s2); min-height: var(--tap); padding: 0 var(--s3); border-radius: var(--r-md); background: var(--fill); color: var(--ink-2); }
-.search-field > input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: var(--fs-body); color: var(--ink); padding: 0; min-height: 40px; }
-.search-field > input::placeholder { color: var(--ink-3); }
+.search-field { display: flex; align-items: center; gap: var(--s2); min-height: var(--tap); padding: 0 var(--s3); border-radius: var(--r-md); background: var(--fill); box-shadow: inset 0 0 0 1px var(--line-ctl); color: var(--ink-2); }
+.search-field > input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: var(--fs-body); color: var(--ink); padding: 0; min-height: var(--tap); }
+.search-field > input::placeholder { color: var(--ink-2); opacity: 1; }
+/* the native clear button of type=search in the token colour (mask = the Lucide x glyph's shape) */
+input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none; appearance: none; width: 18px; height: 18px; margin-left: var(--s1); cursor: pointer;
+  background: var(--ink-2);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6 6 18'/%3E%3Cpath d='m6 6 12 12'/%3E%3C/svg%3E") center / 18px 18px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M18 6 6 18'/%3E%3Cpath d='m6 6 12 12'/%3E%3C/svg%3E") center / 18px 18px no-repeat;
+}
 .search-field:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
 .switch { width: 44px; height: 26px; accent-color: var(--accent); }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+/* custom unticked box (e.g. the set done toggle): same outline as fields */
+.check-box { box-shadow: inset 0 0 0 1.5px var(--line-ctl); }
 
 /* sign toggle for numberInput with min < 0 */
 .num-signed { display: flex; align-items: center; gap: var(--s2); flex: 1 1 auto; width: 100%; min-width: 0; }
 .num-signed > .input { flex: 1 1 auto; min-width: 0; }
-.btn.num-sign { flex: 0 0 auto; padding: 0; width: var(--tap); font-size: var(--fs-head); font-variant-numeric: tabular-nums; background: var(--fill); color: var(--ink); border-radius: var(--r-sm); }
+.btn.num-sign { flex: 0 0 auto; padding: 0; width: var(--tap); font-size: var(--fs-head); font-variant-numeric: tabular-nums; background: var(--fill); color: var(--ink); border-radius: var(--r-sm); box-shadow: inset 0 0 0 1px var(--line-ctl); }
 .btn.num-sign[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); }
 
 /* ================================================================== progress bar and ring */
@@ -494,6 +509,7 @@ button.ring { cursor: pointer; }
 .bm-icon-recovering { --bm-hot: var(--bad); }
 .bm-icon-ready { --bm-hot: var(--warn); }
 .bm-icon-fresh { --bm-hot: var(--ok); }
+.bm-icon-neutral { --bm-hot: var(--map-idle); } /* recovered: no status colour, as on the map */
 .bm .is-0 { fill: var(--map-idle); }
 .bm .is-1 { fill: var(--heat-1); }
 .bm .is-2 { fill: var(--heat-2); }

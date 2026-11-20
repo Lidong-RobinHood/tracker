@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { SPLITS, splitById } from '../src/data/splits.js';
 import { SEED_EXERCISES } from '../src/data/exercises.js';
 import {
-  filterSplits, perWeek, applyLevel, splitCoverage, coverageStep, targetsFromCoverage, resolveSessions, splitRoutines,
+  filterSplits, perWeek, applyLevel, splitCoverage, coverageStep, coverageBands, COVERAGE_BANDS, targetsFromCoverage, resolveSessions, splitRoutines,
   alternatives, autoSwaps, nextUp, cleanActiveSplit, MAX_SETS,
 } from '../src/core/splits.js';
 import { exerciseUsage } from '../src/core/exercise-usage.js';
+import { EXERCISE_PATTERN, fitsHome, exerciseGear } from '../src/data/exercises.js';
 
 const EX = new Map(SEED_EXERCISES.map((e) => [e.id, e]));
 const sum = (sessions) => sessions.reduce((a, s) => a + s.items.reduce((b, i) => b + i.sets, 0), 0);
@@ -67,8 +68,14 @@ test('volume level: standard = catalogue, minimum −1 (floor 1), high +1 on eac
   assert.ok(sum(applyLevel(ul.sessions, 'high', EX)) > sum(ul.sessions));
 });
 
-test('coverage step: fixed bands of weekly sets', () => {
+test('coverage step: fixed bands of weekly sets; legend bands do not overlap', () => {
   assert.deepEqual([0, -1, NaN, 0.5, 3.5, 4, 7.5, 8, 11.5, 12, 30].map((v) => coverageStep(v)), [0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4]);
+  assert.deepEqual(coverageBands({}).map((b) => b.label), ['12+', '8–11.5', '4–7.5', 'Under 4', 'None']);
+  assert.deepEqual(COVERAGE_BANDS.map((b) => b.label), ['12+', '8–11.5', '4–7.5', 'Under 4', 'None']);
+  assert.deepEqual(coverageBands({ primary: 1, secondary: 0 }).map((b) => b.label), ['12+', '8–11', '4–7', 'Under 4', 'None']);
+  assert.deepEqual(coverageBands({ primary: 1, secondary: 0.3 }).map((b) => b.label), ['12+', '8–under 12', '4–under 8', 'Under 4', 'None']);
+  // each label's ends fall in its own step
+  assert.equal(coverageStep(11.5), 3); assert.equal(coverageStep(7.5), 2); assert.equal(coverageStep(3.5), 1);
 });
 
 test('targets from coverage: muscles ≥ 4 sets, rounded', () => {
@@ -105,16 +112,63 @@ test('alternatives: same primary first, logged first, same equipment, no archive
   assert.ok(alts.every((e) => e.primary.includes('chest')));
   // same equipment (barbell) first among unused
   assert.equal(alts[0].equipment, 'barbell');
-  // a logged exercise comes first
-  const usage = exerciseUsage([{ date: '2026-11-10', startedAt: 1, exercises: [{ exerciseId: 'seed:pec-deck', sets: [{ done: true }] }] }]);
+  // a logged exercise comes first within its tier
+  const usage = exerciseUsage([{ date: '2026-11-10', startedAt: 1, exercises: [{ exerciseId: 'seed:push-up', sets: [{ done: true }] }] }]);
   alts = alternatives('seed:bench-press', { exercises: ex, usage });
-  assert.equal(alts[0].id, 'seed:pec-deck');
+  assert.equal(alts[0].id, 'seed:push-up');
   // exact primary set before partial overlap: squat → leg press / goblet before leg extension
-  const sq = alternatives('seed:back-squat', { exercises: EX, limit: 50 }).map((e) => e.id);
+  const sq = alternatives('seed:back-squat', { exercises: EX, limit: 50, showAll: true }).map((e) => e.id);
   assert.ok(sq.indexOf('seed:leg-press') < sq.indexOf('seed:leg-extension'));
-  // home: only dumbbell / bodyweight
-  assert.ok(alternatives('seed:back-squat', { exercises: EX, homeOnly: true, limit: 50 }).every((e) => ['dumbbell', 'bodyweight'].includes(e.equipment)));
+  // home: only dumbbells, a bench, a pull-up bar
+  assert.ok(alternatives('seed:back-squat', { exercises: EX, homeOnly: true, limit: 50, showAll: true }).every((e) => fitsHome(e)));
   assert.deepEqual(alternatives('seed:nope', { exercises: EX }), []);
+});
+
+test('alternatives by movement pattern: what a lifter would accept', () => {
+  const ids = (id, o = {}) => alternatives(id, { exercises: EX, limit: 50, ...o }).map((e) => e.id);
+  const pat = (id) => EXERCISE_PATTERN[id];
+  // every seed exercise has a pattern
+  for (const e of SEED_EXERCISES) assert.ok(pat(e.id), e.id);
+  // lateral raise: the other lateral raises first, then the upright row; no presses, front raise, rear delt
+  const lat = ids('seed:lateral-raise');
+  assert.deepEqual(lat.slice(0, 2).sort(), ['seed:cable-lateral-raise', 'seed:machine-lateral-raise']);
+  for (const no of ['seed:arnold-press', 'seed:front-raise', 'seed:rear-delt-fly', 'seed:overhead-press', 'seed:face-pull', 'seed:landmine-press']) assert.ok(!lat.includes(no), no);
+  // goblet squat: squats, then lunges; never a hinge
+  const gob = ids('seed:goblet-squat');
+  assert.ok(gob.every((id) => ['squat', 'lunge'].includes(pat(id))), gob.join());
+  assert.ok(!gob.includes('seed:romanian-deadlift'));
+  assert.equal(pat(gob[0]), 'squat');
+  // inverted row: rows, then vertical pulls; no back extension
+  const inv = ids('seed:inverted-row');
+  assert.ok(!inv.includes('seed:back-extension'));
+  assert.ok(inv.every((id) => ['row', 'pull-vertical', 'pullover'].includes(pat(id))));
+  assert.equal(pat(inv[0]), 'row');
+  // home: no dip bars, cables, machines, barbell, back-extension bench
+  for (const s of SPLITS.filter((x) => x.equipment === 'home')) for (const ses of s.sessions) for (const it of ses.items) {
+    const all = alternatives(it.exerciseId, { exercises: EX, homeOnly: true, limit: 50, showAll: true });
+    assert.ok(all.every((e) => fitsHome(e)), `${s.id} ${it.exerciseId}: ${all.filter((e) => !fitsHome(e)).map((e) => e.id)}`);
+    assert.ok(!all.some((e) => e.id === 'seed:dip'), 'dip needs dip bars');
+  }
+  assert.deepEqual([...exerciseGear(EX.get('seed:dip'))], ['dip-bars']);
+  // five more patterns: curl, leg curl, calf, triceps extension, vertical press
+  assert.ok(ids('seed:dumbbell-curl').slice(0, 8).every((id) => pat(id) === 'curl'));
+  assert.ok(ids('seed:lying-leg-curl').every((id) => pat(id) === 'leg-curl'));
+  assert.ok(ids('seed:standing-calf-raise').every((id) => pat(id) === 'calf'));
+  assert.ok(ids('seed:rope-pushdown').slice(0, 5).every((id) => pat(id) === 'triceps-extension'));
+  assert.ok(ids('seed:overhead-press').every((id) => pat(id) === 'press-vertical'));
+  // a pattern another exercise of the session has is not offered (bench: incline is in the day)
+  const day = ['seed:bench-press', 'seed:incline-dumbbell-press', 'seed:lat-pulldown'];
+  const b = ids('seed:bench-press', { exclude: day });
+  assert.ok(b.every((id) => pat(id) === 'press-horizontal'), b.join());
+  // ... but the own pattern stays open when another exercise shares it (two rows in one day)
+  assert.ok(ids('seed:seated-cable-row', { exclude: ['seed:seated-cable-row', 'seed:chest-supported-dumbbell-row'] }).some((id) => pat(id) === 'row'));
+  // show all: every exercise with a shared primary muscle, other patterns last
+  const all = ids('seed:lateral-raise', { showAll: true });
+  assert.ok(all.includes('seed:arnold-press') && all.indexOf('seed:arnold-press') > all.indexOf('seed:machine-lateral-raise'));
+  // custom original without a pattern: the muscle rule
+  const ex = new Map(EX);
+  ex.set('custom:y', { id: 'custom:y', name: 'Band Raise', primary: ['shoulders'], secondary: [], equipment: 'other' });
+  assert.ok(alternatives('custom:y', { exercises: ex, limit: 50 }).some((e) => e.id === 'seed:arnold-press'));
 });
 
 test('auto swaps replace archived catalogue exercises', () => {

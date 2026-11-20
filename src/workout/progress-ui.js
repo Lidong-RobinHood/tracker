@@ -45,6 +45,18 @@ export function tonnageParts(n, opts) {
   return i < 0 ? { value: s, unit: '' } : { value: s.slice(0, i), unit: s.slice(i + 1) };
 }
 
+/**
+ * Duration for a stat tile: { value: '< 1', unit: 'min' }, { value: '45', unit: 'min' },
+ * { value: '1 h 20', unit: 'min' }; null → { value: '–' }.
+ */
+export function durationParts(ms) {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return { value: '–', unit: null };
+  if (ms < 60000) return { value: '< 1', unit: 'min' };
+  const min = Math.round(ms / 60000);
+  if (min < 60) return { value: String(min), unit: 'min' };
+  return { value: `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`, unit: 'min' };
+}
+
 /** Top set as '100 × 8' or 'BW × 12'. */
 export function topText(top) {
   if (!top) return '–';

@@ -140,7 +140,7 @@ export function findUnfinished(workouts) {
 /**
  * Before a new live workout starts while `open` (live, unfinished) exists: ask.
  *  - no done set: "Discard it & start" (default) or "Keep it open" (nothing is started);
- *  - done sets: "Finish it & start" (default), "Discard it & start" (warns how many sets are lost), "Cancel".
+ *  - done sets: "Finish it & start" (default), "Discard (2 sets) & start" (names the loss), "Cancel".
  * Never finishes a workout without a done set.
  * @returns {Promise<boolean>} true when the new workout may start
  */
@@ -162,7 +162,7 @@ async function settleOpenWorkout(open) {
     message: `“${name}” is open with ${n} done set${n === 1 ? '' : 's'}. Finish it, or discard and lose ${n === 1 ? 'it' : 'them'}?`,
     choices: [
       { label: 'Finish it & start', value: 'finish', kind: 'primary' },
-      { label: 'Discard & start', value: 'discard', kind: 'danger' },
+      { label: `Discard (${n} set${n === 1 ? '' : 's'}) & start`, value: 'discard', kind: 'danger' },
       { label: 'Cancel', value: 'cancel' },
     ],
   });

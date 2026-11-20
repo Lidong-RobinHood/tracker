@@ -8,6 +8,8 @@ import { trendSeries, trendAt, weightRate } from '../core/adaptive.js';
 import { trendChart, changeTable, figures } from './charts.js';
 import { fixed, ensureCss, signed, rateText } from './data.js';
 import { MIN_KG, MAX_KG } from '../core/body-weight.js';
+import { shownKgChange } from '../core/weight-format.js';
+import { dateBox } from '../food/widgets.js';
 
 const RANGES = [{ id: '1m', label: '1M', days: 30, name: '1 month' }, { id: '3m', label: '3M', days: 91, name: '3 months' },
   { id: '1y', label: '1Y', days: 365, name: '1 year' }, { id: 'all', label: 'All', days: null, name: 'All weigh-ins' }];
@@ -52,37 +54,9 @@ export async function mountWeight(container) {
     }
 
     // chart card
-    const range = RANGES.find((r) => r.id === rangeId);
-    const from = range.days ? addDays(now, -(range.days - 1)) : (weights[0].date < addDays(now, -6) ? weights[0].date : addDays(now, -6));
-    const inRange = series.filter((r) => r.date >= from);
-    const trendNow = trendAt(series, now);
-    const before = series.filter((r) => r.date < from).pop();
-    const startTrend = before ? before.trend : inRange.length ? inRange[0].trend : null;
-    const seg = segmented({ small: true, ariaLabel: 'Chart range', value: rangeId,
-      options: RANGES.map((r) => ({ value: r.id, label: r.label, ariaLabel: r.name })),
-      onChange: (v) => { rangeId = v; render(); } });
-    const last = series[series.length - 1];
-    const chart = inRange.length
-      ? trendChart({
-        items: inRange.map((r) => ({ date: r.date, dot: r.kg, line: r.trend })),
-        lead: before ? before.trend : null, from, to: now, today: now, minSpan: 1,
-        ariaLabel: `Weight from ${fmtDate(from)} to ${fmtDate(now)}: dots are weigh-ins, the line is the trend`,
-        readout: (r) => (r ? `${fmtDate(r.date)} · ${fixed(r.dot, 1)} kg · trend ${fixed(r.line, 1)} kg`
-          : `Latest ${fmtDay(last.date)} · ${fixed(last.kg, 1)} kg · trend ${fixed(last.trend, 1)} kg`),
-        legend: ['Weigh-in', 'Trend'],
-      })
-      : el('p', { class: 't-sub muted' }, 'No weigh-ins in this range.');
-    const changes = trendNow === null ? [] : [7, 14, 30, 90].map((n) => {
-      const base = trendAt(series, addDays(now, -n));
-      return base === null || series[0].date > addDays(now, -n) ? null : { label: `${n} d`, value: signed(trendNow - base, 1) };
-    }).filter(Boolean);
+    const parts = weightChart({ weights, series, now, range: rangeId, onRange: (v) => { rangeId = v; render(); } });
     const chartCard = el('section', { class: 'card tr-chart-card', 'aria-label': 'Weight trend' },
-      cardHeader('Trend', { trail: seg }),
-      figures(
-        { label: 'Trend', value: trendNow === null ? '–' : fixed(trendNow, 1), unit: 'kg' },
-        { label: `Change · ${range.label}`, value: trendNow === null || startTrend === null ? '–' : signed(trendNow - startTrend, 1), unit: 'kg' }),
-      chart,
-      changeTable(changes));
+      cardHeader('Trend', { trail: parts.seg }), parts.figures, parts.chart, parts.changes);
 
     // list
     const desc = [...series].reverse();
@@ -103,6 +77,47 @@ export async function mountWeight(container) {
   await render();
 }
 
+/**
+ * The weight chart with its range switch, the two header figures (trend, change over the range) and the
+ * 7 / 14 / 30 / 90-day changes. Used here and, compact, on the Trends dashboard.
+ * Changes are computed from the displayed (1-decimal) trend values (core/weight-format.js).
+ * @param {{weights: object[], series: object[], now: string, range: string, onRange: (id: string) => void, ranges?: object[]}} o
+ */
+export function weightChart({ weights, series, now, range: id, onRange, ranges = RANGES }) {
+  const range = ranges.find((r) => r.id === id) || ranges[0];
+  const from = range.days ? addDays(now, -(range.days - 1)) : (weights[0].date < addDays(now, -6) ? weights[0].date : addDays(now, -6));
+  const inRange = series.filter((r) => r.date >= from);
+  const trendNow = trendAt(series, now);
+  const before = series.filter((r) => r.date < from).pop();
+  const startTrend = before ? before.trend : inRange.length ? inRange[0].trend : null;
+  const seg = segmented({ small: true, ariaLabel: 'Chart range', value: range.id,
+    options: ranges.map((r) => ({ value: r.id, label: r.label, ariaLabel: r.name })), onChange: onRange });
+  const last = series[series.length - 1];
+  const chart = inRange.length
+    ? trendChart({
+      items: inRange.map((r) => ({ date: r.date, dot: r.kg, line: r.trend })),
+      lead: before ? before.trend : null, from, to: now, today: now, minSpan: 1,
+      ariaLabel: `Weight from ${fmtDate(from)} to ${fmtDate(now)}: dots are weigh-ins, the line is the trend`,
+      readout: (r) => (r ? `${fmtDate(r.date)} · ${fixed(r.dot, 1)} kg · trend ${fixed(r.line, 1)} kg`
+        : `Latest ${fmtDay(last.date)} · ${fixed(last.kg, 1)} kg · trend ${fixed(last.trend, 1)} kg`),
+      legend: ['Weigh-in', 'Trend'],
+    })
+    : el('p', { class: 't-sub muted' }, 'No weigh-ins in this range.');
+  const changes = trendNow === null ? [] : [7, 14, 30, 90].map((n) => {
+    const base = trendAt(series, addDays(now, -n));
+    return base === null || series[0].date > addDays(now, -n) ? null : { label: `${n} d`, value: `${signed(shownKgChange(trendNow, base), 1)} kg` };
+  }).filter(Boolean);
+  const change = shownKgChange(trendNow, startTrend);
+  return {
+    seg,
+    figures: figures(
+      { label: 'Trend', value: trendNow === null ? '–' : fixed(trendNow, 1), unit: 'kg' },
+      { label: `Change · ${range.label}`, value: change === null ? '–' : signed(change, 1), unit: 'kg' }),
+    chart,
+    changes: changeTable(changes),
+  };
+}
+
 async function saveWeight(date, kg) {
   await db.put('weights', { date, kg: Math.round(kg * 100) / 100, updatedAt: Date.now() });
 }
@@ -114,7 +129,7 @@ function editSheet(row, onDone) {
   if (!isNew) date.disabled = true;
   const kg = numberInput({ value: row ? row.kg : null, min: MIN_KG, max: MAX_KG, decimals: 2, ariaLabel: 'Weight' });
   const sheet = openSheet({ title: isNew ? 'Add weigh-in' : `Weigh-in · ${fmtDate(row.date)}` });
-  append(sheet.body, isNew ? field('Date', date) : null, field('Weight', kg, { unit: 'kg' }));
+  append(sheet.body, isNew ? field('Date', dateBox(date)) : null, field('Weight', kg, { unit: 'kg' }));
   let busy = false;
   const save = async () => {
     if (busy) return;

@@ -5,7 +5,7 @@ import { el, replaceChildren, append, pageHeader, href, emptyState, fmtDate, fmt
 import { routineProgress, compareSession } from '../core/workout-progress.js';
 import { ensureCss, loadExercises, loadWorkouts, exName, shortDate, startWorkout } from './data.js';
 import { lineChart } from './chart.js';
-import { pctBadge, pctWords, fmtTonnage, tonnageParts, topText, comparisonBlock } from './progress-ui.js';
+import { pctBadge, pctWords, fmtTonnage, topText, comparisonBlock, durationParts } from './progress-ui.js';
 
 /** Sessions shown side by side per exercise. */
 const COLS = 4;
@@ -37,13 +37,12 @@ export async function mountRoutineProgress(container, { id }) {
   // ---------------------------------------------------------- this time vs last time
   const latest = rp.sessions[0];
   const cmp = compareSession(workouts, latest.workout);
-  const ton = tonnageParts(latest.totals.load);
   append(container, el('section', { class: 'section' },
     sectionHeader(n > 1 ? `Latest vs the one before · ${shortDate(latest.workout.date)}` : `First session · ${shortDate(latest.workout.date)}`, { info: 'tonnage' }),
-    el('div', { class: 'tiles' },
-      statTile({ label: 'Duration', value: latest.totals.durationMs === null ? '–' : String(Math.round(latest.totals.durationMs / 60000)), unit: latest.totals.durationMs === null ? null : 'min' }),
-      statTile({ label: 'Sets', value: String(latest.totals.sets), sub: latest.totals.dropsets ? `+ ${latest.totals.dropsets} drop` : null }),
-      statTile({ label: 'Tonnage', value: ton.value, unit: ton.unit })),
+    // Tonnage once: in the comparison card below, with its change beside it.
+    el('div', { class: 'tiles wk-tiles-2' },
+      statTile({ label: 'Duration', ...durationParts(latest.totals.durationMs) }),
+      statTile({ label: 'Sets', value: String(latest.totals.sets), sub: latest.totals.dropsets ? `+ ${latest.totals.dropsets} drop` : null })),
     el('div', { class: 'card' }, comparisonBlock(cmp, exMap))));
 
   // ---------------------------------------------------------- chart

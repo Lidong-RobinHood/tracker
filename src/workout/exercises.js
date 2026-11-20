@@ -75,7 +75,7 @@ export async function mountNewExercise(container, _params, ctx) {
     const r = form.read();
     if (!r.ok) { toast(r.error, { type: 'error' }); return; }
     const dup = findByName(await loadExercises(), r.value.name);
-    if (dup) { toast(`"${dup.name}" already exists${dup.archived ? ' (archived)' : ''}`, { type: 'error' }); return; }
+    if (dup) { toast(`“${dup.name}” already exists${dup.archived ? ' (archived)' : ''}`, { type: 'error' }); return; }
     const ex = newExercise(r.value);
     await db.put('exercises', ex);
     toast('Exercise created', { type: 'success' });
@@ -98,7 +98,7 @@ export async function mountExerciseDetail(container, { id }) {
     const r = form.read();
     if (!r.ok) { toast(r.error, { type: 'error' }); return; }
     const dup = findByName(await loadExercises(), r.value.name, ex.id);
-    if (dup) { toast(`"${dup.name}" already exists`, { type: 'error' }); return; }
+    if (dup) { toast(`“${dup.name}” already exists`, { type: 'error' }); return; }
     Object.assign(ex, r.value, { updatedAt: Date.now() });
     await db.put('exercises', ex);
     title.textContent = ex.name;

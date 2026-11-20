@@ -52,12 +52,13 @@ export function setsLegend({ target = false } = {}) {
 }
 
 /**
- * Put the 'sets' info button (with the user's own factors) right after the title of a section or card
+ * Put the 'sets' (or 'sets-workout') info button (with the user's own factors) right after the title of a section or card
  * header. @param {HTMLElement} header from sectionHeader / cardHeader / pageHeader @returns {HTMLElement}
  */
-export function withSetsInfo(header, weights) {
+export function withSetsInfo(header, weights, sheet = 'sets') {
   const title = header.querySelector('.section-title, .card-title, .page-title');
-  const btn = infoButton('sets', { values: { primary: weights.primary, secondary: weights.secondary, dropset: weights.dropset } });
+  // 'sets' = weekly sets; 'sets-workout' = the sets of one workout (summary, history detail)
+  const btn = infoButton(sheet === 'sets-workout' ? 'sets-workout' : 'sets', { values: { primary: weights.primary, secondary: weights.secondary, dropset: weights.dropset } });
   if (title) title.after(btn);
   return header;
 }

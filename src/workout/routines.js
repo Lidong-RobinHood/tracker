@@ -131,7 +131,7 @@ export async function mountRoutineEdit(container, { id }, ctx) {
     render(); save();
   };
   const del = async () => {
-    const ok = await confirmAction({ title: 'Delete routine?', message: `"${routine.name}" will be deleted. Past workouts are kept.`, confirmLabel: 'Delete', danger: true });
+    const ok = await confirmAction({ title: 'Delete routine?', message: `“${routine.name}” will be deleted. Past workouts are kept.`, confirmLabel: 'Delete', danger: true });
     if (!ok) return;
     gone = true;
     await saver.flush();

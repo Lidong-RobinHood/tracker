@@ -10,7 +10,7 @@ import { MUSCLES } from '../core/muscles.js';
 import { sanitiseTargets, volumeWeights } from '../core/volume.js';
 import { formatTarget } from '../core/workout.js';
 import { exerciseUsage } from '../core/exercise-usage.js';
-import { coverageStep, COVERAGE_BANDS, alternatives, autoSwaps, targetsFromCoverage, VOLUME_LEVELS } from '../core/splits.js';
+import { coverageStep, coverageBands, alternatives, autoSwaps, targetsFromCoverage, VOLUME_LEVELS } from '../core/splits.js';
 import { loadExercises, loadWorkouts, musclesLine } from '../workout/data.js';
 import { tutorialFor } from '../workout/tutorial.js';
 import {
@@ -54,7 +54,7 @@ export async function mountDetail(container, params) {
     if (view.sets === 'map') {
       replaceChildren(setsBody, el('div', { class: 'sp-map-row' }, map,
         el('ul', { class: 'legend sp-legend', 'aria-label': 'Weekly sets' },
-          COVERAGE_BANDS.map((b) => el('li', el('span', { class: ['swatch', b.step ? `is-${b.step}` : null] }), b.label)))));
+          coverageBands(weights).map((b) => el('li', el('span', { class: ['swatch', b.step ? `is-${b.step}` : null] }), b.label)))));
     } else {
       replaceChildren(setsBody, el('div', { class: 'list sp-muscles' }, MUSCLES.map((m) => muscleRow(m, cov[m.id], targets[m.id]))));
     }
@@ -117,9 +117,12 @@ export async function mountDetail(container, params) {
     const key = `${s.id}:${i}`;
     const inDay = s.items.map((x) => x.exerciseId);
     const cur = exMap.get(it.exerciseId);
-    const alts = alternatives(it.exerciseId, { exercises: exMap, usage, exclude: inDay, homeOnly: split.equipment === 'home', limit: 12 });
+    const opts = { exercises: exMap, usage, exclude: inDay, homeOnly: split.equipment === 'home', limit: 12 };
+    const alts = alternatives(it.exerciseId, opts);
+    const all = alternatives(it.exerciseId, { ...opts, showAll: true, limit: 60 });
     const orig = exMap.get(it.original);
     const sheet = openSheet({ title: 'Swap exercise', className: 'sp-alt-sheet' });
+    const listBox = el('div');
     const choose = (id) => {
       if (id === it.original) delete state.swaps[key]; else state.swaps[key] = id;
       persist();
@@ -140,22 +143,29 @@ export async function mountDetail(container, params) {
           'aria-label': `Tutorial: ${ex.name} (opens in a new tab)`,
         }, icon('circle-play', { size: 20 })));
     };
+    replaceChildren(listBox, alts.length ? el('div', { class: 'list' }, alts.map((ex) => altRow(ex))) : el('p', { class: 't-sub muted' }, 'No similar exercise.'));
     append(sheet.body,
       cur ? el('div', { class: 'list sp-alt-current' }, altRow(cur, { current: true })) : null,
       it.exerciseId !== it.original && orig
         ? el('button', { type: 'button', class: 'btn btn-secondary btn-block sp-alt-reset', onClick: () => choose(it.original) },
           icon('undo-2', { size: 18 }), `Back to ${orig.name}`)
         : null,
-      sectionHeader('Same main muscle'),
-      alts.length ? el('div', { class: 'list' }, alts.map((ex) => altRow(ex))) : el('p', { class: 't-sub muted' }, 'No alternatives.'));
+      sectionHeader('Same movement'),
+      listBox);
+    // "Show all": every exercise with the same main muscle, also movements the day already has.
+    const more = all.length > alts.length ? el('button', {
+      type: 'button', class: 'btn btn-ghost btn-block sp-alt-all',
+      onClick: () => { replaceChildren(listBox, el('div', { class: 'list' }, all.map((ex) => altRow(ex)))); more.remove(); },
+    }, `Show all ${all.length}`) : null;
+    append(sheet.body, more);
   }
 
   // ------------------------------------------------ how to run it + disclaimer
   const howTo = el('section', { class: 'section' },
-    sectionHeader('How to run it', { info: 'split-choose' }),
+    sectionHeader('How to run it', { info: 'split-run' }),
     el('div', { class: 'card' }, el('ul', { class: 'sp-bullets' }, [...SHARED_BULLETS, ...split.bullets].map((b) => el('li', b)))));
   const disclaimer = el('p', { class: 't-sub muted sp-disclaimer' }, SPLIT_DISCLAIMER, ' ',
-    el('a', { href: href('licences') }, 'Methods and sources'));
+    el('a', { class: 'sp-src-link', href: href('licences?section=split-sources') }, 'Methods and sources'));
 
   // ------------------------------------------------ follow
   const actions = el('div', { class: 'stack sp-actions' });
@@ -183,12 +193,21 @@ export async function mountDetail(container, params) {
     const newTargets = targetsFromCoverage(current.coverage);
     const opts = { replace: previous.length > 0, setTargets: false };
     const sheet = openSheet({ title: `Follow ${split.name}`, className: 'sp-adopt' });
-    const targetsLine = el('p', { class: 't-sub muted sp-targets-line' },
-      MUSCLES.filter((m) => newTargets[m.id]).map((m) => `${m.name} ${fmtNum(newTargets[m.id], 0)}`).join(' · '));
-    targetsLine.hidden = true;
+    // One short line under each choice says what it does.
+    const newTargetsText = MUSCLES.filter((m) => newTargets[m.id]).map((m) => `${m.name} ${fmtNum(newTargets[m.id], 0)}`).join(' · ');
+    const targetsLine = el('p', { class: 'field-hint sp-targets-line' });
+    const paintTargets = () => { targetsLine.textContent = opts.setTargets ? `Replaces your targets: ${newTargetsText}` : 'Your weekly set targets stay.'; };
+    paintTargets();
+    const replaceLine = el('p', { class: 'field-hint' });
+    const paintReplace = () => {
+      replaceLine.textContent = opts.replace
+        ? `Deletes the ${previous.length} routine${previous.length === 1 ? '' : 's'} of earlier splits. History stays.`
+        : 'Nothing is deleted.';
+    };
+    paintReplace();
     const tick = el('input', {
       type: 'checkbox', class: 'switch', id: 'sp-set-targets',
-      onChange: () => { opts.setTargets = tick.checked; targetsLine.hidden = !tick.checked; },
+      onChange: () => { opts.setTargets = tick.checked; paintTargets(); },
     });
     append(sheet.body,
       el('div', { class: 'list sp-adopt-list' }, current.sessions.map((s, i) => el('div', { class: 'list-item' },
@@ -201,8 +220,8 @@ export async function mountDetail(container, params) {
         segmented({
           ariaLabel: `Earlier split routines (${previous.length})`, value: 'replace',
           options: [{ value: 'replace', label: 'Replace' }, { value: 'keep', label: 'Keep' }],
-          onChange: (v) => { opts.replace = v === 'replace'; },
-        })) : null,
+          onChange: (v) => { opts.replace = v === 'replace'; paintReplace(); },
+        }), replaceLine) : null,
       el('label', { class: 'sp-tick', htmlFor: 'sp-set-targets' },
         el('span', { class: 'grow' }, 'Set weekly set targets'), tick),
       targetsLine);

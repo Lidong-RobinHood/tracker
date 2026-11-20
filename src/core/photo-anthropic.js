@@ -21,7 +21,7 @@ const NAME = 'Anthropic';
 
 /** Documented suggestions (claude-api skill, 2026-11-03). Any other model id can be typed or loaded. */
 export const ANTHROPIC_SUGGESTED = Object.freeze([
-  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', note: 'recommended default' },
+  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', note: '' }, // the default: the 'default' badge says so
   { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', note: 'fastest, lowest cost' },
 ]);
 export const ANTHROPIC_DEFAULT_MODEL = ANTHROPIC_SUGGESTED[0].id;

@@ -1,5 +1,6 @@
-// Trends home = dashboard: today, this week, weight trend, expenditure/target, weekly reports, intake.
-// One card per topic: one big number and one line under it; each card links to its detail screen.
+// Trends home = dashboard: check-in, today, this week, weight and expenditure charts, weekly reports, intake.
+// One card per topic; the weight and expenditure cards show the real chart (compact: range switch, two
+// figures, tap to pin a day) and their title links to the detail screen.
 // Route: trends
 import * as db from '../db/db.js';
 import { el, pageHeader, fmtGrouped, fmtNum, fmtDate, href, tag, progressBar, icon } from '../ui/index.js';
@@ -7,11 +8,18 @@ import { addDays, weekStart } from '../core/dates.js';
 import { totals } from '../core/food-diary.js';
 import { targetStatus } from '../core/food-percent.js';
 import { weeklyComparison } from '../core/volume.js';
-import { trendSeries, trendAt, weightRate, weeklyIntake } from '../core/adaptive.js';
-import { sparkline } from './charts.js';
+import { trendSeries, weightRate, weeklyIntake } from '../core/adaptive.js';
+import { weightChart } from './weight-view.js';
+import { expenditureChart, estimateSeries } from './expenditure-view.js';
 import { isBaseline } from '../core/baseline.js';
 import { isLoggedWorkout } from '../core/workout.js';
-import { fixed, ensureCss, loadTrendsData, linkCard, rateText, tdeeText, intakeHistory, confidenceText } from './data.js';
+import { ensureCss, loadTrendsData, linkCard, rateText, tdeeText, intakeHistory } from './data.js';
+
+// Chart ranges on the dashboard (kept while the app is open).
+const WEIGHT_RANGES = [{ id: '1m', label: '1M', days: 30, name: '1 month' }, { id: '3m', label: '3M', days: 91, name: '3 months' },
+  { id: '1y', label: '1Y', days: 365, name: '1 year' }];
+let weightRange = '1m';
+let expRange = '1m';
 
 export async function mountDashboard(container) {
   ensureCss();
@@ -37,7 +45,7 @@ export async function mountDashboard(container) {
   ].filter(Boolean));
 }
 
-/** Big number + small unit (+ something on the right, e.g. a sparkline). */
+/** Big number + small unit (+ something on the right). */
 function value(v, unit, side = null) {
   return el('div', { class: 'tr-value-row' },
     el('span', { class: 'tr-value' }, v, unit ? el('small', { class: 'tr-unit' }, unit) : null),
@@ -58,7 +66,10 @@ function checkInBanner(d) {
 
 function todayCard(d) {
   const entries = d.entries.filter((e) => e.date === d.today);
-  if (!entries.length) return linkCard(href('diary'), 'Today', {}, line('Nothing logged today.'));
+  if (!entries.length) {
+    return linkCard(href('diary'), 'Today', {}, line('Nothing logged yet'),
+      line(`Target ${fmtGrouped(d.targets.kcal)} kcal · protein ${fmtGrouped(d.targets.protein)} g`));
+  }
   const t = totals(entries);
   // Same rule as the diary: eaten rounded once, left/over from the rounded value (they add up).
   const kcal = targetStatus(t.kcal, d.targets.kcal);
@@ -84,24 +95,49 @@ function weekCard(d, workouts, exMap, volume) {
     sets.length ? el('p', { class: 't-sub muted tr-sets' }, `Sets: ${top}${sets.length > 4 ? ` · +${sets.length - 4} more` : ''}`) : null);
 }
 
+/** Card whose title row links to a detail screen and holds a control on the right (not nested in the link). */
+function chartCard(path, title, label, trail, ...children) {
+  return el('section', { class: 'card tr-chart-card tr-dash-chart', 'aria-label': label },
+    el('div', { class: 'tr-dash-head' },
+      el('a', { class: 'tr-head-link tr-dash-link', href: href(path) }, el('h2', { class: 'card-title' }, title), icon('chevron-right', { class: 'li-chevron' })),
+      trail),
+    children);
+}
+
 function weightCard(d) {
   const series = trendSeries(d.weights);
   if (!series.length) return linkCard(href('trends/weight'), 'Weight', {}, line('No weigh-ins yet. Tap to log one.'));
-  const trend = trendAt(series, d.today);
+  const weights = [...d.weights].sort((a, b) => (a.date < b.date ? -1 : 1));
   const rate = weightRate(d.weights, d.today);
-  const recent = series.filter((r) => r.date >= addDays(d.today, -29));
   const noToday = series[series.length - 1].date !== d.today;
-  return linkCard(href('trends/weight'), 'Weight', {},
-    value(fixed(trend, 1), 'kg trend', sparkline(recent)),
-    line(rate === null ? 'Rate after 1 week' : rateText(rate), noToday ? ' · no weigh-in today' : ''));
+  const build = () => {
+    const parts = weightChart({ weights, series, now: d.today, range: weightRange, ranges: WEIGHT_RANGES,
+      onRange: (v) => { weightRange = v; const next = build(); card.replaceWith(next); card = next; } });
+    return chartCard('trends/weight', 'Weight', 'Weight trend', parts.seg, parts.figures, parts.chart,
+      line(rate === null ? 'Rate after 1 week' : rateText(rate), noToday ? ' · no weigh-in today' : ''));
+  };
+  let card = build();
+  return card;
 }
 
 function expenditureCard(d) {
   const e = d.estimate;
-  const target = `Target ${fmtGrouped(d.targets.kcal)} kcal · ${d.targets.source === 'adaptive' ? 'adaptive' : 'manual'}`;
+  const source = d.targets.source === 'adaptive' ? 'adaptive' : 'manual';
+  const target = `Target ${fmtGrouped(d.targets.kcal)} kcal · ${source}`;
   if (e.status === 'ok') {
-    return linkCard(href('trends/expenditure'), 'Expenditure', { tag: tag(confidenceText(e)) },
-      value(tdeeText(e.tdee), 'kcal / day'), line(target));
+    const cache = new Map(); // range days → estimates per day
+    const build = () => {
+      const days = expRange === '3m' ? 91 : 28;
+      if (!cache.has(days)) cache.set(days, estimateSeries(d, days));
+      const parts = expenditureChart(d, cache.get(days), {
+        range: expRange,
+        onRange: (v) => { expRange = v; const next = build(); card.replaceWith(next); card = next; },
+        second: { label: `Target · ${source}`, value: fmtGrouped(d.targets.kcal), unit: 'kcal / day' },
+      });
+      return chartCard('trends/expenditure', 'Expenditure', 'Expenditure estimate', parts.seg, parts.figures, parts.tag, parts.chart);
+    };
+    let card = build();
+    return card;
   }
   if (e.formula) {
     return linkCard(href('trends/expenditure'), 'Expenditure', { tag: tag('formula') },

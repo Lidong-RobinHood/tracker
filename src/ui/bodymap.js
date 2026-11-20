@@ -6,6 +6,7 @@
 //   const map = bodyMap({ view: 'front', values: { chest: 'recovering', quads: 3 } });
 //   setValues(map, { chest: 'fresh' });            // repaint later
 //   muscleIcon('chest', { size: 36, state: 'ready' });
+//   muscleIcon('quads', { state: 'neutral' });     // recovered: muscle only subtly emphasised
 //
 // values: per muscle id (src/core/muscles.js) a number 0–4 (sets ramp, class is-0..is-4) or one of
 // 'recovering' | 'ready' | 'fresh' (recovery states) | 'hot' (accent highlight). Missing = idle.
@@ -20,6 +21,8 @@ export const MUSCLES = Object.freeze({
 });
 
 const STATES = new Set(['recovering', 'ready', 'fresh', 'hot']);
+/** muscleIcon states: recovery colours plus 'neutral' (recovered; no status colour, as on the map). */
+const ICON_STATES = new Set(['recovering', 'ready', 'fresh', 'neutral']);
 const STATE_CLASSES = ['is-0', 'is-1', 'is-2', 'is-3', 'is-4', 'is-recovering', 'is-ready', 'is-fresh', 'is-hot'];
 
 function stateClass(v) {
@@ -92,15 +95,17 @@ export const MUSCLE_ICON_IDS = Object.freeze(Object.keys(ICON_CROPS));
 /**
  * Small square icon of one muscle, cut from the body map, the muscle highlighted.
  * @param {string} muscleId
- * @param {{size?: number, state?: 'recovering'|'ready'|'fresh'|null, label?: string}} [opts]
- *   size: px (default 36). state: highlight colour (default accent). label: accessible name;
+ * @param {{size?: number, state?: 'recovering'|'ready'|'neutral'|'fresh'|null, label?: string}} [opts]
+ *   size: px (default 36). state: highlight colour — 'recovering' red, 'ready' amber, 'neutral' the
+ *   body-map idle tone (recovered muscles: only subtly emphasised), 'fresh' green (legacy); nothing =
+ *   accent. label: accessible name;
  *   without it the icon is decorative (aria-hidden), as it normally sits next to the muscle's name.
  * @returns {SVGSVGElement}
  */
 export function muscleIcon(muscleId, { size = 36, state = null, label } = {}) {
   const crop = Object.prototype.hasOwnProperty.call(ICON_CROPS, muscleId) ? ICON_CROPS[muscleId] : null;
   const svg = /** @type {SVGSVGElement} */ (document.createElementNS(NS, 'svg'));
-  svg.setAttribute('class', ['bm', 'bm-icon', state && STATES.has(state) ? `bm-icon-${state}` : null].filter(Boolean).join(' '));
+  svg.setAttribute('class', ['bm', 'bm-icon', state && ICON_STATES.has(state) ? `bm-icon-${state}` : null].filter(Boolean).join(' '));
   svg.setAttribute('width', String(size));
   svg.setAttribute('height', String(size));
   svg.style.width = `${size}px`;

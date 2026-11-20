@@ -42,17 +42,20 @@ export async function mountLibrary(container) {
     nextSlot.hidden = !card;
   };
 
-  const chipRow = (key, options, ariaLabel) => el('div', { class: 'chips chips-scroll sp-chip-row', role: 'group', 'aria-label': ariaLabel },
-    options.map((o) => el('button', {
-      type: 'button', class: 'chip', 'aria-pressed': String(filters[key] === o.value),
-      onClick: () => { filters[key] = filters[key] === o.value ? null : o.value; paint(); },
-    }, o.label)));
+  // One labelled row per filter; a row too wide for the screen scrolls inside itself (fade at the edge).
+  const chipRow = (key, options, label) => el('div', { class: 'sp-filter' },
+    el('span', { class: 't-cap muted sp-filter-label', 'aria-hidden': 'true' }, label),
+    el('div', { class: 'chips chips-scroll sp-chip-row', role: 'group', 'aria-label': label },
+      options.map((o) => el('button', {
+        type: 'button', class: 'chip', 'aria-pressed': String(filters[key] === o.value),
+        onClick: () => { filters[key] = filters[key] === o.value ? null : o.value; paint(); },
+      }, o.label))));
 
   const reset = () => { for (const k of Object.keys(filters)) filters[k] = null; paint(); };
 
   function paint() {
     replaceChildren(filterBox,
-      chipRow('days', [2, 3, 4, 5, 6].map((d) => ({ value: d, label: `${d} days` })), 'Days per week'),
+      chipRow('days', [2, 3, 4, 5, 6].map((d) => ({ value: d, label: String(d) })), 'Days'),
       chipRow('style', STYLES.map((s) => ({ value: s.id, label: s.label })), 'Style'),
       chipRow('level', LEVELS.map((s) => ({ value: s.id, label: s.label })), 'Level'),
       chipRow('equipment', EQUIPMENT.map((s) => ({ value: s.id, label: s.label })), 'Equipment'));

@@ -30,18 +30,18 @@ export function mountPhotoSettings(container, params, ctx) {
     }));
   const providerSection = el('section', { class: 'section', 'aria-label': 'Provider' },
     sectionHeader('Provider'),
-    el('div', { class: 'card card-flush' }, providerList));
+    el('div', { class: 'card card-flush' }, providerList),
+    el('p', { class: 't-sub muted photo-section-note' }, 'Each provider keeps its own key and model. Only the selected one is used.'));
 
+  /** 'key sk-ant…0000 · claude-opus-5-5' (the model id in the id typeface). */
   function providerSub(id) {
-    const parts = [];
-    if (getApiKey(id)) parts.push(`key ${maskKey(getApiKey(id))}`); else parts.push('no key');
-    if (getModel(id)) parts.push(getModel(id));
-    return parts.join(' · ');
+    const key = getApiKey(id) ? `key ${maskKey(getApiKey(id))}` : 'no key';
+    return getModel(id) ? [key, ' · ', el('code', { class: 'model-id' }, getModel(id))] : [key];
   }
   function refreshProviderSubs() {
     for (const id of PROVIDER_IDS) {
       const sub = providerList.querySelector(`#pp-${id}`)?.closest('label')?.querySelector('.li-sub');
-      if (sub) sub.textContent = providerSub(id);
+      if (sub) replaceChildren(sub, ...providerSub(id));
     }
   }
 
@@ -136,9 +136,8 @@ export function mountPhotoSettings(container, params, ctx) {
       if (ctrl !== c) return;
       ctrl = null;
       testMsg.className = `t-sub ${r.ok ? 'text-success' : 'text-danger'}`;
-      testMsg.textContent = r.ok
-        ? (r.checkedModel ? `The key works and can use ${model}.` : `Key works.${model ? ' Model checked on first analysis.' : ''}`)
-        : `${r.message}${r.detail ? ` (${r.detail})` : ''}`;
+      if (r.ok && r.checkedModel) replaceChildren(testMsg, 'The key works and can use ', el('code', { class: 'model-id' }, model), '.');
+      else testMsg.textContent = r.ok ? `Key works.${model ? ' Model checked on first analysis.' : ''}` : `${r.message}${r.detail ? ` (${r.detail})` : ''}`;
     }
 
     function replace() { replaceChildren(box, form()); requestAnimationFrame(() => { const i = box.querySelector('input'); if (i) i.focus(); }); }
@@ -161,7 +160,7 @@ export function mountPhotoSettings(container, params, ctx) {
     const loadMsg = el('p', { class: 't-sub', role: 'status' });
     const picker = el('select', { class: 'select photo-model-picker', 'aria-label': 'Models from the provider', hidden: true,
       onChange: () => { if (picker.value) use(picker.value); } });
-    const free = el('input', { class: 'input', type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false',
+    const free = el('input', { class: 'input model-id-input', type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false',
       placeholder: a.defaultModel || 'e.g. provider/model-name', 'aria-label': 'Model id', name: `photo-model-${id}` });
     const freeMsg = el('p', { class: 'field-error', role: 'alert' });
 
@@ -185,7 +184,7 @@ export function mountPhotoSettings(container, params, ctx) {
           el('input', { type: 'radio', name: `photo-model-${id}-s`, id: rid, value: s.id, onChange: () => use(s.id) }),
           el('div', { class: 'li-main' },
             el('div', { class: 'li-title' }, s.label, s.id === a.defaultModel ? el('span', { class: 'badge badge-dropset model-default' }, 'default') : null),
-            el('div', { class: 'li-sub' }, el('code', { class: 'model-id' }, s.id), ` · ${s.note}`)));
+            el('div', { class: 'li-sub' }, el('code', { class: 'model-id' }, s.id), s.note ? ` · ${s.note}` : null)));
       }));
 
     async function load() {
@@ -223,12 +222,12 @@ export function mountPhotoSettings(container, params, ctx) {
         loadMsg,
         picker,
         el('form', { class: 'stack', onSubmit: (e) => { e.preventDefault(); use(free.value.trim()); if (!freeMsg.textContent) free.value = ''; } },
-          field('Model id', free),
+          field('Model id', free, { hint: 'Must accept images.' }),
           freeMsg,
           el('button', { type: 'submit', class: 'btn' }, 'Use this model')),
         schemaToggle,
-        el('p', { class: 't-sub muted' }, 'Larger models cost more per photo.',
-          a.pricingUrl ? [' ', el('a', { class: 'ext-link', href: a.pricingUrl, target: '_blank', rel: 'noopener noreferrer' }, `${a.name} pricing`, icon('external-link', { size: 14 }))] : null)));
+        el('div', { class: 'photo-cost-row t-sub' }, el('span', { class: 'muted' }, 'Larger models cost more per photo.'),
+          a.pricingUrl ? el('a', { class: 'ext-link photo-pricing', href: a.pricingUrl, target: '_blank', rel: 'noopener noreferrer' }, `${a.name} pricing`, icon('external-link', { size: 14 })) : null)));
     showCurrent();
     return section;
   }
@@ -242,7 +241,7 @@ export function mountPhotoSettings(container, params, ctx) {
           a.notes.map((n) => el('li', null, n)),
           el('li', null, 'Analyse sends only the photo (max 1568 px) and your hint to the provider. Test key and Load models are free.'),
           el('li', null, 'Keys stay in this browser, are not in backups, and go only to their provider.'),
-          el('li', null, 'Anyone using this browser can use the keys. Set a spend limit with the provider.'))));
+          el('li', null, 'Anyone using this browser can use the keys: on a shared device, delete them here. Set a spend limit with the provider.'))));
   }
 
   container.append(providerSection, providerBody);

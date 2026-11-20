@@ -15,7 +15,7 @@
 //             gets at most +1), never above MAX_SETS. A muscle trained n times a week thus gets about
 //             +n direct sets a week, and no session gets more than one extra set per muscle.
 //
-// Alternatives: candidates for swapping an exercise (see alternatives()).
+// Alternatives: candidates for swapping an exercise, by movement pattern first (see alternatives()).
 //
 // Rotation ("next up"): nextUp(active, workouts) — the routine after the one of the most recent
 //   logged workout (isLoggedWorkout: finished with ≥ 1 done set, never the starting point) whose
@@ -26,7 +26,7 @@ import { muscleVolumeBreakdown, volumeWeights, sanitiseTargets } from './volume.
 import { isLoggedWorkout, byRecent } from './workout.js';
 import { isBaseline } from './baseline.js';
 import { compareUsage } from './exercise-usage.js';
-import { BASE_LIFTS } from '../data/exercises.js';
+import { BASE_LIFTS, EXERCISE_PATTERN, RELATED_PATTERNS, fitsHome } from '../data/exercises.js';
 import { HOME_EQUIPMENT } from '../data/splits.js';
 
 export const VOLUME_LEVELS = Object.freeze(['minimum', 'standard', 'high']);
@@ -137,13 +137,37 @@ export function splitCoverage(sessions, times, exercises, weights) {
  */
 export function coverageStep(total) {
   if (!(total > 0)) return 0;
-  return total >= 12 ? 4 : total >= 8 ? 3 : total >= 4 ? 2 : 1;
+  return total >= BAND_EDGES[0] ? 4 : total >= BAND_EDGES[1] ? 3 : total >= BAND_EDGES[2] ? 2 : 1;
 }
 
-/** Fixed bands of coverageStep without targets, for the legend (highest first). */
-export const COVERAGE_BANDS = Object.freeze([
-  { step: 4, label: '12+' }, { step: 3, label: '8–12' }, { step: 2, label: '4–8' }, { step: 1, label: 'Under 4' }, { step: 0, label: 'None' },
-]);
+/** Lower edges of coverageStep's bands (steps 4, 3, 2). */
+const BAND_EDGES = Object.freeze([12, 8, 4]);
+
+/**
+ * Legend of coverageStep (highest first), bands that do not overlap. Weekly totals move in steps of
+ * the smallest set weight (0.5 with the default partial weight), so the upper end of a band is the
+ * edge above minus that step: '12+', '8–11.5', '4–7.5', 'Under 4', 'None'. With weights that are
+ * not multiples of 0.5 the upper ends read 'under 12' / 'under 8'.
+ * @param {{primary?: number, secondary?: number}} [weights] settings.volume
+ */
+export function coverageBands(weights) {
+  const w = volumeWeights(weights);
+  const unit = [w.primary, w.secondary].filter((x) => x > 0)
+    .every((x) => Number.isInteger(x)) ? 1 : [w.primary, w.secondary].filter((x) => x > 0).every((x) => Number.isInteger(x * 2)) ? 0.5 : null;
+  const fmt = (n) => String(n);
+  const upTo = (edge) => (unit ? fmt(edge - unit) : `under ${edge}`);
+  const [e4, e3, e2] = BAND_EDGES;
+  return [
+    { step: 4, label: `${e4}+` },
+    { step: 3, label: `${e3}–${upTo(e4)}` },
+    { step: 2, label: `${e2}–${upTo(e3)}` },
+    { step: 1, label: `Under ${e2}` },
+    { step: 0, label: 'None' },
+  ];
+}
+
+/** Bands with the default set weighting (kept for callers without weights). */
+export const COVERAGE_BANDS = Object.freeze(coverageBands({}).map(Object.freeze));
 
 /**
  * Weekly set targets from a coverage: every muscle with total ≥ TARGET_MIN_SETS, rounded to whole sets.
@@ -204,37 +228,71 @@ export function splitRoutines(split, sessions, { ids, now, firstOrder }) {
 const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
 const overlap = (a, b) => a.filter((x) => b.includes(x)).length;
 
+/** Movement pattern of an exercise (seed classification; custom exercises: null). */
+export function patternOf(ex) {
+  return (ex && EXERCISE_PATTERN[ex.id]) || null;
+}
+
+/** Home splits: seed exercises by the gear they need; custom exercises by equipment type. */
+function homeOk(e) {
+  return EXERCISE_PATTERN[e.id] ? fitsHome(e) : HOME_EQUIPMENT.includes(e.equipment);
+}
+
 /**
  * Swap candidates for `exerciseId`, best first. Candidates: not archived, not the exercise itself,
- * not already in the session (`exclude`), at least one primary muscle in common; with
- * `homeOnly` only dumbbell / bodyweight exercises. Custom exercises take part like seeded ones.
+ * not already in the session (`exclude`), at least one primary muscle in common; with `homeOnly`
+ * only what dumbbells, a bench and a pull-up bar allow (exerciseGear in src/data/exercises.js).
+ * Custom exercises take part like seeded ones.
+ *
+ * Movement pattern (src/data/exercises.js EXERCISE_PATTERN): tier 2 = same pattern, tier 1 = a related
+ * pattern (RELATED_PATTERNS) or a custom exercise (no pattern) with the same primary muscles, tier 0 =
+ * any other exercise sharing a primary muscle. The default list holds tiers 2 and 1 and never an
+ * exercise whose pattern another exercise of the session already has; `showAll` lists every tier and
+ * pattern. An exercise without a pattern (custom) falls back to the muscle rule: every candidate.
  * Order:
+ *   0. higher tier first;
  *   1. same primary muscles (as a set) before partial overlap, then more shared primary muscles;
  *   2. exercises the user has logged before unused ones (most recent first, then most often);
  *   3. same equipment first;
  *   4. more shared secondary muscles;
  *   5. common base lifts; 6. name.
  * @param {string} exerciseId
- * @param {{exercises: Map<string, object>, usage?: Map<string, object>, exclude?: Iterable<string>, homeOnly?: boolean, limit?: number}} opts
+ * @param {{exercises: Map<string, object>, usage?: Map<string, object>, exclude?: Iterable<string>, homeOnly?: boolean, limit?: number, showAll?: boolean}} opts
  * @returns {object[]} exercise records
  */
-export function alternatives(exerciseId, { exercises, usage = new Map(), exclude = [], homeOnly = false, limit = 12 }) {
+export function alternatives(exerciseId, { exercises, usage = new Map(), exclude = [], homeOnly = false, limit = 12, showAll = false }) {
   const orig = exercises.get(exerciseId);
   if (!orig) return [];
   const prim = orig.primary || [];
   const sec = orig.secondary || [];
+  const own = patternOf(orig);
+  const related = own ? RELATED_PATTERNS[own] || [] : [];
   const skip = new Set(exclude);
   skip.add(exerciseId);
+  // patterns the rest of the session already trains (the swapped exercise's own pattern stays open)
+  const taken = new Set();
+  for (const id of skip) {
+    const p = id === exerciseId ? null : patternOf(exercises.get(id));
+    if (p && p !== own) taken.add(p);
+  }
   const rows = [];
   for (const e of exercises.values()) {
     if (!e || e.archived || skip.has(e.id)) continue;
-    if (homeOnly && !HOME_EQUIPMENT.includes(e.equipment)) continue;
+    if (homeOnly && !homeOk(e)) continue;
     const p = overlap(e.primary || [], prim);
     if (!p) continue;
-    rows.push({ e, exact: sameSet(e.primary || [], prim) ? 1 : 0, p, used: usage.get(e.id),
+    const exact = sameSet(e.primary || [], prim) ? 1 : 0;
+    const pat = patternOf(e);
+    let tier;
+    if (!own) tier = 1; // custom original: the muscle rule
+    else if (pat === own) tier = 2;
+    else if (pat ? related.includes(pat) : exact) tier = 1;
+    else tier = 0;
+    if (!showAll && (tier === 0 || (pat && taken.has(pat)))) continue;
+    rows.push({ e, tier, exact, p, used: usage.get(e.id),
       eq: e.equipment === orig.equipment ? 1 : 0, s: overlap(e.secondary || [], sec) });
   }
-  rows.sort((a, b) => (b.exact - a.exact) || (b.p - a.p) || compareUsage(a.used, b.used) || (b.eq - a.eq) || (b.s - a.s)
+  rows.sort((a, b) => (b.tier - a.tier) || (b.exact - a.exact) || (b.p - a.p) || compareUsage(a.used, b.used) || (b.eq - a.eq) || (b.s - a.s)
     || (BASE_LIFTS.has(b.e.id) - BASE_LIFTS.has(a.e.id)) || a.e.name.localeCompare(b.e.name));
   return rows.slice(0, limit).map((r) => r.e);
 }
@@ -253,7 +311,8 @@ export function autoSwaps(split, { exercises, usage, swaps = {} }) {
       const ex = exercises.get(cur);
       if (ex && !ex.archived) return;
       const exclude = s.items.map((x, j) => out[`${s.id}:${j}`] || x.exerciseId);
-      const alt = ex ? alternatives(cur, { exercises, usage, exclude, homeOnly: split.equipment === 'home', limit: 1 })[0] : null;
+      const o = { exercises, usage, exclude, homeOnly: split.equipment === 'home', limit: 1 };
+      const alt = ex ? alternatives(cur, o)[0] || alternatives(cur, { ...o, showAll: true })[0] : null;
       if (alt) out[key] = alt.id;
     });
   }

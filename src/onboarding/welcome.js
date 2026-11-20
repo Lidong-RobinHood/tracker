@@ -8,7 +8,6 @@ import { ACTIVITY_LEVELS } from '../core/adaptive.js';
 import { MACROS, SPLIT_PRESETS, validateSplit, pctFromGrams, gramsFromPct, targetMode, carbsRest } from '../core/macro-split.js';
 import { proposeTargets, setupWrites, buildTargets } from '../core/setup.js';
 import { goalRateControl, importFlow } from '../settings/settings-view.js';
-import { GOAL_AMOUNT_MAX } from '../core/goal-rate.js';
 import { currentPlatform, installGuide } from './install.js';
 import { requestPersistence } from './backup.js';
 import { ensureCss } from './shell.js';
@@ -71,7 +70,7 @@ export async function mountWelcome(container) {
       el('div', { class: 'card stack' },
         el('div', { class: 'grid-2' }, field('Sex', about.sex), field('Birth year', about.birthYear)),
         el('div', { class: 'grid-2' }, field('Height', about.height, { unit: 'cm' }), field('Weight today', about.weight, { unit: 'kg' })),
-        field('Activity level', about.activity, { hint: 'Include training.' })),
+        field('Activity level', about.activity, { hint: 'Including your workouts' })),
     ];
   }
   function readAbout() {
@@ -138,8 +137,7 @@ export async function mountWelcome(container) {
     const r = rate.getRate();
     if (r === null) {
       rate.amount.focus();
-      const dir = rate.getDirection();
-      toast(`Enter up to ${GOAL_AMOUNT_MAX[dir]} kg / week.`, { type: 'error' });
+      toast(`${rate.getError()}.`, { type: 'error' });
       return false;
     }
     const input = editor.read();

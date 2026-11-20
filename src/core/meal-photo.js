@@ -223,12 +223,14 @@ export function itemWarnings(item) {
   const missing = REQUIRED_NUTRIENTS.filter((k) => typeof p[k] !== 'number' || !Number.isFinite(p[k]));
   if (missing.length) w.push(`Missing: ${missing.join(', ')}.`);
   if (!(typeof item.amount === 'number' && item.amount > 0)) w.push('Amount missing.');
+  const per = `/ 100 ${item.basis === 'ml' ? 'ml' : 'g'}`;
   const sum = (p.protein || 0) + (p.carbs || 0) + (p.fat || 0);
-  if (sum > 100.5) w.push(`Protein + carbs + fat add up to ${round(sum, 0)} g per 100 g.`);
+  if (sum > 100.5) w.push(`Macros total ${round(sum, 0)} g ${per}, over 100 g.`);
   if (typeof p.sugars === 'number' && typeof p.carbs === 'number' && p.sugars > p.carbs + 0.5) w.push('Sugars are higher than carbs.');
   if (typeof p.satFat === 'number' && typeof p.fat === 'number' && p.satFat > p.fat + 0.5) w.push('Saturated fat is higher than fat.');
   const e = energyCheck(p);
-  if (!e.ok) w.push(`kcal does not match the macros (they give about ${e.macroKcal} kcal per 100).`);
+  // '1 956' with a narrow no-break space, like fmtGrouped.
+  if (!e.ok) w.push(`kcal does not fit the macros (about ${String(Math.round(e.macroKcal)).replace(/\B(?=(\d{3})+$)/g, '\u202f')} kcal ${per}).`);
   return w;
 }
 

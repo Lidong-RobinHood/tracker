@@ -9,19 +9,20 @@ import { EXERCISE_MAP_KEY } from '../core/import-runs.js';
 import { pickExercise } from '../workout/picker.js';
 import { exerciseForm } from '../workout/exercise-form.js';
 import { newExercise, findByName } from '../workout/data.js';
+import { dateBox } from '../food/widgets.js';
 import { ensureCss, runParser, filePicker, exampleBox, issueList, dateInput, plural, commitRun, dateY } from './shared.js';
 
 const EXAMPLE = `12.11.2026
 Push
 Benchpress
-3 x 6
+3 × 6
 100\t7
 100\t8
 100\t8
-Dropset 5x 80
+Dropset 5 × 80
 
 Dips
-3 x 10
+3 × 10
 12
 10
 9`;
@@ -52,11 +53,11 @@ export async function mountWorkoutImport(container) {
     el('section', { class: 'section' }, sectionHeader('1 · Paste or pick a file'),
       el('div', { class: 'card stack' },
         el('p', { class: 't-sub' }, 'Copy one column group from your sheet and paste it, or pick a file.'),
-        exampleBox('Example of the expected shape', EXAMPLE),
+        exampleBox('Example of the expected shape', EXAMPLE, 'Sets: 3 x 6 or 3 × 6'),
         textarea,
         el('div', { class: 'field' },
-          el('label', { class: 'field-label', htmlFor: 'imp-default-date' }, 'Default date'),
-          Object.assign(defaultDate, { id: 'imp-default-date' })),
+          el('label', { class: 'field-label', htmlFor: 'imp-default-date' }, 'Date for workouts without a date line'),
+          dateBox(Object.assign(defaultDate, { id: 'imp-default-date' }))),
         el('div', { class: 'imp-actions' },
           filePicker({ label: 'Pick a file', onText: (t) => { textarea.value = t; read(); }, onError: (e) => toast(e.message, { type: 'error' }) }),
           readBtn))),
@@ -208,7 +209,7 @@ export async function mountWorkoutImport(container) {
         el('div', { class: 'li-main' },
           el('h3', { class: 'card-title' }, w.name || 'Workout'),
           el('div', { class: 't-sub muted' }, `Workout ${i + 1} · ${fromLine}`)),
-        d),
+        dateBox(d)),
       ...w.exercises.map((e) => {
         const c = state.choice.get(e.name) || {};
         const label = exerciseLabel(c);

@@ -42,9 +42,9 @@ export async function mountExpenditure(container) {
 }
 
 /** Expenditure estimate for each of the last 91 days (display only: the same estimate as on that day). */
-function estimateSeries(d) {
+export function estimateSeries(d, days = 91) {
   const out = [];
-  for (let i = 90; i >= 0; i--) {
+  for (let i = days - 1; i >= 0; i--) {
     const asOf = addDays(d.today, -i);
     const e = i === 0 ? d.estimate : estimateExpenditure({ weights: d.weights, intake: d.intake, asOf, profile: d.profile, config: d.config });
     if (e.status === 'ok') out.push({ date: asOf, tdee: e.tdee });
@@ -56,10 +56,6 @@ function estimateSeries(d) {
 
 function estimateCard(d, series, rerender) {
   const e = d.estimate;
-  const seg = segmented({ small: true, ariaLabel: 'Chart range', value: rangeId,
-    options: RANGES.map((r) => ({ value: r.id, label: r.label, ariaLabel: r.name })),
-    onChange: (v) => { rangeId = v; rerender(); } });
-
   if (e.status !== 'ok') {
     const kids = [cardHeader('Estimate', { tag: e.formula ? 'Formula estimate' : null })];
     if (e.formula) {
@@ -73,7 +69,23 @@ function estimateCard(d, series, rerender) {
     return el('section', { class: 'card tr-chart-card', 'aria-label': 'Expenditure estimate' }, kids);
   }
 
-  const range = RANGES.find((r) => r.id === rangeId);
+  const parts = expenditureChart(d, series, { range: rangeId, onRange: (v) => { rangeId = v; rerender(); } });
+  return el('section', { class: 'card tr-chart-card', 'aria-label': 'Expenditure estimate' },
+    cardHeader('Estimate', { trail: parts.seg }), parts.figures, parts.tag, parts.chart, parts.changes);
+}
+
+/**
+ * The expenditure chart (line = estimate per day, dots = complete-day intake) with its range switch, two
+ * header figures and the 7 / 14 / 30 / 90-day changes. Used here and, compact, on the Trends dashboard
+ * (`second`: the figure next to expenditure, intake average here, the target there). Needs d.estimate ok.
+ * @param {object} d loadTrendsData() @param {{date: string, tdee: number}[]} series estimateSeries()
+ * @param {{range: string, onRange: (id: string) => void, second?: {label: string, value: string, unit: string}}} o
+ */
+export function expenditureChart(d, series, { range: id, onRange, second = null }) {
+  const e = d.estimate;
+  const range = RANGES.find((r) => r.id === id) || RANGES[0];
+  const seg = segmented({ small: true, ariaLabel: 'Chart range', value: range.id,
+    options: RANGES.map((r) => ({ value: r.id, label: r.label, ariaLabel: r.name })), onChange: onRange });
   const from = addDays(d.today, -(range.days - 1));
   const valid = new Map(classifyIntake(d.intake, d.today, d.config).filter((r) => r.valid).map((r) => [r.date, r.kcal]));
   const est = new Map(series.map((r) => [r.date, r.tdee]));
@@ -82,27 +94,28 @@ function estimateCard(d, series, rerender) {
   const now = displayTdee(e.tdee);
   const changes = [7, 14, 30, 90].map((n) => {
     const base = est.get(addDays(d.today, -n));
-    return base === undefined ? null : { label: `${n} d`, value: signed(now - displayTdee(base), 0) };
+    return base === undefined ? null : { label: `${n} d`, value: `${signed(now - displayTdee(base), 0)} kcal` };
   }).filter(Boolean);
   const intakeAvg = e.basis.meanIntake;
-  return el('section', { class: 'card tr-chart-card', 'aria-label': 'Expenditure estimate' },
-    cardHeader('Estimate', { trail: seg }),
-    figures(
+  return {
+    seg,
+    figures: figures(
       { label: 'Expenditure', value: tdeeText(e.tdee), unit: 'kcal / day' },
-      { label: 'Intake avg', value: intakeAvg === null ? '–' : fmtGrouped(intakeAvg), unit: 'kcal' }),
-    el('div', { class: 'tr-tagrow' }, tag(confidenceText(e), { tone: e.confidence === 'low' ? 'warn' : 'neutral' }),
+      second || { label: 'Intake avg', value: intakeAvg === null ? '–' : fmtGrouped(intakeAvg), unit: 'kcal / day' }),
+    tag: el('div', { class: 'tr-tagrow' }, tag(confidenceText(e), { tone: e.confidence === 'low' ? 'warn' : 'neutral' }),
       e.confidence === 'low' ? el('span', { class: 't-sub muted' }, 'low confidence') : null),
-    items.some((r) => r.line !== null)
+    chart: items.some((r) => r.line !== null)
       ? trendChart({
         items, from, to: d.today, today: d.today, minSpan: 100, axisDecimals: 0,
         ariaLabel: `Expenditure from ${fmtDate(from)} to ${fmtDate(d.today)}: the line is the estimate, dots are complete-day intake`,
         readout: (r) => (r
-          ? [fmtDate(r.date), r.line !== null ? `expenditure ${fmtGrouped(r.line)}` : null, r.dot !== null ? `intake ${fmtGrouped(r.dot)} kcal` : 'no complete day'].filter(Boolean).join(' · ')
-          : `Today · ${tdeeText(e.tdee)} kcal / day`),
+          ? [fmtDate(r.date), r.line !== null ? `expenditure ${fmtGrouped(r.line)} kcal` : null, r.dot !== null ? `intake ${fmtGrouped(r.dot)} kcal` : 'no complete day'].filter(Boolean).join(' · ')
+          : 'Tap a day'),
         legend: ['Intake, complete days', 'Expenditure'],
       })
       : null,
-    changeTable(changes));
+    changes: changeTable(changes),
+  };
 }
 
 function basisCard(d) {
@@ -128,7 +141,8 @@ function checkInCard(d, answer) {
   const review = el('div', { class: 'tr-review' },
     el('div', { class: 't-cap muted' }, `Last week · ${weekRange(ci.reviewFrom)}`),
     fig('Average intake', ci.avgIntake === null ? 'nothing logged' : `${fmtGrouped(ci.avgIntake)} kcal · ${ci.daysLogged} day${ci.daysLogged === 1 ? '' : 's'}`),
-    fig('Trend change', ci.trendChange === null ? '–' : `${signed(ci.trendChange, 1)} kg`),
+    // A change over one week, i.e. a rate: two decimals, like the goal next to it.
+    fig('Trend change', ci.trendChange === null ? '–' : `${signed(ci.trendChange, 2)} kg / week`),
     fig(ci.basisKind === 'formula' ? 'Expenditure (formula)' : 'Expenditure', ci.tdee === null ? 'not available' : `${tdeeText(ci.tdee)} kcal`),
     el('div', { class: 'tr-row' }, el('span', { class: 'tr-row-label' }, 'Goal'),
       el('span', { class: 'tr-row-value' }, goalText(d.goal.rateKgPerWeek)),
@@ -163,7 +177,7 @@ function checkInCard(d, answer) {
   if (p.split === 'percent' && t.pct) notes.push(`Split ${fmtNum(t.pct.protein)} / ${fmtNum(t.pct.carbs)} / ${fmtNum(t.pct.fat)} % kept; only calories change.`);
   if (t.source !== 'adaptive') notes.push('Accepting switches targets to adaptive.');
 
-  const kids = [head, review, hero, cmp, notes.length ? el('ul', { class: 'tr-notes t-sub muted' }, notes.map((n) => el('li', null, n))) : null];
+  const kids = [head, review, hero, cmp, notes.length ? el('div', { class: 'tr-notes t-sub muted' }, notes.map((n) => el('p', null, n))) : null];
   if (done) {
     kids.push(el('p', { class: 'tr-done t-sub', role: 'status' }, icon('check', { size: 18 }),
       el('span', null, done.decision === 'accepted' ? `Accepted ${fmtGrouped(done.kcalTarget)} kcal.` : 'Kept current targets.',

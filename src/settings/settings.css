@@ -42,16 +42,16 @@
 .set-stepper { display: flex; align-items: center; gap: var(--s1); flex: none; }
 .set-stepper .set-step.btn.btn-icon.btn-ghost { background: var(--fill); color: var(--ink); border-radius: var(--r-md); }
 .set-stepper .set-step.btn.btn-icon.btn-ghost:disabled { color: var(--ink-3); }
-.set-goal-signed { width: 5.2em; }
-.set-row .set-goal-signed .input { padding-left: 1.4em; padding-right: var(--s2); text-align: center; font-size: var(--fs-head); font-weight: var(--fw-semibold); }
-.set-goal-sign { position: absolute; left: var(--s2); font-size: var(--fs-head); font-weight: var(--fw-semibold); pointer-events: none; }
+.set-row .set-goal-val.input { flex: none; width: 4.4em; padding: 0 2px; border-color: transparent; background: transparent; text-align: center;
+  font-size: var(--fs-head); line-height: var(--lh-head); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
+.set-row .set-goal-val.input:focus { border-color: var(--accent); background: var(--fill); }
+.set-row .set-goal-val.input[aria-invalid="true"] { border-color: var(--bad); background: var(--bad-soft); }
 .set-goal-result { padding: var(--s3) var(--s4) var(--s4); border-top: 1px solid var(--line); font-size: var(--fs-body); line-height: var(--lh-body); font-weight: var(--fw-semibold); }
 .set-goal-row[hidden] + .set-goal-result { border-top: 0; padding-top: var(--s2); }
 .set-goal-result.is-error { color: var(--bad-text); }
 @media (max-width: 360px) {
   .set-row { gap: var(--s2); padding-left: var(--s3); padding-right: var(--s3); }
   .set-row > .input-unit, .set-row > .input { width: 6.6em; }
-  .set-goal-signed { width: 4.6em; }
 }
 
 /* Licences screen */

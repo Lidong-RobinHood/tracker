@@ -162,3 +162,81 @@ export const SEED_EXERCISES = Object.freeze([
   ex('leg-press-calf-raise', 'Calf Raise (Leg Press)', 'machine', ['calves']),
   ex('single-leg-calf-raise', 'Single-Leg Calf Raise (Dumbbell)', 'dumbbell', ['calves']),
 ]);
+
+// ---------------------------------------------------------------- movement patterns and gear
+// Used by the split library's swap list (src/core/splits.js alternatives()). Kept apart from the seed
+// records on purpose: nothing here is stored in the database; custom exercises have no entry and fall
+// back to the muscle rule.
+
+/** Movement pattern of every seed exercise (id → pattern). */
+export const EXERCISE_PATTERN = Object.freeze(Object.fromEntries(Object.entries({
+  'press-horizontal': ['bench-press', 'decline-bench-press', 'dumbbell-bench-press', 'machine-chest-press', 'push-up', 'dip'],
+  'press-incline': ['incline-bench-press', 'incline-dumbbell-press', 'incline-machine-press', 'smith-incline-press'],
+  fly: ['dumbbell-fly', 'incline-dumbbell-fly', 'pec-deck', 'cable-crossover', 'low-to-high-cable-fly'],
+  'pull-vertical': ['pull-up', 'neutral-grip-pull-up', 'chin-up', 'assisted-pull-up', 'lat-pulldown', 'close-grip-lat-pulldown', 'single-arm-lat-pulldown'],
+  pullover: ['straight-arm-pulldown'],
+  row: ['barbell-row', 'pendlay-row', 't-bar-row', 'dumbbell-row', 'chest-supported-dumbbell-row', 'seated-cable-row', 'machine-row', 'meadows-row', 'inverted-row'],
+  hinge: ['deadlift', 'trap-bar-deadlift', 'rack-pull', 'romanian-deadlift', 'dumbbell-romanian-deadlift', 'good-morning', 'back-extension'],
+  shrug: ['barbell-shrug', 'dumbbell-shrug'],
+  carry: ['farmers-carry'],
+  'press-vertical': ['overhead-press', 'seated-dumbbell-press', 'arnold-press', 'machine-shoulder-press', 'landmine-press'],
+  'raise-lateral': ['lateral-raise', 'cable-lateral-raise', 'machine-lateral-raise'],
+  'upright-row': ['upright-row'],
+  'raise-front': ['front-raise'],
+  'rear-delt': ['rear-delt-fly', 'reverse-pec-deck', 'face-pull'],
+  curl: ['barbell-curl', 'ez-bar-curl', 'dumbbell-curl', 'hammer-curl', 'incline-dumbbell-curl', 'preacher-curl', 'machine-preacher-curl', 'cable-curl', 'bayesian-cable-curl', 'concentration-curl', 'spider-curl'],
+  'triceps-press': ['close-grip-bench-press', 'machine-dip', 'bench-dip'],
+  'triceps-extension': ['triceps-pushdown', 'rope-pushdown', 'overhead-cable-extension', 'overhead-dumbbell-extension', 'skull-crusher', 'dumbbell-kickback'],
+  forearm: ['wrist-curl', 'reverse-wrist-curl', 'reverse-curl'],
+  'ab-flexion': ['crunch', 'cable-crunch', 'machine-crunch', 'hanging-leg-raise', 'decline-sit-up'],
+  'ab-brace': ['ab-wheel-rollout', 'plank'],
+  squat: ['back-squat', 'front-squat', 'smith-squat', 'hack-squat', 'pendulum-squat', 'leg-press', 'goblet-squat'],
+  lunge: ['bulgarian-split-squat', 'walking-lunge', 'step-up'],
+  'leg-extension': ['leg-extension'],
+  'hip-thrust': ['hip-thrust', 'glute-bridge'],
+  'glute-isolation': ['cable-kickback', 'hip-abduction'],
+  'leg-curl': ['lying-leg-curl', 'seated-leg-curl', 'nordic-curl'],
+  calf: ['standing-calf-raise', 'seated-calf-raise', 'leg-press-calf-raise', 'single-leg-calf-raise'],
+}).flatMap(([pattern, slugs]) => slugs.map((slug) => [`seed:${slug}`, pattern]))));
+
+/** Patterns a lifter accepts as a second choice for a pattern (shown after the same pattern). */
+export const RELATED_PATTERNS = Object.freeze({
+  'press-horizontal': ['press-incline'], 'press-incline': ['press-horizontal'], fly: [],
+  'pull-vertical': ['pullover', 'row'], pullover: ['pull-vertical'], row: ['pull-vertical'],
+  hinge: ['hip-thrust'], shrug: ['carry'], carry: ['shrug'],
+  'press-vertical': [], 'raise-lateral': ['upright-row'], 'upright-row': ['raise-lateral', 'shrug'], 'raise-front': [],
+  'rear-delt': [], curl: [], 'triceps-press': ['triceps-extension'], 'triceps-extension': ['triceps-press'], forearm: ['curl'],
+  'ab-flexion': ['ab-brace'], 'ab-brace': ['ab-flexion'], squat: ['lunge'], lunge: ['squat'], 'leg-extension': [],
+  'hip-thrust': ['hinge', 'glute-isolation'], 'glute-isolation': ['hip-thrust'], 'leg-curl': [], calf: [],
+});
+
+/**
+ * Gear a seed exercise needs beyond the floor, when it differs from its equipment type
+ * (barbell → barbell, dumbbell → dumbbells, machine → machine, cable → cable, bodyweight → nothing,
+ * other → other). See exerciseGear().
+ */
+const GEAR_OVERRIDE = Object.freeze({
+  'seed:dumbbell-bench-press': ['dumbbells', 'bench'], 'seed:incline-dumbbell-press': ['dumbbells', 'bench'],
+  'seed:dumbbell-fly': ['dumbbells', 'bench'], 'seed:incline-dumbbell-fly': ['dumbbells', 'bench'],
+  'seed:chest-supported-dumbbell-row': ['dumbbells', 'bench'], 'seed:dumbbell-row': ['dumbbells', 'bench'],
+  'seed:seated-dumbbell-press': ['dumbbells', 'bench'], 'seed:incline-dumbbell-curl': ['dumbbells', 'bench'],
+  'seed:spider-curl': ['dumbbells', 'bench'], 'seed:bulgarian-split-squat': ['dumbbells', 'bench'], 'seed:step-up': ['dumbbells', 'bench'],
+  'seed:dip': ['dip-bars'], 'seed:pull-up': ['pull-up-bar'], 'seed:neutral-grip-pull-up': ['pull-up-bar'], 'seed:chin-up': ['pull-up-bar'],
+  'seed:hanging-leg-raise': ['pull-up-bar'], 'seed:inverted-row': ['low-bar'], 'seed:back-extension': ['back-extension-bench'],
+  'seed:bench-dip': ['bench'], 'seed:decline-sit-up': ['decline-bench'], 'seed:nordic-curl': ['anchor'], 'seed:ab-wheel-rollout': ['ab-wheel'],
+});
+const GEAR_BY_EQUIPMENT = Object.freeze({ barbell: ['barbell'], dumbbell: ['dumbbells'], machine: ['machine'], cable: ['cable'], bodyweight: [], other: ['other'] });
+
+/** What a home split assumes: dumbbells, a bench and a pull-up bar. */
+export const HOME_GEAR = Object.freeze(['dumbbells', 'bench', 'pull-up-bar']);
+
+/** Gear an exercise needs (seed override, else from its equipment type). @returns {readonly string[]} */
+export function exerciseGear(ex) {
+  if (!ex) return ['other'];
+  return GEAR_OVERRIDE[ex.id] || GEAR_BY_EQUIPMENT[ex.equipment] || ['other'];
+}
+
+/** True when the exercise needs nothing beyond HOME_GEAR. */
+export function fitsHome(ex) {
+  return exerciseGear(ex).every((g) => HOME_GEAR.includes(g));
+}

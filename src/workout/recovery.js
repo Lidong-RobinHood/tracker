@@ -4,7 +4,7 @@
 import * as db from '../db/db.js';
 import {
   el, replaceChildren, append, pageHeader, href, fmtTime, fmtNum, toast, openSheet, numberInput, field,
-  cardHeader, sectionHeader, segmented, infoButton, icon, bodyMap, muscleIcon, setBodyMapValues,
+  tag, sectionHeader, segmented, infoButton, icon, bodyMap, muscleIcon, setBodyMapValues,
 } from '../ui/index.js';
 import {
   muscleRecovery, sortByRecovery, recoveryWords, STATUS_LABEL, RECOVERY_CONFIG, RECOVERY_KEY,
@@ -15,8 +15,9 @@ import { ensureCss, loadExercises, confirmAction } from './data.js';
 
 const H = 3600000;
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-/** Core status -> body-map / muscle-icon state. Recovered muscles stay neutral on the map. */
-const MAP_STATE = { recovering: 'recovering', 'likely-ready': 'ready', fresh: 'fresh' };
+/** Core status -> body-map / muscle-icon / bar state. Recovered muscles are neutral everywhere (map,
+ * legend, chips, detail list): red / amber only while recovering / likely ready; the label says which. */
+const MAP_STATE = { recovering: 'recovering', 'likely-ready': 'ready', fresh: 'neutral' };
 /** "Recently trained" on the home card: muscles trained within this many days. */
 const HOME_DAYS = 7;
 
@@ -56,7 +57,9 @@ function relative(ms, now) {
 
 function ariaText(r, now) {
   if (!r.trained) return `${r.name}: no training in the last ${RECOVERY_CONFIG.lookbackDays} days.`;
-  return `${r.name}: ${STATUS_LABEL[r.status]}, ${recoveryWords(r)}. Last trained ${lastLine(r)}. `
+  // recoveryWords repeats the status for likely ready / recovered: say it once
+  const words = recoveryWords(r).replace(/^likely ready — /, '').replace(/^recovered$/, '');
+  return `${r.name}: ${STATUS_LABEL[r.status]}${words ? `, ${words}` : ''}. Last trained ${lastLine(r)}. `
     + `Estimated window ${r.minHours} to ${r.maxHours} hours; ${r.progress} percent through it.`
     + (r.status === 'fresh' ? '' : ` Ready from ${absTime(r.readyAt)} (${relative(r.readyAt, now)}), fully recovered by ${absTime(r.fullAt)} (${relative(r.fullAt, now)}).`);
 }
@@ -75,8 +78,13 @@ function chipTime(r) {
   return STATUS_LABEL[r.status];
 }
 
+/** Status dot: red / amber; recovered = the neutral body-map colour (as on the map). */
+function dot(status) {
+  return el('span', { class: ['dot', MAP_STATE[status] === 'neutral' ? 'wk-dot-idle' : `is-${MAP_STATE[status]}`] });
+}
+
 function statusLine(r) {
-  return el('span', { class: 'wk-rc-st' }, el('span', { class: ['dot', `is-${MAP_STATE[r.status]}`] }), STATUS_LABEL[r.status]);
+  return el('span', { class: 'wk-rc-st' }, dot(r.status), STATUS_LABEL[r.status]);
 }
 
 /**
@@ -89,7 +97,7 @@ export function recoverySection(workouts, exMap, weights, setting, now = Date.no
   const rows = sortByRecovery(muscleRecovery(workouts, exMap, weights, { now, ...recoveryOpts(setting) }));
   const byId = new Map(rows.map((r) => [r.muscle, r]));
   const active = rows.filter((r) => r.trained && r.status !== 'fresh');
-  const rested = rows.filter((r) => !active.includes(r));
+  const recovered = rows.filter((r) => !active.includes(r));
   const anyRecent = rows.some((r) => r.trained && now - r.lastAt < HOME_DAYS * 24 * H);
   const values = Object.fromEntries(active.map((r) => [r.muscle, MAP_STATE[r.status]]));
 
@@ -119,24 +127,26 @@ export function recoverySection(workouts, exMap, weights, setting, now = Date.no
     muscleIcon(r.muscle, { state: MAP_STATE[r.status] }),
     el('span', { class: 'wk-mchip-main' },
       el('span', { class: 'wk-mchip-name' }, r.name),
-      el('span', { class: 'wk-mchip-st' }, el('span', { class: ['dot', `is-${MAP_STATE[r.status]}`] }), chipTime(r)))));
+      el('span', { class: 'wk-mchip-st' }, dot(r.status), chipTime(r)))));
   }
 
-  return el('section', { class: 'card wk-rc-card', 'data-recovery': '' },
-    cardHeader('Muscle recovery', { tag: 'Estimate', info: 'recovery' }),
+  // Section title above the card (home uses caps titles only: three type sizes plus the page title).
+  return el('section', { class: 'section', 'data-recovery': '' },
+    sectionHeader('Muscle recovery', { info: 'recovery', trail: tag('Estimate') }),
+    el('div', { class: 'card wk-rc-card' },
     el('div', { class: 'wk-map-row' },
       map,
       el('ul', { class: 'legend wk-map-legend' },
         el('li', el('span', { class: 'swatch is-recovering' }), 'Recovering'),
         el('li', el('span', { class: 'swatch is-ready' }), 'Likely ready'),
-        el('li', el('span', { class: 'swatch is-fresh' }), 'Recovered'))),
+        el('li', el('span', { class: 'swatch' }), 'Recovered'))),
     chips.length ? el('div', { class: 'wk-mchips' }, chips) : null,
     !anyRecent && !active.length
-      ? el('p', { class: 't-sub muted wk-rc-rested' }, 'All muscles rested.')
-      : rested.length ? el('p', { class: 't-sub wk-rc-rested' },
-        el('span', { class: 'dot is-fresh' }),
-        el('span', el('span', { class: 'strong' }, 'Recovered'), ' ', el('span', { class: 'muted' }, rested.map((r) => r.name).join(' · ')))) : null,
-    detail);
+      ? el('p', { class: 't-sub muted wk-rc-rested' }, 'All muscles recovered.')
+      : recovered.length ? el('p', { class: 't-sub wk-rc-rested' },
+        dot('fresh'),
+        el('span', el('span', { class: 'strong' }, 'Recovered'), ' ', el('span', { class: 'muted' }, recovered.map((r) => r.name).join(' · ')))) : null,
+    detail));
 }
 
 const PACES = [
@@ -255,7 +265,7 @@ export async function mountRecovery(container) {
         el('ul', { class: 'legend wk-map-legend' },
           el('li', el('span', { class: 'swatch is-recovering' }), 'Recovering'),
           el('li', el('span', { class: 'swatch is-ready' }), 'Likely ready'),
-          el('li', el('span', { class: 'swatch is-fresh' }), 'Recovered')))),
+          el('li', el('span', { class: 'swatch' }), 'Recovered')))),
     el('section', { class: 'section' }, sectionHeader('Your pace'), pace),
     el('section', { class: 'section' }, sectionHeader('All muscles'), el('div', { class: 'card card-flush' }, listHost)),
     el('section', { class: 'section' },
@@ -270,7 +280,7 @@ function detailRow(r, now) {
   const state = r.trained ? MAP_STATE[r.status] : null;
   if (!r.trained) {
     return el('div', { class: 'list-item wk-rc-item' },
-      muscleIcon(r.muscle),
+      muscleIcon(r.muscle, { state: 'neutral' }),
       el('div', { class: 'li-main' },
         el('div', { class: 'li-title' }, r.name),
         el('div', { class: 'li-sub' }, `Not trained in ${RECOVERY_CONFIG.lookbackDays} days`)));

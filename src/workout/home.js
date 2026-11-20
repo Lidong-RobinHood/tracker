@@ -3,7 +3,7 @@
 // Analysis / History. Route: workout
 import * as db from '../db/db.js';
 import {
-  el, append, replaceChildren, pageHeader, fmtTime, fmtNum, href, icon, cardHeader, sectionHeader, segmented,
+  el, append, replaceChildren, pageHeader, fmtTime, fmtNum, href, icon, sectionHeader, segmented,
   bodyMap, setBodyMapValues,
 } from '../ui/index.js';
 import { today } from '../core/dates.js';
@@ -47,7 +47,7 @@ export async function mountHome(container) {
     append(container, el('a', { class: 'card wk-resume', href: href(`workout/session/${encodeURIComponent(open.id)}`) },
       el('div', { class: 'grow wk-min0' },
         el('div', { class: 't-cap wk-kicker' }, isLiveOpen(open) ? 'In progress' : 'Not finished'),
-        el('div', { class: 't-head truncate' }, open.name),
+        el('div', { class: 'strong truncate' }, open.name),
         el('div', { class: 't-sub muted' }, `${resumeWhen(open)} · ${st.setsDone} set${st.setsDone === 1 ? '' : 's'} done`)),
       el('span', { class: 'btn btn-primary' }, icon('play'), 'Resume')));
   }
@@ -57,29 +57,35 @@ export async function mountHome(container) {
   const splitTrail = el('span', { class: 'li-trail muted' }, followed ? followed.name : null);
   const nextSlot = el('div', { class: 'wk-next-slot', hidden: true });
   append(container, nextSlot);
+  const startSlot = el('div', { class: 'wk-start-slot' });
+  append(container, startSlot);
+  // Next up is the primary action; the Start list then holds the other routines (never the next one twice).
+  let nextId = null;
   const nextCard = await nextUpCard({
-    onChange: () => { replaceChildren(nextSlot); nextSlot.hidden = true; replaceChildren(splitTrail); },
+    onChange: () => { replaceChildren(nextSlot); nextSlot.hidden = true; replaceChildren(splitTrail); nextId = null; paintStart(); },
   });
-  if (nextCard) { replaceChildren(nextSlot, nextCard); nextSlot.hidden = false; }
+  if (nextCard) { replaceChildren(nextSlot, nextCard); nextSlot.hidden = false; nextId = nextCard.dataset.routineId || null; }
 
-  // Start
+  // Start: one row pattern. Routines and Empty workout: label + "Start"; other rows: label + chevron.
   const start = (r) => navAction(() => startWorkout(r));
   const startRow = (title, sub, onClick) => el('button', { type: 'button', class: 'list-item', onClick },
     el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, title), sub ? el('div', { class: 'li-sub' }, sub) : null),
     el('span', { class: 'wk-go', 'aria-hidden': 'true' }, 'Start'));
-  const linkRow = (path, title) => el('a', { class: 'list-item', href: href(path) },
-    el('div', { class: 'li-main' }, el('div', { class: 'li-title wk-link' }, title)),
+  const navRow = (title, props) => el(props.href ? 'a' : 'button', { class: 'list-item', ...(props.href ? {} : { type: 'button' }), ...props },
+    el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, title)),
     icon('chevron-right', { class: 'li-chevron' }));
-  append(container, el('section', { class: 'section' },
-    sectionHeader('Start'),
-    el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
-      ...routines.map((r) => startRow(r.name, routineSub(r, exMap), start(r))),
-      startRow('Empty workout', null, start(null)),
-      el('button', { type: 'button', class: 'list-item', onClick: () => logPastWorkout(routines) },
-        el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, 'Log a past workout')),
-        icon('calendar', { class: 'li-chevron' })),
-      routines.length ? null : linkRow('workout/routines', 'Create a routine'),
-      routines.length ? null : linkRow('workout/splits', 'Browse splits')))));
+  function paintStart() {
+    const others = routines.filter((r) => r.id !== nextId);
+    replaceChildren(startSlot, el('section', { class: 'section' },
+      sectionHeader('Start'),
+      el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
+        ...others.map((r) => startRow(r.name, routineSub(r, exMap), start(r))),
+        startRow('Empty workout', null, start(null)),
+        navRow('Log a past workout', { onClick: () => logPastWorkout(routines) }),
+        routines.length ? null : navRow('Create a routine', { href: href('workout/routines') }),
+        routines.length ? null : navRow('Browse splits', { href: href('workout/splits') })))));
+  }
+  paintStart();
 
   // Starting point prompt while history is thin (always linked below as well)
   if (!baseline && finishedCount < THIN_HISTORY) {
@@ -172,7 +178,7 @@ function setsCard(workouts, exMap, weights, targets) {
         if (!r) continue;
         p.setAttribute('tabindex', '0');
         p.setAttribute('role', 'button');
-        p.setAttribute('aria-label', `${r.name}: ${fmtNum(r.current, 2)} sets`);
+        p.setAttribute('aria-label', `${r.name}: ${setsN(r.current)}`);
         p.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(r.muscle); }
         });
@@ -223,12 +229,13 @@ function setsCard(workouts, exMap, weights, targets) {
     options: [{ value: 'bars', label: 'Bars' }, { value: 'map', label: 'Map' }],
     onChange: (v) => { view.sets = v; paint(); },
   });
-  return el('section', { class: 'card wk-sets-card' },
-    withSetsInfo(cardHeader('Sets this week', { trail: toggle }), weights),
-    body,
-    el('div', { class: 'wk-card-links' },
-      el('a', { class: 'btn btn-ghost btn-sm', href: href('workout/targets') }, hasTargets ? 'Edit targets' : 'Set targets'),
-      el('a', { class: 'btn btn-ghost btn-sm', href: href('settings/sets') }, 'Set weighting')));
+  return el('section', { class: 'section' },
+    withSetsInfo(sectionHeader('Sets this week', { trail: toggle }), weights),
+    el('div', { class: 'card wk-sets-card' },
+      body,
+      el('div', { class: 'wk-card-links' },
+        el('a', { class: 'btn btn-ghost btn-sm', href: href('workout/targets') }, hasTargets ? 'Edit targets' : 'Set targets'),
+        el('a', { class: 'btn btn-ghost btn-sm', href: href('settings/sets') }, 'Set weighting'))));
 }
 
 function link(path, title, trail) {
@@ -236,6 +243,11 @@ function link(path, title, trail) {
     el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, title)),
     trail ? el('span', { class: 'li-trail muted' }, trail) : null,
     icon('chevron-right', { class: 'li-chevron' }));
+}
+
+/** '1 set', '6.5 sets' */
+function setsN(n) {
+  return `${fmtNum(n, 2)} ${n === 1 ? 'set' : 'sets'}`;
 }
 
 function routineSub(r, exMap) {
@@ -258,7 +270,7 @@ function volumeRow(r, target, max, b, weights) {
   if (!tp) {
     return el('button', {
       type: 'button', class: 'wk-vol-row',
-      'aria-label': `${r.name}: ${fmtNum(r.current, 2)} sets this week (${breakdownAria(b, weights)}), ${fmtNum(r.previous, 2)} last week`,
+      'aria-label': `${r.name}: ${setsN(r.current)} this week (${breakdownAria(b, weights)}), ${fmtNum(r.previous, 2)} last week`,
     },
     el('span', { class: 'wk-vol-name' }, r.name),
     setsBar(b, r.current / max),

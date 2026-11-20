@@ -200,16 +200,3 @@ export function intakeChart(days, target, weeks, todayStr) {
     target ? el('li', null, el('span', { class: 'tr-key tr-key-target', 'aria-hidden': 'true' }), 'Target') : null);
   return el('div', { class: 'tr-chart' }, readout, svg, legend);
 }
-
-/** Tiny trend sparkline for the dashboard (no axes). */
-export function sparkline(rows) {
-  const W = 96; const H = 32;
-  if (rows.length < 2) return null;
-  const vals = rows.map((r) => r.trend);
-  let lo = Math.min(...vals); let hi = Math.max(...vals);
-  if (hi - lo < 0.5) { const m = (hi + lo) / 2; lo = m - 0.25; hi = m + 0.25; }
-  const d0 = rows[0].date; const span = Math.max(1, daysBetween(d0, rows[rows.length - 1].date));
-  const path = rows.map((r, i) => `${i ? 'L' : 'M'}${(2 + (daysBetween(d0, r.date) / span) * (W - 4)).toFixed(1)},${(3 + (1 - (r.trend - lo) / (hi - lo)) * (H - 6)).toFixed(1)}`).join('');
-  return s('svg', { class: 'tr-spark', viewBox: `0 0 ${W} ${H}`, 'aria-hidden': 'true' }, s('path', { class: 'tr-trend', d: path }));
-}
-

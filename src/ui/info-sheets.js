@@ -55,6 +55,14 @@ export const INFO_SHEETS = Object.freeze({
       'Change the factors in Settings › Set weighting. With a target, a row shows done / target and the bar fills at 100 %.',
     ],
   },
+  'sets-workout': {
+    title: 'Sets per muscle',
+    defaults: { ...DEFAULT_VOLUME },
+    text: (v) => [
+      `Done normal sets of this workout per muscle. Direct (the muscle is a main mover) counts × ${n(v.primary)}; partial (it assists) × ${n(v.secondary)}; dropsets × ${n(v.dropset)}.`,
+      'They add to the weekly sets of that week.',
+    ],
+  },
   tonnage: {
     title: 'Tonnage',
     text: () => [
@@ -84,9 +92,11 @@ export const INFO_SHEETS = Object.freeze({
   },
   progression: {
     title: 'Weight suggestions',
-    text: () => [
-      'When every set at your top weight reaches the target reps (or the top of a range like 3 × 6–8), a chip suggests that weight + the weight step. Warm-up and back-off sets are ignored; the starting point never triggers it.',
-      'Nothing changes until you tap. Weight step 0 = no suggestions. Empty target weight = bodyweight or no weight target.',
+    // v.reason: the session's own reason (first line), e.g. from the chip's ⓘ in a workout
+    text: (v) => [
+      ...(v.reason ? [v.reason] : []),
+      'All target sets at your top weight must reach the target reps (the top of a range like 3 × 6–8); then a chip suggests that weight + the weight step. Lighter warm-up and back-off sets are ignored, dropsets never count, and the starting point never triggers it.',
+      'Nothing changes until you tap the chip. Weight step 0 = no suggestions.',
     ],
   },
   starting: {
@@ -113,7 +123,7 @@ export const INFO_SHEETS = Object.freeze({
   expenditure: {
     title: 'Expenditure',
     text: () => [
-      'Calories you burn per day on average, including training. From your data: estimated from logged food and the weight trend.',
+      'Average kcal / day you burn, including training. From your data: estimated from logged food and the weight trend.',
       `It needs, in the last ${A.windowDays} days, ${A.minWeighIns} weigh-ins and ${A.minLoggedDays} complete days, plus ${A.minSpanDays} days of history and a weigh-in in the last ${A.maxStaleDays} days. Until then: formula (Mifflin-St Jeor × activity) from your profile. Skipped days make it too low.`,
     ],
   },
@@ -121,7 +131,7 @@ export const INFO_SHEETS = Object.freeze({
     title: 'Weekly check-in',
     text: () => [
       'Each Monday, Trends proposes calorie targets for the week from your expenditure and goal. Accept applies them; Keep current changes nothing.',
-      `Changes are capped at ${A.maxWeeklyChange} kcal per week and never go below the calorie floor.`,
+      `Changes are capped at ${A.maxWeeklyChange} kcal / week and never go below the calorie floor.`,
     ],
   },
   complete: {
@@ -148,14 +158,14 @@ export const INFO_SHEETS = Object.freeze({
   macros: {
     title: 'Macro percentages',
     text: () => [
-      'Protein and carbs 4 kcal per g, fat 9 kcal per g. Grams are rounded to whole numbers.',
+      'Protein and carbs 4 kcal / g, fat 9 kcal / g. Grams are rounded to whole numbers.',
       'Weekly report splits use complete days only.',
     ],
   },
   'adaptive-macros': {
     title: 'Adaptive macros',
     text: () => [
-      'Protein and fat are set per kg of trend weight; carbs fill the rest.',
+      'Protein and fat are set in g / kg of trend weight; carbs fill the rest.',
       `Calorie floor: the lowest target ever proposed. Empty = ${n(A.floors.female)} kcal female, ${n(A.floors.male)} male, ${n(A.floors.unknown)} otherwise.`,
       'With a percentage split, check-ins change calories only and these values are not used.',
     ],
@@ -163,7 +173,7 @@ export const INFO_SHEETS = Object.freeze({
   goal: {
     title: 'Weight goal',
     text: () => [
-      `Lose up to ${n(-GOAL_RATE_MIN)} kg or gain up to ${n(GOAL_RATE_MAX)} kg per week. The kcal figure is the daily gap to your expenditure this rate needs, at ${n(KCAL_PER_KG)} kcal per kg.`,
+      `Lose up to ${n(-GOAL_RATE_MIN)} kg or gain up to ${n(GOAL_RATE_MAX)} kg / week. The kcal figure is the daily gap to your expenditure this rate needs, at ${n(KCAL_PER_KG)} kcal / kg.`,
       'The weekly check-in uses it to propose targets.',
     ],
   },
@@ -191,7 +201,7 @@ export const INFO_SHEETS = Object.freeze({
   'import-workouts': {
     title: 'Workout paste format',
     text: () => [
-      'Exercise name on its own line, then 3 x 6 (sets x reps), then one line per set: kg, then reps. Dropset 5x 80 = 5 reps at 80 kg. A single number = bodyweight reps.',
+      'Exercise name on its own line, then 3 × 6 (sets × reps); 3 x 6 also works. Then one line per set: kg, reps. Dropset 5x 80 = 5 reps at 80 kg. A single number = bodyweight reps.',
       'A date line starts a new workout; a line like Push names it. Side-by-side sheets: copy one column group at a time.',
     ],
   },
@@ -203,11 +213,18 @@ export const INFO_SHEETS = Object.freeze({
       'Fewer days: full body. Four: upper / lower. Five or six: hybrid or push / pull / legs. Each muscle about twice a week is a simple default.',
     ],
   },
+  'split-run': {
+    title: 'Running a split',
+    text: () => [
+      'Do the sessions in order; Next up shows the one due. Rest a day before training the same muscles again.',
+      'All sets at the top of the rep range? Add weight next time; otherwise add a rep. Swap an exercise for one with the same main muscle. Stalled? Take an easy week with half the sets.',
+    ],
+  },
   'split-sets': {
     title: 'Weekly sets',
     defaults: { ...DEFAULT_VOLUME },
     text: (v) => [
-      `Planned sets per muscle per week. Direct (main mover) counts × ${n(v.primary)}, partial (assists) × ${n(v.secondary)}, as in your log.`,
+      `Planned sets per muscle in a week. Direct (main mover) counts × ${n(v.primary)}, partial (assists) × ${n(v.secondary)}, as in your log.`,
       'Weekly sets matter most; more tends to add a little more, with shrinking returns. Ranges are general guides, not prescriptions. Add sets only if you recover and keep progressing.',
     ],
   },

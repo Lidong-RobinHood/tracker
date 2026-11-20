@@ -12,9 +12,9 @@ export async function mountHub(container) {
   container.append(
     pageHeader({ title: 'Import data', subtitle: 'Preview first. Every import can be undone below.', back: 'settings' }),
     el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
-      item('import/workouts', 'barbell', 'Workouts from a spreadsheet', 'Pasted sheet or a .txt / .csv file'),
+      item('import/workouts', 'barbell', 'Workouts', 'Spreadsheet paste, .txt or .csv'),
       item('import/weights', 'scale', 'Body weight', 'Date and kg per line'),
-      item('import/food', 'utensils', 'Food diary', 'CSV from MyFitnessPal, Cronometer, FDDB'))),
+      item('import/food', 'utensils', 'Food diary', 'MyFitnessPal, Cronometer, FDDB (CSV)'))),
     el('section', { class: 'section' }, sectionHeader('Past imports'), runsBox));
 
   async function render() {
@@ -31,7 +31,7 @@ export async function mountHub(container) {
       type: 'button', class: 'btn btn-sm btn-danger imp-undo', 'aria-label': `Undo this import: ${runSummary(r)}`, onClick: async () => {
         const ok = await confirmDialog({
           title: 'Undo this import?',
-          message: `Removes ${runSummary(r)}. Your own entries stay.`,
+          message: undoMessage(r),
           confirmLabel: 'Undo import', danger: true,
         });
         if (!ok) return;
@@ -57,9 +57,17 @@ export async function mountHub(container) {
   await render();
 }
 
+/** 'Removes 1 entry on 1 day (19 Nov 2026) from the CSV import. Your own entries stay.' */
+function undoMessage(r) {
+  const text = runSummary(r);
+  const m = text.match(/^([^:]{1,40}): (.*)$/); // food runs: 'CSV: 1 entry on 1 day, 19 Nov 2026'
+  const body = (m ? m[2] : text).replace(/, (\w{3} \d{1,2} \w{3} \d{4}(?: – \w{3} \d{1,2} \w{3} \d{4})?)$/, ' ($1)');
+  return `Removes ${body}${m ? ` from the ${m[1]} import` : ''}. Your own entries stay.`;
+}
+
 function item(path, iconName, title, sub) {
   return el('a', { class: 'list-item', href: href(path) },
     el('span', { class: 'li-lead' }, icon(iconName)),
-    el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, title), el('div', { class: 'li-sub' }, sub)),
+    el('div', { class: 'li-main' }, el('div', { class: 'li-title imp-wrap' }, title), el('div', { class: 'li-sub imp-wrap' }, sub)),
     icon('chevron-right', { class: 'li-chevron' }));
 }

@@ -203,6 +203,23 @@ function prCount(timeline) {
 // ---------------------------------------------------------------- muscles
 
 /**
+ * Whole numbers for display that add up to the rounded total (largest-remainder rounding): each value
+ * is floored, then the values with the largest fractions get +1 until the sum is right. Ties: earlier
+ * first. Only for showing parts of a total (e.g. tonnage by muscle); the stored numbers are unchanged.
+ * @param {number[]} values non-negative
+ * @param {number} [total] default Σ values
+ * @returns {number[]}
+ */
+export function roundToTotal(values, total = values.reduce((a, v) => a + v, 0)) {
+  const target = Math.round(total);
+  const floors = values.map((v) => Math.floor(v + 1e-9));
+  let rest = target - floors.reduce((a, v) => a + v, 0);
+  const order = values.map((v, i) => [v - floors[i], i]).sort((x, y) => (y[0] - x[0]) || (x[1] - y[1]));
+  for (let k = 0; rest > 0 && k < order.length; k++, rest--) floors[order[k][1]] += 1;
+  return floors;
+}
+
+/**
  * Tonnage per primary muscle: each exercise's session tonnage (done normal sets with weight) is
  * split equally between its primary muscles. Secondary muscles get nothing. Unknown (deleted)
  * exercises go to 'unknown'.

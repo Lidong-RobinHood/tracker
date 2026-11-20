@@ -31,7 +31,8 @@ export async function nextUpCard({ onChange, showChange = true } = {}) {
   const routine = byId.get(next.routineId);
   const split = splitById(active.splitId);
 
-  const card = el('section', { class: 'card sp-next', 'aria-label': 'Next up' });
+  // dataset.routineId: the workout home leaves this routine out of its Start list
+  const card = el('section', { class: 'card sp-next', 'aria-label': 'Next up', dataset: { routineId: routine.id } });
   const stop = async () => {
     const ok = await confirmDialog({ title: 'Stop following?', message: 'Your routines stay.', confirmLabel: 'Stop following' });
     if (!ok) return;
@@ -45,7 +46,7 @@ export async function nextUpCard({ onChange, showChange = true } = {}) {
       split ? el('a', { class: 'sp-next-split t-sub muted', href: href(`workout/splits/${encodeURIComponent(split.id)}`) }, split.name) : null),
     el('div', { class: 'sp-next-main' },
       el('div', { class: 'li-main' },
-        el('div', { class: 't-head truncate' }, routine.name),
+        el('div', { class: 'strong truncate' }, routine.name),
         el('div', { class: 't-sub muted' }, `${names} exercise${names === 1 ? '' : 's'} · ${next.index + 1} of ${next.count}`)),
       el('button', {
         type: 'button', class: 'btn btn-primary',

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SPLITS, STYLES, LEVELS, EQUIPMENT, HOME_EQUIPMENT, SHARED_BULLETS, SPLIT_DISCLAIMER, splitById } from '../src/data/splits.js';
-import { SEED_EXERCISES } from '../src/data/exercises.js';
+import { SEED_EXERCISES, fitsHome, exerciseGear } from '../src/data/exercises.js';
 import { MUSCLE_IDS } from '../src/core/muscles.js';
 import { splitCoverage, perWeek, resolveSessions } from '../src/core/splits.js';
 
@@ -52,9 +52,34 @@ test('every exercise id exists; sets and reps in sane ranges', () => {
   }
 });
 
-test('home splits use only dumbbell / bodyweight exercises', () => {
+test('home splits use only dumbbell / bodyweight exercises that dumbbells, a bench and a pull-up bar allow', () => {
   for (const s of SPLITS.filter((x) => x.equipment === 'home')) for (const ses of s.sessions) for (const it of ses.items) {
     assert.ok(HOME_EQUIPMENT.includes(EX.get(it.exerciseId).equipment), `${s.id}: ${it.exerciseId} is ${EX.get(it.exerciseId).equipment}`);
+    assert.ok(fitsHome(EX.get(it.exerciseId)), `${s.id}: ${it.exerciseId} needs ${exerciseGear(EX.get(it.exerciseId))}`);
+  }
+});
+
+test('no split text claims a training frequency its coverage does not meet', () => {
+  // "days" = sessions a week in which the muscle is a main mover (splitCoverage daysHit)
+  const MAJOR = ['chest', 'back', 'shoulders', 'quads', 'glutes', 'hamstrings', 'biceps', 'triceps', 'calves', 'abs'];
+  const BIG = ['chest', 'back', 'shoulders', 'quads', 'glutes', 'hamstrings'];
+  const CLAIMS = [
+    [/\b(each muscle|every muscle|everything) twice/i, (d) => MUSCLE_IDS.every((m) => d[m] >= 2)],
+    [/\bmajor muscles twice/i, (d) => MAJOR.every((m) => d[m] >= 2)],
+    [/\bbig muscles twice/i, (d) => BIG.every((m) => d[m] >= 2)],
+    [/\barms and calves once/i, (d) => ['biceps', 'triceps', 'calves'].every((m) => d[m] >= 1)],
+    [/\b(each|every) muscle once/i, (d) => MUSCLE_IDS.every((m) => d[m] === 1)],
+    [/\bmost muscles once/i, (d) => MAJOR.filter((m) => d[m] === 1).length > MAJOR.length / 2],
+    [/\bup to four times/i, (d) => Math.max(...Object.values(d)) === 4],
+  ];
+  for (const s of SPLITS) {
+    const cov = splitCoverage(resolveSessions(s, { exercises: EX }), perWeek(s), EX, {});
+    const days = Object.fromEntries(MUSCLE_IDS.map((m) => [m, cov[m].daysHit]));
+    for (const t of [s.suits, ...s.bullets]) {
+      const known = CLAIMS.filter(([re]) => re.test(t));
+      if (/\b(once|twice|three times|four times)\b/i.test(t)) assert.ok(known.length, `${s.id}: unchecked frequency claim "${t}"`);
+      for (const [re, ok] of known) assert.ok(ok(days), `${s.id}: "${t}" (${re}) does not match ${JSON.stringify(days)}`);
+    }
   }
 });
 

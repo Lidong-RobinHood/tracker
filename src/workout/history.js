@@ -53,7 +53,7 @@ export async function mountHistory(container) {
           el('a', { class: 'wk-hrow-main', href: href(`workout/history/${encodeURIComponent(w.id)}`) },
             el('div', { class: 'li-main' },
               el('div', { class: 'li-title' }, w.name),
-              el('div', { class: 'li-sub' }, `${fmtDate(w.date)} · ${fmtDuration(st.durationMs)} · ${st.setsDone} sets`),
+              el('div', { class: 'li-sub' }, `${fmtDate(w.date)} · ${fmtDuration(st.durationMs)} · ${st.setsDone} set${st.setsDone === 1 ? '' : 's'}`),
               names.length ? el('div', { class: 'li-sub' }, names.join(', ')) : null)),
           el('a', {
             class: 'btn btn-icon btn-ghost wk-hrow-an', href: href(`workout/summary/${encodeURIComponent(w.id)}`),
@@ -73,7 +73,7 @@ function emptyItem(w) {
     el('button', {
       type: 'button', class: 'btn btn-icon btn-ghost text-danger wk-hrow-del', 'aria-label': `Delete ${w.name}, ${fmtDate(w.date)} (no sets logged)`,
       onClick: async () => {
-        const ok = await confirmAction({ title: 'Delete empty workout?', message: `"${w.name}" on ${fmtDate(w.date)} has no sets logged. Delete it?`, confirmLabel: 'Delete', danger: true });
+        const ok = await confirmAction({ title: 'Delete empty workout?', message: `“${w.name}” on ${fmtDate(w.date)} has no sets logged. Delete it?`, confirmLabel: 'Delete', danger: true });
         if (!ok) return;
         await db.remove('workouts', w.id);
         const section = row.closest('.section');
@@ -145,7 +145,7 @@ export async function mountHistoryDetail(container, { id }) {
   const rows = MUSCLES.filter((m) => vol[m.id]);
   const maxSets = Math.max(1, ...rows.map((m) => vol[m.id]));
   append(container, el('section', { class: 'section' },
-    withSetsInfo(sectionHeader('Sets per muscle', { trail: `${st.normalSets} sets${st.dropsets ? ` + ${st.dropsets} drop` : ''}` }), volumeWeights(weights)),
+    withSetsInfo(sectionHeader('Sets per muscle', { trail: `${st.normalSets} sets${st.dropsets ? ` + ${st.dropsets} drop` : ''}` }), volumeWeights(weights), 'sets-workout'),
     el('div', { class: 'card' }, rows.length
       ? el('div', { class: 'wk-hbars' }, rows.map((m) => el('div', { class: 'wk-hbar' },
         el('span', { class: 'wk-hbar-name' }, m.name),

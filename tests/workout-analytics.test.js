@@ -276,3 +276,13 @@ test('item 7: scopeBests — starting point is older than a real session on the 
     assert.equal(best.heaviest.baseline, true);
   }
 });
+
+test('roundToTotal: displayed parts add up to the shown total (largest remainder)', () => {
+  // 9 999 kg split into three muscles of 3 333 each: plain rounding is fine, thirds of 10 000 are not
+  assert.deepEqual(a.roundToTotal([3333, 3333, 3333]), [3333, 3333, 3333]);
+  const parts = [3333.4, 3333.3, 3332.3]; // Σ 9 999.0; Math.round each → 3333 + 3333 + 3332 = 9 998
+  assert.deepEqual(a.roundToTotal(parts), [3334, 3333, 3332]);
+  const p2 = [4999.5, 4999.5]; // Σ 9 999; Math.round each → 10 000
+  assert.equal(a.roundToTotal(p2).reduce((x, y) => x + y, 0), 9999);
+  assert.deepEqual(a.roundToTotal([]), []);
+});

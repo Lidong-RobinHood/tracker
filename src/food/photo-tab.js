@@ -338,11 +338,21 @@ export function buildPhotoScan({ date, meal, cleanups, onFinished, manual }) {
 
   function readyRows() { return rows.filter((r) => typeof r.amount === 'number' && r.amount > 0 && isComplete(r)); }
 
+  /** 'Estimated by Anthropic' over the model id (wraps instead of being cut off). */
+  function estimatedBy() {
+    if (!usedModel) return el('span', { class: 't-sub muted' }, 'Meal total');
+    const i = usedModel.indexOf(' · ');
+    const provider = i < 0 ? '' : usedModel.slice(0, i);
+    const model = i < 0 ? usedModel : usedModel.slice(i + 3);
+    return el('div', { class: 't-sub muted photo-estimated' }, el('div', null, provider ? `Estimated by ${provider}` : 'Estimated by'),
+      el('code', { class: 'model-id' }, model));
+  }
+
   function updateTotals() {
     const t = photoMealTotals(rows);
     replaceChildren(totalsEl,
       el('div', { class: 'row-between photo-total-line' },
-        el('span', { class: 't-sub muted' }, usedModel ? `Estimated by ${usedModel}` : 'Meal total'),
+        estimatedBy(),
         el('span', { class: 't-head num photo-total-kcal' }, `${fmtGrouped(t.kcal, 0)} kcal`)),
       el('div', { class: 't-sub muted num photo-total-macros' }, macroText(t)));
     const incomplete = rows.length - readyRows().length;

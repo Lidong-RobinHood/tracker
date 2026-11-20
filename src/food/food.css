@@ -8,6 +8,13 @@
 }
 .date-picker:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .today-link { align-self: flex-start; }
+/* native date input shown as the app's date (widgets.js dateBox) */
+.date-box { position: relative; display: flex; align-items: center; gap: var(--s2); overflow: hidden; cursor: pointer; }
+.date-box-text { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+.date-box-ic { flex: none; color: var(--ink-2); }
+.date-box-input { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.date-box:focus-within { border-color: var(--accent); }
+.date-box.is-disabled { cursor: default; opacity: .6; }
 
 /* ---------------------------------------------------------------- day summary: ring + macro bars */
 .day-summary { display: flex; flex-direction: column; }
@@ -43,6 +50,8 @@
 .menu-list .list-item { padding: var(--s2) 0; }
 .menu-list .list-item.text-danger, .menu-list .list-item.text-danger .li-lead { color: var(--bad-text); }
 .photo-draft-link .li-sub, .week-report-link .li-trail { white-space: nowrap; }
+/* the row's li-main / li-title / li-sub are spans: stack them (else title and sub run together on one line) */
+.photo-draft-link .li-main { display: flex; flex-direction: column; }
 
 /* ---------------------------------------------------------------- add screen */
 .add-tabs {
@@ -53,6 +62,8 @@
 .add-body { display: flex; flex-direction: column; gap: var(--s3); }
 .food-row .li-sub .badge { margin-right: 2px; }
 .food-row .li-trail { max-width: 45%; white-space: nowrap; }
+/* near-identical generic names differ only at the end: allow two lines */
+.food-row .li-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .search-note { padding: 0 var(--s1); }
 .search-actions { flex-wrap: wrap; }
 .add-body .stack > .stack:empty, .add-body .stack > p:empty { display: none; }
@@ -168,7 +179,10 @@
 .photo-add-item { align-self: flex-start; margin: var(--s1) 0; }
 .photo-totals { display: flex; flex-direction: column; gap: 2px; padding-top: var(--s3); border-top: 1px solid var(--line); }
 .photo-total-line { align-items: baseline; }
-.photo-total-line > .t-sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.photo-total-line > .t-sub { min-width: 0; overflow-wrap: anywhere; }
+.photo-section-note { margin: var(--s2) 0 0; padding: 0 var(--s1); }
+.photo-cost-row { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--s2); }
+.photo-pricing { min-height: var(--tap); }
 .photo-total-line > .t-head { white-space: nowrap; }
 .photo-log { margin-top: var(--s4); }
 .photo-log-option { gap: var(--s3); }
@@ -186,7 +200,8 @@
 .model-row { gap: var(--s3); cursor: pointer; align-items: center; }
 .model-row input[type=radio] { width: 20px; height: 20px; flex: none; accent-color: var(--accent); }
 .model-row .li-sub { white-space: normal; overflow: visible; text-overflow: clip; }
-.model-id { font-size: var(--fs-sub); overflow-wrap: anywhere; }
+.model-id-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.model-id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--fs-sub); overflow-wrap: anywhere; }
 .model-default { margin-left: var(--s2); }
 .photo-model-picker { width: 100%; min-width: 0; }
 .photo-note .plain-list li + li { margin-top: var(--s2); }
