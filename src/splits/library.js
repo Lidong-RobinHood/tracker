@@ -2,6 +2,8 @@
 import * as db from '../db/db.js';
 import { el, append, replaceChildren, pageHeader, sectionHeader, emptyState, tag, icon, iconButton, href, openSheet } from '../ui/index.js';
 import { SPLITS, STYLES, LEVELS, EQUIPMENT } from '../data/splits.js';
+import { t } from '../i18n/index.js';
+import { splitName, splitSuits, styleLabel, levelLabel, placeLabel, routineName } from '../i18n/names.js';
 import { filterSplits, coverageStep } from '../core/splits.js';
 import { mapSteps } from '../core/routine-sets.js';
 import { loadExercises, loadRoutines } from '../workout/data.js';
@@ -10,11 +12,6 @@ import { ensureSplitsCss, coverageFor, loadCustomSplits, customCoverage, splitPa
 import { sessionsPerWeekOf } from '../core/splits.js';
 import { fillNewSplitSheet } from './custom-new.js';
 import { followingCard } from './next-up.js';
-
-const label = (list, id) => (list.find((x) => x.id === id) || {}).label || id;
-export const styleLabel = (id) => label(STYLES, id);
-export const levelLabel = (id) => label(LEVELS, id);
-export const equipmentLabel = (id) => label(EQUIPMENT, id);
 
 // Filters survive moving to a split and back (module state, not stored).
 const filters = { days: null, style: null, level: null, equipment: null };
@@ -31,12 +28,12 @@ export async function mountLibrary(container) {
   const byId = new Map(routines.map((r) => [r.id, r]));
   const mine = custom.map((cs) => ({ cs, ...customCoverage(cs, byId, exMap, weights) }));
   const openNew = () => {
-    const sheet = openSheet({ title: 'New split', className: 'sp-new-sheet' });
+    const sheet = openSheet({ title: t('splits.new.title'), className: 'sp-new-sheet' });
     fillNewSplitSheet(sheet, { exMap }).catch((err) => console.error(err));
   };
   const newRow = () => el('button', { type: 'button', class: 'list-item', onClick: openNew },
     icon('plus', { class: 'li-lead' }),
-    el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, 'New split')),
+    el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, t('splits.new.title'))),
     icon('chevron-right', { class: 'li-chevron' }));
 
   const nextSlot = el('div', { class: 'sp-next-slot' });
@@ -64,10 +61,10 @@ export async function mountLibrary(container) {
 
   function paint() {
     replaceChildren(filterBox,
-      chipRow('days', [2, 3, 4, 5, 6].map((d) => ({ value: d, label: String(d) })), 'Days'),
-      chipRow('style', STYLES.map((s) => ({ value: s.id, label: s.label })), 'Style'),
-      chipRow('level', LEVELS.map((s) => ({ value: s.id, label: s.label })), 'Level'),
-      chipRow('equipment', EQUIPMENT.map((s) => ({ value: s.id, label: s.label })), 'Equipment'));
+      chipRow('days', [2, 3, 4, 5, 6].map((d) => ({ value: d, label: String(d) })), t('splits.filter.days')),
+      chipRow('style', STYLES.map((s) => ({ value: s.id, label: styleLabel(s.id) })), t('splits.filter.style')),
+      chipRow('level', LEVELS.map((s) => ({ value: s.id, label: levelLabel(s.id) })), t('splits.filter.level')),
+      chipRow('equipment', EQUIPMENT.map((s) => ({ value: s.id, label: placeLabel(s.id) })), t('splits.filter.equipment')));
     const list = filterSplits(SPLITS, filters);
     const any = Object.values(filters).some((v) => v != null);
     // My splits: the days filter matches sessions per week; style, level and equipment do not apply to them,
@@ -75,25 +72,25 @@ export async function mountLibrary(container) {
     const other = filters.style != null || filters.level != null || filters.equipment != null;
     const myList = other ? [] : mine.filter((m) => filters.days == null || sessionsPerWeekOf(m.cs) === filters.days);
     const myBlock = myList.length
-      ? el('section', { class: 'section' }, sectionHeader('My splits'),
+      ? el('section', { class: 'section' }, sectionHeader(t('splits.mine')),
         el('div', { class: 'card card-flush list sp-results' }, myList.map((m) => customRow(m, byId))))
-      : !any ? el('section', { class: 'section' }, sectionHeader('My splits'), el('div', { class: 'card card-flush list' }, newRow())) : null;
+      : !any ? el('section', { class: 'section' }, sectionHeader(t('splits.mine')), el('div', { class: 'card card-flush list' }, newRow())) : null;
     replaceChildren(results,
       myBlock,
       el('section', { class: 'section' },
-        sectionHeader(`${list.length} ${list.length === 1 ? 'split' : 'splits'}`, {
-          trail: any ? el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: reset }, 'Reset') : null,
+        sectionHeader(t('splits.count', { count: list.length }), {
+          trail: any ? el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: reset }, t('splits.filter.reset')) : null,
         }),
         list.length
           ? el('div', { class: 'card card-flush list sp-results' }, list.map((s) => row(s, glyphs.get(s.id))))
-          : el('div', { class: 'card' }, emptyState('No split matches.',
+          : el('div', { class: 'card' }, emptyState(t('splits.noMatch'),
             el('div', { class: 'sp-empty-actions' },
-              el('button', { type: 'button', class: 'btn', onClick: reset }, 'Reset filters'),
-              el('button', { type: 'button', class: 'btn btn-ghost', onClick: openNew }, icon('plus', { size: 18 }), 'New split'))))));
+              el('button', { type: 'button', class: 'btn', onClick: reset }, t('splits.filter.resetAll')),
+              el('button', { type: 'button', class: 'btn btn-ghost', onClick: openNew }, icon('plus', { size: 18 }), t('splits.new.title')))))));
   }
 
   append(container,
-    pageHeader({ title: 'Splits', back: 'workout', info: 'split-choose', actions: [iconButton('plus', { label: 'New split', onClick: openNew })] }),
+    pageHeader({ title: t('splits.title'), back: 'workout', info: 'split-choose', actions: [iconButton('plus', { label: t('splits.new.title'), onClick: openNew })] }),
     nextSlot, filterBox, results);
   paint();
   await renderNext();
@@ -103,24 +100,24 @@ function row(s, coverage) {
   return el('a', { class: 'list-item sp-row', href: href(`workout/splits/${encodeURIComponent(s.id)}`) },
     coverageGlyph(coverage),
     el('div', { class: 'li-main' },
-      el('div', { class: 'li-title' }, s.name),
-      el('div', { class: 'sp-row-sub' }, s.suits),
+      el('div', { class: 'li-title' }, splitName(s)),
+      el('div', { class: 'sp-row-sub' }, splitSuits(s)),
       el('div', { class: 'sp-tags' },
-        tag(`${s.days} days`, { tone: 'accent' }), tag(styleLabel(s.style)),
-        s.equipment === 'home' ? tag('Home') : null)),
+        tag(t('splits.days', { count: s.days }), { tone: 'accent' }), tag(styleLabel(s.style)),
+        s.equipment === 'home' ? tag(placeLabel('home')) : null)),
     icon('chevron-right', { class: 'li-chevron' }));
 }
 
 /** A custom split as a library row: glyph, name, its sessions, days per week. */
 function customRow({ cs, state, coverage, perWeek }, byId) {
-  const names = cs.sessions.map((id) => (byId.get(id) ? byId.get(id).name : null)).filter(Boolean);
+  const names = cs.sessions.map((id) => (byId.get(id) ? routineName(byId.get(id)) : null)).filter(Boolean);
   return el('a', { class: 'list-item sp-row', href: href(splitPath(cs.id)) },
     coverageGlyph(coverage),
     el('div', { class: 'li-main' },
-      el('div', { class: 'li-title' }, cs.name),
-      el('div', { class: 'sp-row-sub' }, names.length ? names.join(' · ') : 'No sessions yet'),
+      el('div', { class: 'li-title' }, splitName(cs)),
+      el('div', { class: 'sp-row-sub' }, names.length ? names.join(' · ') : t('splits.noSessionsYet')),
       el('div', { class: 'sp-tags' },
-        tag(`${perWeek} ${perWeek === 1 ? 'day' : 'days'}`, { tone: 'accent' }),
-        state.missing.length ? tag(`${state.missing.length} missing`, { tone: 'warn', icon: 'alert-triangle' }) : null)),
+        tag(t('splits.days', { count: perWeek }), { tone: 'accent' }),
+        state.missing.length ? tag(t('splits.missing', { count: state.missing.length }), { tone: 'warn', icon: 'alert-triangle' }) : null)),
     icon('chevron-right', { class: 'li-chevron' }));
 }

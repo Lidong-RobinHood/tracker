@@ -74,6 +74,8 @@ a.tr-card:active { background: var(--fill); }
 
 /* weight page */
 .tr-entry { display: flex; align-items: flex-end; gap: var(--s2); }
+/* the save button keeps its label on one line (Chinese "更新" broke into two lines at 375 px) */
+.tr-entry > .btn { flex: 0 0 auto; white-space: nowrap; }
 .tr-left { align-self: flex-start; padding-left: 0; padding-right: 0; gap: var(--s1); }
 .tr-more { justify-content: center; color: var(--accent); font-weight: var(--fw-semibold); }
 
@@ -126,7 +128,7 @@ a.tr-card:active { background: var(--fill); }
 .wr-day.is-future { opacity: .5; }
 .wr-chev-space { width: 20px; flex: none; }
 .wr-split { display: flex; flex-direction: column; gap: var(--s2); }
-.wr-split-row { display: grid; grid-template-columns: 3.6em 1fr auto; align-items: center; gap: var(--s2); }
+.wr-split-row { display: grid; grid-template-columns: 5em minmax(24px, 1fr) auto; align-items: center; gap: var(--s2); }
 .wr-split-bar { display: flex; height: 8px; border-radius: var(--r-full); overflow: hidden; background: var(--fill); }
 .wr-seg { display: block; height: 100%; }
 .wr-seg-p { background: var(--prot); }
@@ -149,8 +151,8 @@ a.tr-card:active { background: var(--fill); }
 .wr-nav-btn { padding: 0 var(--s2); gap: 2px; }
 .wr-nav-end { padding: 0 var(--s2); }
 /* labels and sublines carry information: wrap instead of cutting them off */
-.wr-card .tile-label { white-space: normal; overflow: visible; text-overflow: clip; }
-.wr-week .li-sub { white-space: normal; }
+.wr-card .tile-label { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; hyphens: auto; }
+.wr-week .li-sub, .wr-workouts .li-sub { white-space: normal; }
 @media (max-width: 360px) {
   .wr-card .tile { padding: var(--s2); }
   .wr-split-txt { font-size: var(--fs-cap); }

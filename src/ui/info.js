@@ -5,8 +5,10 @@ import { el } from './dom.js';
 import { openSheet } from './overlay.js';
 import { icon } from './icons.js';
 import { infoSheet } from './info-sheets.js';
+import { t, getLanguage } from '../i18n/index.js';
 
-const lowerFirst = (s) => (/^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s);
+// English only: 'About muscle recovery'. German nouns keep their capital; Chinese has no case.
+const lowerFirst = (s) => (getLanguage() === 'en' && /^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s);
 
 /**
  * Open the info sheet `id` (title + 1–3 short paragraphs, nothing else).
@@ -37,7 +39,7 @@ export function infoButton(sheetId, { values, label, class: cls } = {}) {
   return /** @type {HTMLButtonElement} */ (el('button', {
     type: 'button',
     class: ['btn', 'btn-icon', 'btn-ghost', 'btn-info', cls],
-    'aria-label': label || `About ${s ? lowerFirst(s.title) : sheetId}`,
+    'aria-label': label || t('common.info.about', { title: s ? lowerFirst(s.title) : sheetId }),
     'aria-haspopup': 'dialog',
     dataset: { info: sheetId },
     onClick: () => { openInfo(sheetId, { values }); },

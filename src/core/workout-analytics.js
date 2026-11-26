@@ -40,14 +40,15 @@ const hasReps = (s) => isNum(s.reps) && s.reps > 0;
 /** Metrics that describe a whole session; a starting point never holds them. */
 export const SESSION_METRICS = Object.freeze(['tonnage', 'bwTotal']);
 
-/** Metric keys and labels. `unit` is the unit of `value`. */
+/** Metric keys. `unit` is the unit of `value`; `set` = the best of one set. Labels are worded by the UI
+ * (src/workout/progress-ui.js: metricLabel / metricShort). */
 export const METRICS = Object.freeze({
-  heaviest: Object.freeze({ label: 'Heaviest set', short: 'heaviest set', unit: 'kg', set: true }),
-  tonnageSet: Object.freeze({ label: 'Highest-tonnage set', short: 'tonnage set', unit: 'kg', set: true }),
-  e1rm: Object.freeze({ label: 'Est. 1RM', short: 'est. 1RM', unit: 'kg', set: true }),
-  tonnage: Object.freeze({ label: 'Session tonnage', short: 'session tonnage', unit: 'kg', set: false }),
-  bwReps: Object.freeze({ label: 'Most reps in a set', short: 'most reps in a set', unit: 'reps', set: false }),
-  bwTotal: Object.freeze({ label: 'Total reps', short: 'total reps', unit: 'reps', set: false }),
+  heaviest: Object.freeze({ unit: 'kg', set: true }),
+  tonnageSet: Object.freeze({ unit: 'kg', set: true }),
+  e1rm: Object.freeze({ unit: 'kg', set: true }),
+  tonnage: Object.freeze({ unit: 'kg', set: false }),
+  bwReps: Object.freeze({ unit: 'reps', set: false }),
+  bwTotal: Object.freeze({ unit: 'reps', set: false }),
 });
 export const LOAD_METRICS = Object.freeze(['heaviest', 'tonnageSet', 'e1rm', 'tonnage']);
 export const REPS_METRICS = Object.freeze(['bwReps', 'bwTotal']);
@@ -236,6 +237,8 @@ export function muscleTonnage(workout, exercises) {
     const prim = ex && Array.isArray(ex.primary) && ex.primary.length ? ex.primary : ['unknown'];
     for (const m of prim) acc.set(m, (acc.get(m) || 0) + t / prim.length);
   }
+  // `name` is an English compat field; the UI words the muscle by id (src/workout/analytics.js).
+  // i18n-ignore-next-line
   return [...acc].map(([muscle, v]) => ({ muscle, name: muscle === 'unknown' ? 'Unknown exercise' : muscleName(muscle), tonnage: round(v, 2) }))
     .filter((r) => r.tonnage > 0)
     .sort((a, b) => b.tonnage - a.tonnage);

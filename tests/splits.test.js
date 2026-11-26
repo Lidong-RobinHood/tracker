@@ -70,10 +70,16 @@ test('volume level: standard = catalogue, minimum −1 (floor 1), high +1 on eac
 
 test('coverage step: fixed bands of weekly sets; legend bands do not overlap', () => {
   assert.deepEqual([0, -1, NaN, 0.5, 3.5, 4, 7.5, 8, 11.5, 12, 30].map((v) => coverageStep(v)), [0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4]);
-  assert.deepEqual(coverageBands({}).map((b) => b.label), ['12+', '8–11.5', '4–7.5', 'Under 4', 'None']);
-  assert.deepEqual(COVERAGE_BANDS.map((b) => b.label), ['12+', '8–11.5', '4–7.5', 'Under 4', 'None']);
-  assert.deepEqual(coverageBands({ primary: 1, secondary: 0 }).map((b) => b.label), ['12+', '8–11', '4–7', 'Under 4', 'None']);
-  assert.deepEqual(coverageBands({ primary: 1, secondary: 0.3 }).map((b) => b.label), ['12+', '8–under 12', '4–under 8', 'Under 4', 'None']);
+  // legend entries are catalogue keys + params (src/core/set-bands.js bandLegend); written here as English
+  const text = (b) => ({
+    'workout.band.atLeast': () => `${b.params.n}+`, 'workout.band.range': () => `${b.params.from}–${b.params.to}`,
+    'workout.band.rangeUnder': () => `${b.params.from}–under ${b.params.to}`, 'workout.band.under': () => `Under ${b.params.n}`,
+    'workout.band.none': () => 'None',
+  })[b.key]();
+  assert.deepEqual(coverageBands({}).map(text), ['12+', '8–11.5', '4–7.5', 'Under 4', 'None']);
+  assert.deepEqual(COVERAGE_BANDS.map(text), ['12+', '8–11.5', '4–7.5', 'Under 4', 'None']);
+  assert.deepEqual(coverageBands({ primary: 1, secondary: 0 }).map(text), ['12+', '8–11', '4–7', 'Under 4', 'None']);
+  assert.deepEqual(coverageBands({ primary: 1, secondary: 0.3 }).map(text), ['12+', '8–under 12', '4–under 8', 'Under 4', 'None']);
   // each label's ends fall in its own step
   assert.equal(coverageStep(11.5), 3); assert.equal(coverageStep(7.5), 2); assert.equal(coverageStep(3.5), 1);
 });

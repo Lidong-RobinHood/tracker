@@ -255,10 +255,10 @@ function trainingFor({ ws, workouts, exercises, volumeWeights, setTargets }) {
       if (!weekIds.has(wid)) continue;
       const w = cur.rows.find((r) => r.id === wid);
       const ex = get(exId);
-      records.push({ exerciseId: exId, name: ex ? ex.name : 'Deleted exercise', workoutId: wid, date: w.date, records: list });
+      records.push({ exerciseId: exId, name: ex ? ex.name : null, deleted: !ex, workoutId: wid, date: w.date, records: list });
     }
   }
-  records.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.name.localeCompare(b.name)));
+  records.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.name || '').localeCompare(b.name || '')));
   return {
     workouts: cur.rows, done: cur.done, sets: cur.sets, dropsets: cur.dropsets, load: cur.load,
     prev: { done: prev.done, sets: prev.sets, load: prev.load, count: prev.rows.length },
@@ -269,29 +269,30 @@ function trainingFor({ ws, workouts, exercises, volumeWeights, setTargets }) {
 
 /**
  * Week-over-week table rows. pct = pctChange (null-safe), diff = cur − prev (null if either missing).
- * @returns {{key: string, label: string, unit: string, cur: number|null, prev: number|null, diff: number|null, pct: number|null}[]}
+ * The UI labels a row by its key (trends.week.metric.<key>).
+ * @returns {{key: string, unit: string, cur: number|null, prev: number|null, diff: number|null, pct: number|null}[]}
  */
 export function compareWeeks(cur, prev) {
-  const row = (key, label, unit, c, p) => {
+  const row = (key, unit, c, p) => {
     const cc = finite(c); const pp = finite(p);
-    return { key, label, unit, cur: cc, prev: pp, diff: cc !== null && pp !== null ? cc - pp : null, pct: pctChange(cc, pp) };
+    return { key, unit, cur: cc, prev: pp, diff: cc !== null && pp !== null ? cc - pp : null, pct: pctChange(cc, pp) };
   };
   const n = (r) => (r ? r.nutrition : null);
   const w = (r) => (r ? r.weight : null);
   const t = (r) => (r ? r.training : null);
   const g = (r, f) => (r ? f(r) : null);
   return [
-    row('kcal', 'Avg calories', 'kcal', g(n(cur), (x) => x.avg.kcal), g(n(prev), (x) => x.avg.kcal)),
-    row('protein', 'Avg protein', 'g', g(n(cur), (x) => x.avg.protein), g(n(prev), (x) => x.avg.protein)),
-    row('carbs', 'Avg carbs', 'g', g(n(cur), (x) => x.avg.carbs), g(n(prev), (x) => x.avg.carbs)),
-    row('fat', 'Avg fat', 'g', g(n(cur), (x) => x.avg.fat), g(n(prev), (x) => x.avg.fat)),
-    row('completeDays', 'Complete days', '', g(n(cur), (x) => x.completeDays), g(n(prev), (x) => x.completeDays)),
-    row('onTarget', 'On-target days', '', g(n(cur), (x) => x.onTargetDays), g(n(prev), (x) => x.onTargetDays)),
-    row('avgWeight', 'Avg weight', 'kg', g(w(cur), (x) => x.avg), g(w(prev), (x) => x.avg)),
-    row('trend', 'Trend weight', 'kg', g(w(cur), (x) => x.trendEnd), g(w(prev), (x) => x.trendEnd)),
-    row('workouts', 'Workouts', '', g(t(cur), (x) => x.done), g(t(prev), (x) => x.done)),
-    row('sets', 'Sets', '', g(t(cur), (x) => x.sets), g(t(prev), (x) => x.sets)),
-    row('load', 'Tonnage', 'kg', g(t(cur), (x) => x.load), g(t(prev), (x) => x.load)),
+    row('kcal', 'kcal', g(n(cur), (x) => x.avg.kcal), g(n(prev), (x) => x.avg.kcal)),
+    row('protein', 'g', g(n(cur), (x) => x.avg.protein), g(n(prev), (x) => x.avg.protein)),
+    row('carbs', 'g', g(n(cur), (x) => x.avg.carbs), g(n(prev), (x) => x.avg.carbs)),
+    row('fat', 'g', g(n(cur), (x) => x.avg.fat), g(n(prev), (x) => x.avg.fat)),
+    row('completeDays', '', g(n(cur), (x) => x.completeDays), g(n(prev), (x) => x.completeDays)),
+    row('onTarget', '', g(n(cur), (x) => x.onTargetDays), g(n(prev), (x) => x.onTargetDays)),
+    row('avgWeight', 'kg', g(w(cur), (x) => x.avg), g(w(prev), (x) => x.avg)),
+    row('trend', 'kg', g(w(cur), (x) => x.trendEnd), g(w(prev), (x) => x.trendEnd)),
+    row('workouts', '', g(t(cur), (x) => x.done), g(t(prev), (x) => x.done)),
+    row('sets', '', g(t(cur), (x) => x.sets), g(t(prev), (x) => x.sets)),
+    row('load', 'kg', g(t(cur), (x) => x.load), g(t(prev), (x) => x.load)),
   ];
 }
 

@@ -110,3 +110,13 @@ test('EXERCISE_VIDEOS data is well-formed (any subset of seed ids)', () => {
     assert.deepEqual(Object.keys(v).sort(), ['channel', 'match', 'title', 'videoId'], `${id}: keys`);
   }
 });
+
+test('parseVideoUrl errors are workout catalogue keys; the search query stays English', async () => {
+  const { default: EN } = await import('../src/i18n/en/workout.js');
+  for (const v of ['not a link', 42, 'https://youtu.be/', 'http://example.com/x', 'https://localhost/x', `https://example.com/${'a'.repeat(2100)}`, 'a b']) {
+    const r = parseVideoUrl(v);
+    assert.equal(r.ok, false);
+    assert.ok(r.error in EN, r.error);
+  }
+  assert.equal(exerciseVideo({ name: 'Squat' }).query, 'Squat proper form tutorial');
+});

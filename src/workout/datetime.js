@@ -4,9 +4,11 @@ import { el, append, openSheet, numberInput, field, fmtDuration } from '../ui/in
 import { today, addDays } from '../core/dates.js';
 import { rescheduleWorkout, timeOfDay, MAX_DURATION_MIN, DEFAULT_PAST_DURATION_MS } from '../core/workout.js';
 import { startWorkout } from './data.js';
+import { t } from '../i18n/index.js';
+import { routineName } from '../i18n/names.js';
 
-const dateInput = (value) => el('input', { class: 'input', type: 'date', value, max: today(), required: true, 'aria-label': 'Date' });
-const timeInput = (value) => el('input', { class: 'input', type: 'time', value, required: true, 'aria-label': 'Start time' });
+const dateInput = (value) => el('input', { class: 'input', type: 'date', value, max: today(), required: true, 'aria-label': t('workout.time.date') });
+const timeInput = (value) => el('input', { class: 'input', type: 'time', value, required: true, 'aria-label': t('workout.time.start') });
 
 /**
  * Ask for a new date / start time (and duration) of `workout`.
@@ -22,27 +24,27 @@ export function changeDateTime(workout) {
   const curMin = finished
     ? Math.max(1, Math.round((workout.finishedAt - workout.startedAt) / 60000))
     : workout.plannedDurationMs ? Math.round(workout.plannedDurationMs / 60000) : null;
-  const dur = numberInput({ value: curMin, min: 1, max: MAX_DURATION_MIN, integer: true, placeholder: finished ? '' : 'optional', ariaLabel: 'Duration in minutes' });
+  const dur = numberInput({ value: curMin, min: 1, max: MAX_DURATION_MIN, integer: true, placeholder: finished ? '' : t('workout.time.optional'), ariaLabel: t('workout.time.durationAria') });
   const err = el('p', { class: 'field-error', role: 'alert', hidden: true });
   const s = openSheet({
-    title: 'Change date, time, duration',
+    title: t('workout.time.changeTitle'),
     content: [
-      el('div', { class: 'grid-2' }, field('Date', date), field('Start time', time)),
-      field('Duration', dur, { unit: 'min', hint: finished ? null : 'Empty = set when you tap Finish.' }),
+      el('div', { class: 'grid-2' }, field(t('workout.time.date'), date), field(t('workout.time.start'), time)),
+      field(t('workout.time.duration'), dur, { unit: 'min', hint: finished ? null : t('workout.time.durationHint') }),
       err,
     ],
   });
   append(s.footer, 
-    el('button', { type: 'button', class: 'btn', onClick: () => s.close(null) }, 'Cancel'),
+    el('button', { type: 'button', class: 'btn', onClick: () => s.close(null) }, t('workout.action.cancel')),
     el('button', {
       type: 'button', class: 'btn btn-primary', onClick: () => {
         const n = dur.getNumber();
-        if (finished && n === null) { show('Enter the duration in minutes.'); return; }
+        if (finished && n === null) { show(t('workout.time.errDuration')); return; }
         const r = rescheduleWorkout(workout, { date: date.value, time: time.value, durationMin: n }, Date.now());
-        if (!r.ok) { show(r.error); return; }
+        if (!r.ok) { show(t(r.error, r.params)); return; }
         s.close(r.value);
       },
-    }, 'Save'));
+    }, t('workout.action.save')));
   function show(msg) { err.textContent = msg; err.hidden = false; }
   return s.closed.then((v) => v || null);
 }
@@ -55,32 +57,32 @@ export function changeDateTime(workout) {
 export function logPastWorkout(routines) {
   const date = dateInput(addDays(today(), -1));
   const time = timeInput('18:00');
-  const dur = numberInput({ value: DEFAULT_PAST_DURATION_MS / 60000, min: 1, max: MAX_DURATION_MIN, integer: true, ariaLabel: 'Duration in minutes' });
-  const routine = el('select', { class: 'select', 'aria-label': 'Routine' },
-    el('option', { value: '' }, 'Empty workout'),
-    ...routines.map((r) => el('option', { value: r.id }, r.name)));
+  const dur = numberInput({ value: DEFAULT_PAST_DURATION_MS / 60000, min: 1, max: MAX_DURATION_MIN, integer: true, ariaLabel: t('workout.time.durationAria') });
+  const routine = el('select', { class: 'select', 'aria-label': t('workout.time.routine') },
+    el('option', { value: '' }, t('workout.start.empty')),
+    ...routines.map((r) => el('option', { value: r.id }, routineName(r))));
   const err = el('p', { class: 'field-error', role: 'alert', hidden: true });
   const s = openSheet({
-    title: 'Log a past workout',
+    title: t('workout.start.logPast'),
     content: [
-      el('div', { class: 'grid-2' }, field('Date', date), field('Start time', time)),
-      field('Duration', dur, { unit: 'min' }),
-      field('Routine', routine),
+      el('div', { class: 'grid-2' }, field(t('workout.time.date'), date), field(t('workout.time.start'), time)),
+      field(t('workout.time.duration'), dur, { unit: 'min' }),
+      field(t('workout.time.routine'), routine),
       err,
     ],
   });
   append(s.footer, 
-    el('button', { type: 'button', class: 'btn', onClick: () => s.close(null) }, 'Cancel'),
+    el('button', { type: 'button', class: 'btn', onClick: () => s.close(null) }, t('workout.action.cancel')),
     el('button', {
       type: 'button', class: 'btn btn-primary', onClick: async () => {
         const past = { date: date.value, time: time.value, durationMin: dur.getNumber() };
-        if (past.durationMin === null) { show('Enter the duration in minutes.'); return; }
+        if (past.durationMin === null) { show(t('workout.time.errDuration')); return; }
         const check = rescheduleWorkout({ finishedAt: null }, past, Date.now());
-        if (!check.ok) { show(check.error); return; }
+        if (!check.ok) { show(t(check.error, check.params)); return; }
         s.close(null);
         await startWorkout(routines.find((r) => r.id === routine.value) || null, past);
       },
-    }, 'Log sets'));
+    }, t('workout.time.logSets')));
   function show(msg) { err.textContent = msg; err.hidden = false; }
 }
 

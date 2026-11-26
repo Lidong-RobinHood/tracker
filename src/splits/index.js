@@ -7,7 +7,7 @@ import { mountCustom } from './custom.js';
 
 /** @type {import('../types.js').Route[]} */
 export const routes = [
-  { path: 'workout/splits', title: 'Splits', tab: 'workout', mount: mountLibrary },
-  { path: 'workout/splits/:id', title: 'Split', tab: 'workout', mount: mountDetail },
-  { path: 'workout/splits/custom/:id', title: 'My split', tab: 'workout', mount: mountCustom },
+  { path: 'workout/splits', titleKey: 'splits.title', tab: 'workout', mount: mountLibrary },
+  { path: 'workout/splits/:id', titleKey: 'splits.split', tab: 'workout', mount: mountDetail },
+  { path: 'workout/splits/custom/:id', titleKey: 'splits.custom.defaultName', tab: 'workout', mount: mountCustom },
 ];

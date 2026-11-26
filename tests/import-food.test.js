@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { msgText as txt } from '../src/import/messages.js'; // importer messages are {key, params}; English text
 import {
   readTable, guessMapping, detectPreset, presetMapping, detectFormats, mealValues, guessMeal,
   parseAmount, buildFoodRows, summariseFood, toDiaryRecords, PRESETS,
@@ -104,7 +105,7 @@ test('Cronometer daily summary: Total group rows are skipped, the rest kept', ()
   assert.equal(guessMeal('Total'), 'skip');
   const { entries, skipped } = buildFoodRows(table, { mapping, dateOrder: 'dmy', decimal: 'dot', defaultMeal: 'snack', today: T });
   assert.equal(entries.length, 2);
-  assert.deepEqual(skipped, [{ line: 3, reason: 'Meal "Total" is set to skip' }]);
+  assert.deepEqual(skipped.map((x) => ({ line: x.line, reason: txt(x.reason) })), [{ line: 3, reason: 'Meal "Total" is set to skip' }]);
 });
 
 test('FDDB (unconfirmed layout): semicolons, BOM, decimal comma, kJ → kcal, date with time', () => {
@@ -149,11 +150,11 @@ test('generic German CSV: guessed mapping, decimal comma, kcal, skipped rows wit
     ['2026-11-12', 'breakfast', 'Brot "Vollkorn"; 2 Scheiben', 190.5], ['2026-11-12', 'lunch', 'Nudeln', 1050], ['2026-11-12', 'dinner', 'Pizza', 800], ['2026-11-14', 'dinner', 'Toast', 120],
   ]);
   assert.deepEqual(skipped.map((s) => s.line), [5, 6, 7, 8, 9]);
-  assert.match(skipped[0].reason, /No date/);
-  assert.match(skipped[1].reason, /not a number/);
-  assert.match(skipped[2].reason, /not readable/);
-  assert.match(skipped[3].reason, /future/);
-  assert.match(skipped[4].reason, /implausible/);
+  assert.match(txt(skipped[0].reason), /No date/);
+  assert.match(txt(skipped[1].reason), /not a number/);
+  assert.match(txt(skipped[2].reason), /not readable/);
+  assert.match(txt(skipped[3].reason), /future/);
+  assert.match(txt(skipped[4].reason), /implausible/);
 });
 
 test('no meal column: default meal; kJ column labelled; sodium conversion can be turned off', () => {
@@ -176,13 +177,13 @@ test('US-style dates and thousands commas', () => {
   assert.deepEqual([f.dateOrder, f.decimal], ['mdy', 'dot']);
   const { entries, skipped } = buildFoodRows(table, { mapping, dateOrder: f.dateOrder, decimal: f.decimal, defaultMeal: 'snack', today: T });
   assert.deepEqual(entries.map((e) => [e.date, e.kcal]), [['2026-11-12', 1980.5]]);
-  assert.match(skipped[0].reason, /future/);
+  assert.match(txt(skipped[0].reason), /future/);
 });
 
 test('a file without a header row', () => {
   const t = readTable('12.11.2026;500;30\n13.11.2026;600;35\n');
   assert.equal(t.hasHeader, false);
-  assert.deepEqual(t.headers, ['Column 1', 'Column 2', 'Column 3']);
+  assert.deepEqual(t.headers, ['', '', '']); // no header names: the UI shows "Column n"
   assert.equal(t.rows.length, 2);
 });
 
@@ -271,7 +272,7 @@ test('item 1: decimal detection reports a confidence; three-digit groups alone a
 test('item 1: plausibility warning when the median day energy looks wrong', () => {
   const low = summariseFood([{ date: '2026-11-12', kcal: 1.1 }, { date: '2026-11-13', kcal: 1.3 }, { date: '2026-11-14', kcal: 980 }]);
   assert.equal(low.warnings.length, 1);
-  assert.match(low.warnings[0].message, /only 1 kcal/);
+  assert.match(txt(low.warnings[0].message), /only 1 kcal/);
   assert.equal(low.warnings[0].code, 'median-low');
   const high = summariseFood([{ date: '2026-11-12', kcal: 9000 }, { date: '2026-11-12', kcal: 9000 }]);
   assert.equal(high.warnings[0].code, 'median-high');

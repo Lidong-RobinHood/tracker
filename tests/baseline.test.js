@@ -89,7 +89,8 @@ test('validateBaseline: date rules, required fields, best set only when differen
   assert.equal(ok([], 'nope').ok, false);
   assert.equal(ok([], TODAY).ok, true, 'today is allowed');
   const r = (o) => ({ exerciseId: 'bench', weight: 100, reps: 6, sets: 3, bestWeight: null, bestReps: null, ...o });
-  assert.deepEqual(ok([r({ weight: null })]), { ok: false, error: 'Enter the working weight in kg.', row: 0, field: 'weight' });
+  assert.deepEqual(ok([r({ weight: null })]), { ok: false, error: 'workout.baseline.errWeight', row: 0, field: 'weight' });
+  assert.deepEqual(ok([r({ sets: 11 })]), { ok: false, error: 'workout.baseline.errSets', params: { max: b.MAX_BASELINE_SETS }, row: 0, field: 'sets' });
   assert.equal(ok([r({ reps: null })]).field, 'reps');
   assert.equal(ok([r({ reps: 2.5 })]).field, 'reps');
   assert.equal(ok([r({ sets: 11 })]).field, 'sets');

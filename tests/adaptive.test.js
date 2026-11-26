@@ -83,7 +83,7 @@ test('insufficient data returns insufficient with reasons, never a number', () =
     assert.ok(e.missing.length >= 1, 'explains what is missing');
   }
   const few = estimateExpenditure({ weights: sim.weights.slice(0, 40).filter((_, i) => i % 6 === 0), intake: sim.intake.slice(0, 40), asOf: dayDate(40) });
-  assert.match(few.missing.join(' '), /more weigh-ins/);
+  assert.ok(few.missing.some((m) => m.key === 'core.missing.weighIns' && m.params.count > 1), JSON.stringify(few.missing));
   const ok = estimateExpenditure({ weights: sim.weights.slice(0, 41), intake: sim.intake.slice(0, 41), asOf: dayDate(40) });
   assert.equal(ok.status, 'ok');
   assert.equal(typeof ok.tdee, 'number');
@@ -103,7 +103,7 @@ function steadyErrors(offset, extra = {}) {
   return SEEDS.map((seed) => {
     const sim = simulate({ seed, days: 29, offset, ...extra });
     const e = est(sim, 28);
-    assert.equal(e.status, 'ok', `seed ${seed}: ${e.missing.join(' ')}`);
+    assert.equal(e.status, 'ok', `seed ${seed}: ${JSON.stringify(e.missing)}`);
     return Math.abs(e.tdee - sim.trueTdee[27]);
   });
 }

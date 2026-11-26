@@ -1,0 +1,43 @@
+// de catalogue, namespace 'core'. Flat 'key': 'text' with {placeholders}; see docs/I18N.md.
+export default {
+  // activity levels (core/adaptive.js ACTIVITY_LEVELS, by id)
+  'core.activity.sedentary': 'Kaum aktiv',
+  'core.activity.sedentary.hint': 'Bürojob, wenig Bewegung',
+  'core.activity.light': 'Leicht aktiv',
+  'core.activity.light.hint': 'Sport an 1–3 Tagen pro Woche',
+  'core.activity.moderate': 'Mäßig aktiv',
+  'core.activity.moderate.hint': 'Sport an 3–5 Tagen pro Woche',
+  'core.activity.active': 'Sehr aktiv',
+  'core.activity.active.hint': 'Intensiver Sport an 6–7 Tagen pro Woche',
+  'core.activity.extra': 'Extrem aktiv',
+  'core.activity.extra.hint': 'Körperliche Arbeit plus Training',
+  // what the expenditure estimate still needs (core/adaptive.js estimateExpenditure().missing)
+  'core.missing.weighIns_one': 'Noch {count} Messung ({days} Tage)',
+  'core.missing.weighIns_other': 'Noch {count} Messungen ({days} Tage)',
+  'core.missing.completeDays_one': 'Noch {count} vollständiger Tag ({days} Tage)',
+  'core.missing.completeDays_other': 'Noch {count} vollständige Tage ({days} Tage)',
+  'core.missing.history_one': 'Noch {count} Tag Verlauf',
+  'core.missing.history_other': 'Noch {count} Tage Verlauf',
+  'core.missing.staleWeighIn': 'Eine Messung (keine seit {days} Tagen)',
+  // goal rate (core/goal-display.js, core/goal-rate.js)
+  'core.goal.summary': '{rate} kg / Woche',
+  'core.goal.summaryKcal': '{rate} kg / Woche · {kcal} kcal / Tag',
+  'core.goal.errorAmount': 'Gib einen Wert über 0 ein',
+  'core.goal.errorMax': 'Max. {max} kg / Woche',
+  'core.goal.speechMaintain': 'halten, 0 Kilogramm pro Woche',
+  'core.goal.speechLose': 'minus {n} Kilogramm pro Woche',
+  'core.goal.speechGain': 'plus {n} Kilogramm pro Woche',
+  'core.goal.speechLoseEmpty': 'minus, Kilogramm pro Woche eingeben',
+  'core.goal.speechGainEmpty': 'plus, Kilogramm pro Woche eingeben',
+  'core.goal.maintain': 'Halten',
+  'core.goal.lose': '{amount} kg / Woche abnehmen',
+  'core.goal.gain': '{amount} kg / Woche zunehmen',
+  'core.goal.loseMax': 'Abnehmen: max. {max} kg / Woche',
+  'core.goal.gainMax': 'Zunehmen: max. {max} kg / Woche',
+  // target validation (core/setup.js buildTargets)
+  'core.setup.errorKcal': 'Gib ein gültiges Kalorienziel ein.',
+  'core.setup.errorSplit': 'Die drei Prozentwerte müssen zusammen 100 ergeben.',
+  'core.setup.error.protein': 'Gib ein gültiges Eiweißziel ein.',
+  'core.setup.error.carbs': 'Gib ein gültiges Kohlenhydratziel ein.',
+  'core.setup.error.fat': 'Gib ein gültiges Fettziel ein.',
+};

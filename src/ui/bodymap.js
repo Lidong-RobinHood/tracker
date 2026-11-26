@@ -11,6 +11,7 @@
 // values: per muscle id (src/core/muscles.js) a number 0–4 (sets ramp, class is-0..is-4) or one of
 // 'recovering' | 'ready' | 'fresh' (recovery states) | 'hot' (accent highlight). Missing = idle.
 import { BODY, VIEW_PATHS, ICON_CROPS, VIEWBOX } from './bodymap-art.js';
+import { t } from '../i18n/index.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -79,7 +80,7 @@ export function bodyMap({ view = 'front', values = {}, title, class: cls } = {})
   svg.setAttribute('viewBox', `${x} ${y} ${both ? 2 * w : w} ${h}`);
   svg.setAttribute('class', ['bm', both ? 'bm-both' : null, cls].filter(Boolean).join(' '));
   svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', String(title ?? (both ? 'Body map, front and back' : `Body map, ${v}`)));
+  svg.setAttribute('aria-label', String(title ?? t(both ? 'data.bodyMap.both' : `data.bodyMap.${v}`)));
   if (both) {
     svg.appendChild(viewGroup('front'));
     svg.appendChild(viewGroup('back', w));

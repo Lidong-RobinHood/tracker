@@ -1,6 +1,6 @@
 // Import run bookkeeping (pure). How undo works:
 //  - every created record carries `importId` = the run id;
-//  - the settings key `importRuns` lists runs: { id, type, createdAt, status, summary, counts,
+//  - the settings key `importRuns` lists runs: { id, type, createdAt, status, summary, info, counts,
 //    keys: { <store>: [primary keys created] }, replaced: { weights: [previous records] } };
 //  - the run entry (with all planned keys) is saved BEFORE any data is written, so a run that
 //    fails half way can still be undone;
@@ -14,11 +14,16 @@ export const MAX_RUNS = 50;
 
 /**
  * A new run entry.
- * @param {{id: string, type: 'workouts'|'weights'|'food', now: number, summary: string,
+ * @param {{id: string, type: 'workouts'|'weights'|'food', now: number, summary?: string|null, info?: object|null,
  *   counts: Record<string, number>, keys: Record<string, string[]>, replaced?: Record<string, object[]>}} a
+ *   info: counts, date range and source as data; the import page builds the text from it in the current
+ *   language (runs stay language-neutral). summary: English text, only in runs saved by 0.7.1 and older
+ *   (they have no info); new runs do not store one.
  */
-export function newRun({ id, type, now, summary, counts, keys, replaced = {} }) {
-  return { id, type, createdAt: now, status: 'writing', summary, counts, keys, replaced, undoneAt: null };
+export function newRun({ id, type, now, summary = null, info = null, counts, keys, replaced = {} }) {
+  const run = { id, type, createdAt: now, status: 'writing', info, counts, keys, replaced, undoneAt: null };
+  if (summary) run.summary = summary;
+  return run;
 }
 
 /** Runs list with `run` added at the front (or replaced by id), capped to MAX_RUNS (oldest undone first out). */

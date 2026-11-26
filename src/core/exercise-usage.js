@@ -12,6 +12,9 @@
 //  - search: match quality first (see matchScore); among equally good matches, used exercises
 //    before unused ones (recent first, then count), then the common base lifts (BASE_LIFTS in the
 //    seed data), then name.
+// Display names: the picker shows built-in exercises in the app language. The UI passes `altOf(ex)` →
+// { name, terms } (the translated name, and translated equipment / muscle words); a search matches
+// the stored (English) name or the translated one, whichever scores better.
 // Abbreviations: a whole query that is a known name alias ("ohp", "rdl", "incline db", "bench"; the
 // import's alias table) puts that exercise first; single words "db", "bb", "bw" (WORD_ABBREVIATIONS)
 // also match "dumbbell", "barbell", "bodyweight".
@@ -55,13 +58,24 @@ export function compareUsage(a, b) {
   return (b.lastAt - a.lastAt) || (b.count - a.count);
 }
 
+/** Default alphabetical comparison (the UI passes the app language's collator, i18n compareText). */
+const defaultCompare = (a, b) => a.localeCompare(b);
+
+/** Name used for alphabetical order: the translated one when given. */
+const sortName = (e, altOf) => {
+  const alt = altOf ? altOf(e) : null;
+  return (alt && alt.name) || e.name || '';
+};
+
 /**
  * Used exercises from `list`, most recent first, at most `limit`.
  * @param {{id: string, name: string}[]} list candidates (e.g. active exercises after the muscle filter)
+ * @param {(ex: object) => {name?: string, terms?: string}|null} [altOf] display name for the order
+ * @param {(a: string, b: string) => number} [compare] alphabetical order of names (ties of usage)
  */
-export function recentExercises(list, usage, limit = RECENT_LIMIT) {
+export function recentExercises(list, usage, limit = RECENT_LIMIT, altOf = null, compare = defaultCompare) {
   return list.filter((e) => usage.has(e.id))
-    .sort((a, b) => compareUsage(usage.get(a.id), usage.get(b.id)) || a.name.localeCompare(b.name))
+    .sort((a, b) => compareUsage(usage.get(a.id), usage.get(b.id)) || compare(sortName(a, altOf), sortName(b, altOf)))
     .slice(0, limit);
 }
 
@@ -74,22 +88,31 @@ const norm = (s) => String(s || '').toLowerCase();
  *   5 the whole query is a known alias of this exercise ·
  *   4 the name starts with the whole query · 3 every word starts a word of the name ·
  *   2 every word is in the name · 1 matched via equipment/muscles too.
+ * With `alt` (translated name and words) the stored and the translated name both count; the better
+ * score wins.
+ * @param {{id: string, name: string, equipment?: string, primary?: string[]}} ex
+ * @param {string} query
+ * @param {{name?: string, terms?: string}|null} [alt]
  */
-export function matchScore(ex, query) {
+export function matchScore(ex, query, alt = null) {
   const q = norm(query).trim();
   if (!q) return 1;
   if (ALIASES.get(nameKey(q)) === ex.id) return 5;
   // an abbreviation stands for its word only ("bb" must not match inside "dumbbell")
   const terms = q.split(/\s+/).filter(Boolean).map((t) => [WORD_ABBREVIATIONS[t] || t]);
-  const name = norm(ex.name);
-  const hay = `${name} ${norm(ex.equipment)} ${(ex.primary || []).join(' ').toLowerCase()}`;
+  const names = [norm(ex.name)];
+  if (alt && alt.name && norm(alt.name) !== names[0]) names.push(norm(alt.name));
+  const hay = `${names.join(' ')} ${norm(ex.equipment)} ${(ex.primary || []).join(' ').toLowerCase()} ${norm(alt && alt.terms)}`;
   const every = (test) => terms.every((forms) => forms.some(test));
   if (!every((t) => hay.includes(t))) return 0;
-  if (name.startsWith(q)) return 4;
-  const words = name.split(/[\s\-–(),/]+/).filter(Boolean);
-  if (every((t) => words.some((w) => w.startsWith(t)))) return 3;
-  if (every((t) => name.includes(t))) return 2;
-  return 1;
+  let best = 1;
+  for (const name of names) {
+    if (name.startsWith(q)) return 4;
+    const words = name.split(/[\s\-–(),/]+/).filter(Boolean);
+    if (every((t) => words.some((w) => w.startsWith(t)))) best = Math.max(best, 3);
+    else if (every((t) => name.includes(t))) best = Math.max(best, 2);
+  }
+  return best;
 }
 
 /**
@@ -97,11 +120,13 @@ export function matchScore(ex, query) {
  * @param {{id: string, name: string}[]} list
  * @param {string} query
  * @param {Map<string, object>} usage
+ * @param {(ex: object) => {name?: string, terms?: string}|null} [altOf] translated name / words per exercise
+ * @param {(a: string, b: string) => number} [compare] alphabetical order of names (last tie-break)
  */
-export function rankExercises(list, query, usage) {
-  return list.map((e) => ({ e, s: matchScore(e, query) }))
+export function rankExercises(list, query, usage, altOf = null, compare = defaultCompare) {
+  return list.map((e) => ({ e, s: matchScore(e, query, altOf ? altOf(e) : null) }))
     .filter((x) => x.s > 0)
     .sort((a, b) => (b.s - a.s) || compareUsage(usage.get(a.e.id), usage.get(b.e.id))
-      || (BASE_LIFTS.has(b.e.id) - BASE_LIFTS.has(a.e.id)) || a.e.name.localeCompare(b.e.name))
+      || (BASE_LIFTS.has(b.e.id) - BASE_LIFTS.has(a.e.id)) || compare(sortName(a.e, altOf), sortName(b.e, altOf)))
     .map((x) => x.e);
 }

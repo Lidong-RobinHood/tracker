@@ -1,6 +1,7 @@
 // Decimal text field with a numeric keypad. Accepts ',' and '.', selects all on focus.
 // Fields that allow negatives (min < 0) get a sign toggle button: the iOS decimal keypad has no minus key.
 import { el } from './dom.js';
+import { t } from '../i18n/index.js';
 import { parseDecimal } from '../core/numbers.js';
 import { normalizeMinus, flipSignText } from '../core/signed-number.js';
 
@@ -81,7 +82,7 @@ export function numberInput(opts = {}) {
 function addSignToggle(input) {
   const btn = /** @type {HTMLButtonElement} */ (el('button', {
     // A toggle: pressed = the value is negative.
-    type: 'button', class: 'btn num-sign', 'aria-label': 'Minus sign', 'aria-pressed': 'false',
+    type: 'button', class: 'btn num-sign', 'aria-label': t('common.number.minusSign'), 'aria-pressed': 'false',
     // Keep focus (and the keypad) in the field when the field is being edited.
     onMousedown: (e) => { if (document.activeElement === input) e.preventDefault(); },
     onClick: () => {

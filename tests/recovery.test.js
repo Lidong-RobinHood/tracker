@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  muscleRecovery, recoveryWindow, doseFactor, sortByRecovery, recoveryWords, paceFactor, recoverySettings,
-  sessionTime, fmtSpanRange, RECOVERY_CONFIG, lookbackFrom,
+  muscleRecovery, recoveryWindow, doseFactor, sortByRecovery, recoveryState, paceFactor, recoverySettings,
+  sessionTime, spanRange, span, RECOVERY_CONFIG, lookbackFrom,
 } from '../src/core/recovery.js';
 
 const H = 3600000;
@@ -35,7 +35,7 @@ test('never trained: every muscle fresh, no NaN', () => {
     assert.equal(r.status, 'fresh');
     assert.equal(r.trained, false);
     assert.equal(r.progress, 100);
-    assert.equal(recoveryWords(r), 'no recent training');
+    assert.deepEqual(recoveryState(r), { kind: 'untrained' });
   }
 });
 
@@ -134,19 +134,23 @@ test('exact boundaries: at min → likely ready, at max → fresh', () => {
   assert.equal(at(72).progress, 100);
   assert.equal(at(36).progress, 50);
   assert.equal(at(48).readyAt, NOW);
-  assert.equal(recoveryWords(at(72)), 'recovered');
-  assert.equal(recoveryWords(at(60)), 'likely ready — full recovery in up to 12 h');
-  assert.equal(recoveryWords(at(24)), 'ready in about 1–2 days');
+  assert.deepEqual(recoveryState(at(72)), { kind: 'fresh' });
+  assert.deepEqual(recoveryState(at(60)), { kind: 'likely-ready', upTo: { unit: 'h', value: 12 } });
+  assert.deepEqual(recoveryState(at(24)), { kind: 'recovering', range: { unit: 'days', lo: 1, hi: 2 } });
 });
 
-test('words: hours below 48, days above', () => {
-  assert.equal(fmtSpanRange(10, 34), '10–34 h');
-  assert.equal(fmtSpanRange(24, 48), '1–2 days');
-  assert.equal(fmtSpanRange(60, 96), '2.5–4 days');
+test('spans: hours below 48, days above (to 0.5)', () => {
+  assert.deepEqual(spanRange(10, 34), { unit: 'h', lo: 10, hi: 34 });
+  assert.deepEqual(spanRange(24, 48), { unit: 'days', lo: 1, hi: 2 });
+  assert.deepEqual(spanRange(60, 96), { unit: 'days', lo: 2.5, hi: 4 });
+  assert.deepEqual(spanRange(0.2, 0.4), { unit: 'h', lo: 1, hi: 1 });
+  assert.deepEqual(span(10.4), { unit: 'h', value: 10 });
+  assert.deepEqual(span(0.3), { unit: 'h', value: 1 });
+  assert.deepEqual(span(60), { unit: 'days', value: 2.5 });
   const r = get(run([W(14, { bench: S(4) })]), 'chest'); // 34–58 h left
-  assert.equal(recoveryWords(r), 'ready in about 1.5–2.5 days');
+  assert.deepEqual(recoveryState(r), { kind: 'recovering', range: { unit: 'days', lo: 1.5, hi: 2.5 } });
   const c = get(run([W(14, { calf: S(4) })]), 'calves'); // [24, 48] → 10–34 h
-  assert.equal(recoveryWords(c), 'ready in about 10–34 h');
+  assert.deepEqual(recoveryState(c), { kind: 'recovering', range: { unit: 'h', lo: 10, hi: 34 } });
 });
 
 test('personal factor scales the window', () => {
@@ -201,6 +205,12 @@ test('validateRange: whole hours, min ≥ 6, max ≤ 240, max ≥ min + 4', () =
   for (const [a, b] of [[5, 20], [12, 241], [12, 15], [12.5, 20], [12, null], [NaN, 20], ['12', 20]]) {
     assert.equal(validateRange(a, b).ok, false, `${a}-${b}`);
   }
+  // errors are codes with their limit, worded by the UI
+  assert.deepEqual(validateRange(null, 20), { ok: false, error: 'missing', params: {} });
+  assert.deepEqual(validateRange(12.5, 20), { ok: false, error: 'whole', params: {} });
+  assert.deepEqual(validateRange(5, 20), { ok: false, error: 'minLow', params: { hours: 6 } });
+  assert.deepEqual(validateRange(12, 241), { ok: false, error: 'maxHigh', params: { hours: 240 } });
+  assert.deepEqual(validateRange(12, 15), { ok: false, error: 'gap', params: { hours: 4 } });
 });
 
 test('recoverySettings keeps pace and only valid overrides; withBase sets and resets', () => {

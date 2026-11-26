@@ -2,6 +2,10 @@
 import { el, fmtGrouped, fmtDate, icon } from '../ui/index.js';
 import { MEALS } from '../core/food-diary.js';
 import { isValidDate } from '../core/dates.js';
+import { t } from '../i18n/index.js';
+import { foodName, mealName } from './names.js';
+
+export { mealName };
 
 let cssLoaded = false;
 /** Load food.css once. */
@@ -12,15 +16,15 @@ export function ensureCss() {
 }
 
 /** <select> with the four meals. */
-export function mealSelect(value, { ariaLabel = 'Meal', onChange } = {}) {
+export function mealSelect(value, { ariaLabel = t('food.meal.label'), onChange } = {}) {
   const s = el('select', { class: 'select', 'aria-label': ariaLabel, onChange: onChange ? () => onChange(s.value) : null },
-    MEALS.map((m) => el('option', { value: m.id, selected: m.id === value }, m.label)));
+    MEALS.map((m) => el('option', { value: m.id, selected: m.id === value }, t(m.labelKey))));
   s.value = value;
   return s;
 }
 
 /** Native date picker. getValue() returns a valid YYYY-MM-DD or null. */
-export function dateInput(value, { ariaLabel = 'Date', onChange } = {}) {
+export function dateInput(value, { ariaLabel = t('food.date.label'), onChange } = {}) {
   const i = el('input', { type: 'date', class: 'input', value, 'aria-label': ariaLabel, required: true });
   i.getValue = () => (isValidDate(i.value) ? i.value : null);
   if (onChange) i.addEventListener('change', () => { if (i.getValue()) onChange(i.getValue()); });
@@ -34,7 +38,7 @@ export function dateInput(value, { ariaLabel = 'Date', onChange } = {}) {
  * @param {HTMLInputElement} input an <input type=date>
  * @param {{placeholder?: string}} [opts]
  */
-export function dateBox(input, { placeholder = 'Pick a date' } = {}) {
+export function dateBox(input, { placeholder = t('food.date.pick') } = {}) {
   ensureCss();
   input.classList.add('date-box-input');
   const text = el('span', { class: 'date-box-text', 'aria-hidden': 'true' });
@@ -53,27 +57,34 @@ export function dateBox(input, { placeholder = 'Pick a date' } = {}) {
 }
 
 /** Meal + date selects side by side (portion, entry, saved-meal and copy sheets). */
-export function mealDateRow(mealSel, dateIn, { dateLabel = 'Date', mealFirst = true } = {}) {
-  const meal = el('div', { class: 'field' }, el('span', { class: 'field-label' }, 'Meal'), mealSel);
+export function mealDateRow(mealSel, dateIn, { dateLabel = t('food.date.label'), mealFirst = true } = {}) {
+  const meal = el('div', { class: 'field' }, el('span', { class: 'field-label' }, t('food.meal.label')), mealSel);
   const date = el('div', { class: 'field' }, el('span', { class: 'field-label' }, dateLabel), dateBox(dateIn));
   return el('div', { class: 'grid-2 meal-date-row' }, mealFirst ? [meal, date] : [date, meal]);
 }
 
-const SOURCE_LABEL = { off: 'Open Food Facts', usda: 'Generic · USDA', custom: 'My food' };
-const SOURCE_SHORT = { off: 'OFF', usda: 'USDA', custom: 'Mine' };
+/** Catalogue keys of the source badges (long: portion sheet, short: lists). */
+const SOURCE_LABEL = { off: 'food.source.off', usda: 'food.source.usda', custom: 'food.source.custom' };
+const SOURCE_SHORT = { off: 'food.source.offShort', usda: 'food.source.usdaShort', custom: 'food.source.customShort' };
 
 /** Badge naming where a food's values come from. */
 export function sourceBadge(food, { long = false } = {}) {
-  if (food.userEdited) return el('span', { class: 'badge badge-edited' }, long ? 'Edited by you' : 'Edited');
+  if (food.userEdited) return el('span', { class: 'badge badge-edited' }, t(long ? 'food.source.editedLong' : 'food.source.edited'));
   const src = food.source || 'custom';
-  return el('span', { class: ['badge', `badge-src-${src}`] }, (long ? SOURCE_LABEL : SOURCE_SHORT)[src] || src);
+  const key = (long ? SOURCE_LABEL : SOURCE_SHORT)[src];
+  return el('span', { class: ['badge', `badge-src-${src}`] }, key ? t(key) : src);
 }
 
 /** Attribution required by Open Food Facts wherever its data is shown: 'Data: Open Food Facts · ODbL'. */
 export function offCredit() {
   const a = (href, text) => el('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text);
-  return el('p', { class: 'small muted off-credit' }, 'Data: ', a('https://world.openfoodfacts.org', 'Open Food Facts'),
-    ' · ', a('https://opendatacommons.org/licenses/odbl/1-0/', 'ODbL'));
+  return el('p', { class: 'small muted off-credit' }, t('food.off.creditPrefix'), ' ', a('https://world.openfoodfacts.org', 'Open Food Facts'), // i18n-ignore (brand)
+    ' · ', a('https://opendatacommons.org/licenses/odbl/1-0/', 'ODbL')); // i18n-ignore (licence name)
+}
+
+/** 'kcal, protein': translated, comma-separated list of missing fields (missingFields() ids: name, kcal, protein …). */
+export function missingText(ids) {
+  return ids.map((k) => t(`food.missing.${k}`)).join(t('food.list.separator'));
 }
 
 /** '539 kcal / 100 g' */
@@ -81,9 +92,9 @@ export function per100Text(food) {
   return `${fmtGrouped(food.per100 && food.per100.kcal, 0)} kcal / 100 ${food.basis || 'g'}`;
 }
 
-/** 'P 6.3 · C 57.5 · F 30.9' for a values object. */
+/** 'P 6.3 · C 57.5 · F 30.9' for a values object (letters per language). */
 export function macroText(v) {
-  return `P ${fmtGrouped(v.protein, 1)} · C ${fmtGrouped(v.carbs, 1)} · F ${fmtGrouped(v.fat, 1)}`;
+  return t('food.macros.short', { p: fmtGrouped(v.protein, 1), c: fmtGrouped(v.carbs, 1), f: fmtGrouped(v.fat, 1) });
 }
 
 /** One search/recent result row: name, source badge + brand, kcal per 100 on the right. */
@@ -91,7 +102,7 @@ export function foodRow(food, { onClick, sub, trail } = {}) {
   const subParts = [food.brand, sub].filter(Boolean).join(' · ');
   return el('button', { type: 'button', class: 'list-item food-row', onClick },
     el('div', { class: 'li-main' },
-      el('div', { class: 'li-title' }, food.name || 'Unnamed'),
+      el('div', { class: 'li-title' }, foodName(food)),
       el('div', { class: 'li-sub' }, sourceBadge(food), subParts ? ` ${subParts}` : '')),
     el('div', { class: 'li-trail t-sub muted' }, trail ?? per100Text(food)));
 }
@@ -103,7 +114,7 @@ export function portionValues(v, extra) {
     el('span', { class: 'num macro-val' }, fmtGrouped(x, 1), el('span', { class: 't-sub muted' }, ' g')));
   return [
     el('div', { class: 'portion-kcal num' }, el('span', { class: 't-hero' }, fmtGrouped(v.kcal, 0)), el('span', { class: 't-sub muted' }, ' kcal')),
-    el('div', { class: 'portion-macros' }, cell('Protein', 'protein', v.protein), cell('Carbs', 'carbs', v.carbs), cell('Fat', 'fat', v.fat)),
+    el('div', { class: 'portion-macros' }, cell(t('food.nutrient.protein'), 'protein', v.protein), cell(t('food.nutrient.carbs'), 'carbs', v.carbs), cell(t('food.nutrient.fat'), 'fat', v.fat)),
     extra || null,
   ];
 }

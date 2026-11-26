@@ -26,12 +26,13 @@ import { splitMacrosFor } from './macro-split.js';
 
 export const KCAL_PER_KG = 7700;
 
+// Activity levels by id; the UI shows t('core.activity.<id>') and t('core.activity.<id>.hint').
 export const ACTIVITY_LEVELS = Object.freeze([
-  { id: 'sedentary', label: 'Sedentary', hint: 'desk job, little exercise', factor: 1.2 },
-  { id: 'light', label: 'Lightly active', hint: 'exercise 1–3 days a week', factor: 1.375 },
-  { id: 'moderate', label: 'Moderately active', hint: 'exercise 3–5 days a week', factor: 1.55 },
-  { id: 'active', label: 'Very active', hint: 'hard exercise 6–7 days a week', factor: 1.725 },
-  { id: 'extra', label: 'Extremely active', hint: 'physical job plus training', factor: 1.9 },
+  { id: 'sedentary', factor: 1.2 },
+  { id: 'light', factor: 1.375 },
+  { id: 'moderate', factor: 1.55 },
+  { id: 'active', factor: 1.725 },
+  { id: 'extra', factor: 1.9 },
 ]);
 
 /** Allowed goal range (kg per week). */
@@ -244,7 +245,7 @@ export function formulaTdee(profile, weightKg, asOf) {
  * @param {{weights: object[], intake: object[], asOf: string, profile?: object, config?: object}} a
  * @returns {{
  *   status: 'ok'|'insufficient', tdee: number|null, se: number|null, confidence: 'high'|'medium'|'low'|null,
- *   missing: string[],
+ *   missing: {key: string, params: Record<string, number>}[],  // what is still needed, as catalogue keys (core.missing.*)
  *   basis: { from: string, to: string, weighIns: number, loggedDays: number, incompleteDays: number,
  *            spanDays: number, meanIntake: number|null, trendKg: number|null, rateKgPerWeek: number|null },
  *   formula: {kcal: number, bmr: number, factor: number, age: number}|null
@@ -280,11 +281,11 @@ export function estimateExpenditure({ weights, intake, asOf, profile = null, con
   const formula = formulaTdee(profile, trendKg, asOf);
 
   const missing = [];
-  const plural = (n, word) => `${n} more ${word}${n === 1 ? '' : 's'}`;
-  if (weighIns < cfg.minWeighIns) missing.push(`${plural(cfg.minWeighIns - weighIns, 'weigh-in')} (${cfg.windowDays} days)`);
-  if (loggedDays < cfg.minLoggedDays) missing.push(`${plural(cfg.minLoggedDays - loggedDays, 'complete day')} (${cfg.windowDays} days)`);
-  if (spanDays < cfg.minSpanDays) missing.push(`${plural(cfg.minSpanDays - spanDays, 'day')} of history`);
-  else if (lastW && daysBetween(lastW, asOf) > cfg.maxStaleDays) missing.push(`A weigh-in (none in ${cfg.maxStaleDays} days)`);
+  const win = cfg.windowDays;
+  if (weighIns < cfg.minWeighIns) missing.push({ key: 'core.missing.weighIns', params: { count: cfg.minWeighIns - weighIns, days: win } });
+  if (loggedDays < cfg.minLoggedDays) missing.push({ key: 'core.missing.completeDays', params: { count: cfg.minLoggedDays - loggedDays, days: win } });
+  if (spanDays < cfg.minSpanDays) missing.push({ key: 'core.missing.history', params: { count: cfg.minSpanDays - spanDays } });
+  else if (lastW && daysBetween(lastW, asOf) > cfg.maxStaleDays) missing.push({ key: 'core.missing.staleWeighIn', params: { days: cfg.maxStaleDays } });
 
   if (missing.length) {
     return { status: 'insufficient', tdee: null, se: null, confidence: null, missing, basis, formula };

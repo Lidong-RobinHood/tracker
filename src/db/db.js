@@ -1,5 +1,6 @@
 // Promise-based IndexedDB wrapper: schema, migrations, generic helpers, settings, export/import.
 // Views read and write data ONLY through this module. All records are plain JSON objects.
+import { t as tr } from '../i18n/index.js'; // `t` is the transaction helper's name below
 
 export const DB_NAME = 'tracker';
 export const DB_VERSION = 1;
@@ -86,7 +87,7 @@ function txDone(tx) {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error || new DOMException('Transaction aborted', 'AbortError'));
+    tx.onabort = () => reject(tx.error || new DOMException('Transaction aborted', 'AbortError')); // i18n-ignore (internal error, not shown as such)
   });
 }
 
@@ -323,15 +324,17 @@ export async function exportAll() {
  * Stores missing from the file count as empty (import replaces everything); unknown stores are ignored.
  * @param {any} data parsed JSON
  * @returns {{ok: true, data: object, counts: Record<string, number>, ignored: string[]}
- *          | {ok: false, error: string}}
+ *          | {ok: false, error: string, code: string, params?: object}}
+ *   error: translated message (common.backupFile.<code>); code / params: the same as data.
  */
 export function validateImport(data) {
-  if (!data || typeof data !== 'object') return { ok: false, error: 'Not a JSON object.' };
-  if (data.app !== 'tracker') return { ok: false, error: 'This file is not a Tracker export.' };
+  const fail = (code, params) => ({ ok: false, code, params, error: tr(`common.backupFile.${code}`, params) });
+  if (!data || typeof data !== 'object') return fail('notObject');
+  if (data.app !== 'tracker') return fail('notTracker');
   const v = data.schemaVersion;
-  if (!Number.isInteger(v) || v < 1) return { ok: false, error: 'Missing or invalid schemaVersion.' };
-  if (v > DB_VERSION) return { ok: false, error: `File is from a newer app version (schema ${v}, this app supports ${DB_VERSION}). Update the app first.` };
-  if (!data.stores || typeof data.stores !== 'object') return { ok: false, error: 'File has no stores.' };
+  if (!Number.isInteger(v) || v < 1) return fail('badSchema');
+  if (v > DB_VERSION) return fail('newer', { file: v, app: DB_VERSION });
+  if (!data.stores || typeof data.stores !== 'object') return fail('noStores');
 
   let d = clone(data);
   for (let n = v + 1; n <= DB_VERSION; n++) if (EXPORT_MIGRATIONS[n]) d = EXPORT_MIGRATIONS[n](d);
@@ -339,10 +342,10 @@ export function validateImport(data) {
   const counts = {};
   for (const s of STORE_NAMES) {
     const recs = d.stores[s] ?? [];
-    if (!Array.isArray(recs)) return { ok: false, error: `Store "${s}" is not a list.` };
+    if (!Array.isArray(recs)) return fail('notList', { store: s });
     const keyPath = STORES[s];
     const bad = recs.findIndex((r) => !r || typeof r !== 'object' || r[keyPath] === undefined || r[keyPath] === null);
-    if (bad >= 0) return { ok: false, error: `Store "${s}", record ${bad + 1}: missing "${keyPath}".` };
+    if (bad >= 0) return fail('missingKey', { store: s, n: bad + 1, key: keyPath });
     counts[s] = recs.length;
   }
   const ignored = Object.keys(d.stores).filter((s) => !STORE_NAMES.includes(s));

@@ -5,6 +5,8 @@ import { isBaseline, isBestSet } from './baseline.js';
 
 /** Default target for an exercise added without a routine or previous target. */
 export const DEFAULT_TARGET = Object.freeze({ targetSets: 3, targetReps: 8, targetRepsMax: null, targetWeight: null });
+/** Stored default name of a routine created empty (a marker, shown translated: src/i18n/names.js routineName). */
+export const NEW_ROUTINE_NAME = 'New routine'; // i18n-ignore: stored marker, translated at display time
 /** Largest target weight accepted (kg). */
 export const MAX_TARGET_WEIGHT = 1000;
 
@@ -178,38 +180,51 @@ export function buildEntry(exerciseId, target, workouts, opts = {}) {
   return { exerciseId, ...t, sets: prefillSets(last ? last.entry : null, t), note: '' };
 }
 
-/** '3 x 6', '3 x 6–8', '3 sets', with a weight target '3 x 6 @ 100 kg' */
-export function formatTarget(t) {
+/**
+ * Words of the display helpers below. The defaults are English for callers outside the workout
+ * screens; the workout UI passes translated labels (src/workout/data.js fmtTarget / fmtSets / fmtWeight).
+ * @typedef {{sets?: (n: number) => string, bw?: string, drop?: string}} FormatLabels
+ */
+// i18n-ignore-start: English defaults (tests, node tools); the UI always passes translations (src/workout/data.js fmt*)
+const EN_LABELS = { sets: (n) => `${n} sets`, bw: 'BW', drop: 'drop' };
+// i18n-ignore-end
+
+/** '3 x 6', '3 x 6–8', '3 sets', with a weight target '3 x 6 @ 100 kg' @param {FormatLabels} [L] */
+export function formatTarget(t, L = EN_LABELS) {
   if (!t) return '';
   const sets = t.targetSets || DEFAULT_TARGET.targetSets;
   const tw = cleanTargetWeight(t.targetWeight);
   const at = tw === null ? '' : ` @ ${tw} kg`;
-  if (!isNum(t.targetReps)) return `${sets} sets${at}`;
+  if (!isNum(t.targetReps)) return `${(L.sets || EN_LABELS.sets)(sets)}${at}`;
   return isNum(t.targetRepsMax) && t.targetRepsMax > t.targetReps
     ? `${sets} × ${t.targetReps}–${t.targetRepsMax}${at}`
     : `${sets} × ${t.targetReps}${at}`;
 }
 
-/** Display a weight in kg without unit: 100, 102.5, 'BW' for 0/empty. */
-export function formatWeight(w) {
-  if (!isNum(w) || w === 0) return 'BW';
+/** true when a weight displays as bodyweight (0 or empty). */
+export const isBodyweightWeight = (w) => !isNum(w) || w === 0;
+
+/** Display a weight in kg without unit: 100, 102.5, 'BW' for 0/empty. @param {FormatLabels} [L] */
+export function formatWeight(w, L = EN_LABELS) {
+  if (isBodyweightWeight(w)) return L.bw ?? EN_LABELS.bw;
   return String(round(w, 2));
 }
 
-/** '100 × 8' (reps unknown shows '?') */
-export function formatSet(s) {
-  return `${formatWeight(s.weight)} × ${isNum(s.reps) ? s.reps : '?'}`;
+/** '100 × 8' (reps unknown shows '?') @param {FormatLabels} [L] */
+export function formatSet(s, L = EN_LABELS) {
+  return `${formatWeight(s.weight, L)} × ${isNum(s.reps) ? s.reps : '?'}`;
 }
 
 /**
  * One-line summary of done sets, in order: '100 × 7, 100 × 8, 100 × 8 + drop 80 × 5'.
- * @param {object[]} sets (undone sets are ignored)
+ * @param {object[]} sets (undone sets are ignored) @param {FormatLabels} [L]
  */
-export function formatSets(sets) {
+export function formatSets(sets, L = EN_LABELS) {
   let out = '';
+  const drop = L.drop ?? EN_LABELS.drop;
   for (const s of (sets || []).filter(isDone)) {
-    if (s.type === 'dropset') out += `${out ? ' + ' : ''}drop ${formatSet(s)}`;
-    else out += `${out ? ', ' : ''}${formatSet(s)}`;
+    if (s.type === 'dropset') out += `${out ? ' + ' : ''}${drop} ${formatSet(s, L)}`;
+    else out += `${out ? ', ' : ''}${formatSet(s, L)}`;
   }
   return out;
 }
@@ -360,24 +375,24 @@ export function finishTime(workout, now) {
  * @param {{date: string, time: string, durationMin?: number|null}} input
  * @param {number} now epoch ms
  * @returns {{ok: true, value: {date: string, startedAt: number, finishedAt: number|null, plannedDurationMs: number|null}}
- *   | {ok: false, error: string}}
+ *   | {ok: false, error: string, params?: object}} error = catalogue key (workout.schedule.err*), translated by the UI
  */
 export function rescheduleWorkout(workout, { date, time, durationMin = null }, now) {
-  if (!isValidDate(date)) return { ok: false, error: 'Pick a date.' };
-  if (date > today(new Date(now))) return { ok: false, error: 'The date cannot be in the future.' };
+  if (!isValidDate(date)) return { ok: false, error: 'workout.schedule.errDate' };
+  if (date > today(new Date(now))) return { ok: false, error: 'workout.schedule.errFuture' };
   const start = atLocal(date, time);
-  if (start === null) return { ok: false, error: 'Pick a start time.' };
-  if (start > now) return { ok: false, error: 'The start time is in the future.' };
+  if (start === null) return { ok: false, error: 'workout.schedule.errTime' };
+  if (start > now) return { ok: false, error: 'workout.schedule.errTimeFuture' };
   let dur = null;
   if (durationMin !== null && durationMin !== undefined) {
-    if (!isNum(durationMin) || durationMin < 1 || durationMin > MAX_DURATION_MIN) return { ok: false, error: `Duration must be 1–${MAX_DURATION_MIN} min.` };
+    if (!isNum(durationMin) || durationMin < 1 || durationMin > MAX_DURATION_MIN) return { ok: false, error: 'workout.schedule.errDuration', params: { max: MAX_DURATION_MIN } };
     dur = Math.round(durationMin) * 60000;
   }
   const finished = isNum(workout.finishedAt);
   if (finished) {
     const keep = isNum(workout.startedAt) ? Math.max(0, workout.finishedAt - workout.startedAt) : DEFAULT_PAST_DURATION_MS;
     const end = start + (dur ?? keep);
-    if (end > now) return { ok: false, error: 'That would end in the future. Pick an earlier start or a shorter duration.' };
+    if (end > now) return { ok: false, error: 'workout.schedule.errEnd' };
     return { ok: true, value: { date: fromTimestamp(start), startedAt: start, finishedAt: end, plannedDurationMs: null } };
   }
   return { ok: true, value: { date: fromTimestamp(start), startedAt: start, finishedAt: null, plannedDurationMs: dur } };

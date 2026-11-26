@@ -25,7 +25,7 @@
 //     a routine session, never a chart point, never itself a record-setting session.
 import { doneSets, byRecent, e1rm, isLoggedWorkout } from './workout.js';
 import { isBaseline, isBestSet, workingEntry } from './baseline.js';
-import { round, percent } from './numbers.js';
+import { round, percent, withPercent } from './numbers.js';
 import { addDays } from './dates.js';
 
 const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
@@ -105,12 +105,12 @@ export function trendOf(pct) {
   return pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
 }
 
-/** '+2.5 %', '−3.1 %' (minus sign), '±0 %', '–' for null. */
+/** '+2.5 %', '−3.1 %' (minus sign), '±0 %', '–' for null (withPercent: no-break space). */
 export function formatPct(pct) {
   if (!isNum(pct)) return '–';
-  if (pct === 0) return '±0 %';
+  if (pct === 0) return withPercent('±0');
   const abs = String(round(Math.abs(pct), 1));
-  return `${pct > 0 ? '+' : '−'}${abs} %`;
+  return withPercent(`${pct > 0 ? '+' : '−'}${abs}`);
 }
 
 /**

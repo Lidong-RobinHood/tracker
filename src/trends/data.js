@@ -1,7 +1,8 @@
 // Data access and shared helpers for the Trends views. All reads/writes go through db.js;
 // all numbers come from src/core.
 import * as db from '../db/db.js';
-import { signedRateText } from '../core/goal-display.js';
+import { signedRateValue } from '../core/goal-display.js';
+import { t } from '../i18n/index.js';
 import { el, icon, fmtGrouped, fmtSigned } from '../ui/index.js';
 import { today, addDays } from '../core/dates.js';
 import { sumEntries } from '../core/nutrition.js';
@@ -68,7 +69,7 @@ export function intakeHistory(d) {
   const { from, to } = intakeHistoryRange(d.today);
   const weeks = weeklyIntake(d.intake, d.today, from, d.config);
   const logged = loggedDayCount(weeks);
-  const label = `${logged} day${logged === 1 ? '' : 's'} logged · last 4 weeks`;
+  const label = t('trends.intake.loggedLast4', { count: logged });
   return { from, to, weeks, logged, label };
 }
 
@@ -100,16 +101,19 @@ function padDecimals(s, decimals) {
 }
 
 /** Weekly rate as shown everywhere: '−0.19 kg / week'. */
-export const rateText = (rate) => (rate === null || rate === undefined || !Number.isFinite(rate) ? '–' : `${signed(rate, 2)} kg / week`);
+export const rateText = (rate) => (rate === null || rate === undefined || !Number.isFinite(rate) ? '–' : kgPerWeek(signed(rate, 2)));
+
+/** '{value} kg / week' in the active language. */
+export const kgPerWeek = (value) => t('trends.kgPerWeek', { value });
 
 /** The goal in one form everywhere: 'Maintain' or '−0.5 kg / week'. */
 export function goalText(rate) {
-  if (!rate) return 'Maintain';
-  return signedRateText(rate);
+  if (!rate) return t('trends.goal.maintain');
+  return kgPerWeek(signedRateValue(rate));
 }
 
 /** Expenditure confidence as a short tag: '± 120 kcal · from your data'. */
-export const confidenceText = (e) => `± ${fmtGrouped(Math.round(e.se / 10) * 10)} kcal · from your data`;
+export const confidenceText = (e) => t('trends.exp.confidence', { se: fmtGrouped(Math.round(e.se / 10) * 10) });
 
 /**
  * Card that links somewhere: 17 px title (+ optional tag), a chevron, then the content.

@@ -1,6 +1,6 @@
 // Percent of daily targets and each meal's share of the day. Pure, no DOM.
 
-import { percent, round } from './numbers.js';
+import { percent, round, withPercent } from './numbers.js';
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
@@ -77,5 +77,5 @@ export function shareOfDay(part, whole) {
 
 /** 62 → '62 %' (no-break space), null → ''. */
 export function fmtPercent(pct) {
-  return isNum(pct) ? `${pct} %` : '';
+  return isNum(pct) ? withPercent(pct) : '';
 }

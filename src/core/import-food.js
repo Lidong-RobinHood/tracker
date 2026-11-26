@@ -4,31 +4,32 @@
 // the row's totals, foodId null), exactly like the app's Quick add.
 import {
   stripBom, parseDelimited, detectDelimiter, detectHeader, detectNumberStyle, detectDateOrder,
-  parseDateOnly, findDate, parseNumber, normHeader, median, trimTrailingEmpty,
+  parseDateOnly, findDate, parseNumber, normHeader, median, trimTrailingEmpty, msg,
 } from './import-common.js';
 import { quickAddEntry, isMeal } from './food-diary.js';
 import { kjToKcal } from './nutrition.js';
 import { round } from './numbers.js';
 
-/** Fields the user can map. */
+/** Fields the user can map. The UI shows t(labelKey) (namespace 'import'). */
 export const FOOD_FIELDS = Object.freeze([
-  { id: 'date', label: 'Date', required: true },
-  { id: 'meal', label: 'Meal' },
-  { id: 'name', label: 'Food name' },
-  { id: 'amount', label: 'Amount (g or ml)' },
-  { id: 'kcal', label: 'Energy (kcal)', required: true },
-  { id: 'kj', label: 'Energy (kJ)' },
-  { id: 'protein', label: 'Protein (g)' },
-  { id: 'carbs', label: 'Carbs (g)' },
-  { id: 'fat', label: 'Fat (g)' },
-  { id: 'sugars', label: 'Sugars (g)' },
-  { id: 'fibre', label: 'Fibre (g)' },
-  { id: 'satFat', label: 'Saturated fat (g)' },
-  { id: 'salt', label: 'Salt (g)' },
-  { id: 'sodium', label: 'Sodium (mg)' },
+  { id: 'date', labelKey: 'import.field.date', required: true },
+  { id: 'meal', labelKey: 'import.field.meal' },
+  { id: 'name', labelKey: 'import.field.name' },
+  { id: 'amount', labelKey: 'import.field.amount' },
+  { id: 'kcal', labelKey: 'import.field.kcal', required: true },
+  { id: 'kj', labelKey: 'import.field.kj' },
+  { id: 'protein', labelKey: 'import.field.protein' },
+  { id: 'carbs', labelKey: 'import.field.carbs' },
+  { id: 'fat', labelKey: 'import.field.fat' },
+  { id: 'sugars', labelKey: 'import.field.sugars' },
+  { id: 'fibre', labelKey: 'import.field.fibre' },
+  { id: 'satFat', labelKey: 'import.field.satFat' },
+  { id: 'salt', labelKey: 'import.field.salt' },
+  { id: 'sodium', labelKey: 'import.field.sodium' },
 ]);
 
 /** Header words per field (normalised, lower case). First match wins, exact before contains. */
+// i18n-ignore-start (header names the importer matches in files: data, not UI)
 const GUESS = {
   date: ['date', 'day', 'datum', 'tag', 'datum_tag_monat_jahr_stunde_minute', 'datum_tag_monat_jahr'],
   meal: ['meal', 'group', 'mahlzeit', 'meal name', 'diary group'],
@@ -45,6 +46,7 @@ const GUESS = {
   salt: ['salt', 'salt (g)', 'salz', 'salz (g)'],
   sodium: ['sodium (mg)', 'sodium', 'natrium (mg)', 'natrium'],
 };
+// i18n-ignore-end
 
 /**
  * Guess a mapping from header names.
@@ -75,38 +77,41 @@ export function guessMapping(headers) {
  * Presets: column header names for each documented export. `status` says how sure we are:
  * 'sample' = header line confirmed from real export files (third-party samples, see docs);
  * 'unconfirmed' = reconstructed from a third-party importer only.
+ * labelKey / noteKey: catalogue keys (namespace 'import'); columns: the export's own header names (data).
  */
+// i18n-ignore-start (export header names are data)
 export const PRESETS = Object.freeze([
   {
-    id: 'mfp', label: 'MyFitnessPal – Nutrition Summary', status: 'sample',
-    note: 'One row per meal per day.',
+    id: 'mfp', labelKey: 'import.preset.mfp', status: 'sample',
+    noteKey: 'import.preset.mfpNote',
     required: ['date', 'meal', 'calories', 'protein (g)'],
     columns: { date: 'Date', meal: 'Meal', kcal: 'Calories', fat: 'Fat (g)', satFat: 'Saturated Fat', carbs: 'Carbohydrates (g)', fibre: 'Fiber', sugars: 'Sugar', protein: 'Protein (g)', sodium: 'Sodium (mg)' },
     dateFormat: 'ymd', decimal: 'dot',
   },
   {
-    id: 'cronometer-servings', label: 'Cronometer – Servings (servings.csv)', status: 'sample',
-    note: 'One row per food. "Group" is the diary group (Breakfast, Lunch, …).',
+    id: 'cronometer-servings', labelKey: 'import.preset.cronometerServings', status: 'sample',
+    noteKey: 'import.preset.cronometerServingsNote',
     required: ['day', 'food name', 'energy (kcal)'],
     columns: { date: 'Day', meal: 'Group', name: 'Food Name', amount: 'Amount', kcal: 'Energy (kcal)', protein: 'Protein (g)', carbs: 'Carbs (g)', fat: 'Fat (g)', fibre: 'Fiber (g)', sugars: 'Sugars (g)', sodium: 'Sodium (mg)' },
     dateFormat: 'ymd', decimal: 'dot',
   },
   {
-    id: 'cronometer-daily', label: 'Cronometer – Daily Nutrition (dailysummary.csv)', status: 'sample',
-    note: 'One row per day or diary group. Total rows skipped.',
+    id: 'cronometer-daily', labelKey: 'import.preset.cronometerDaily', status: 'sample',
+    noteKey: 'import.preset.cronometerDailyNote',
     required: ['date', 'energy (kcal)', 'protein (g)'],
     columns: { date: 'Date', meal: 'Group', kcal: 'Energy (kcal)', protein: 'Protein (g)', carbs: 'Carbs (g)', fat: 'Fat (g)', fibre: 'Fiber (g)', sugars: 'Sugars (g)', sodium: 'Sodium (mg)' },
     dateFormat: 'ymd', decimal: 'dot',
   },
   {
-    id: 'fddb', label: 'FDDB – Food diary (unconfirmed layout)', status: 'unconfirmed',
-    note: 'Unconfirmed layout. Check the preview.',
+    id: 'fddb', labelKey: 'import.preset.fddb', status: 'unconfirmed',
+    noteKey: 'import.preset.fddbNote',
     required: ['bezeichnung', 'kj'],
     anyOf: [['datum_tag_monat_jahr_stunde_minute', 'datum_tag_monat_jahr']],
     columns: { date: ['datum_tag_monat_jahr_stunde_minute', 'datum_tag_monat_jahr'], name: 'bezeichnung', kj: 'kj', kcal: 'kcal', fat: 'fett_g', carbs: 'kh_g', protein: 'protein_g' },
     dateFormat: 'dmy', decimal: 'comma',
   },
 ]);
+// i18n-ignore-end
 
 /** The preset whose required headers are all present, or null. */
 export function detectPreset(headers) {
@@ -132,7 +137,7 @@ export function presetMapping(preset, headers) {
  * @param {string} text
  * @param {{delimiter?: string|null, hasHeader?: boolean|null}} [opts] overrides
  * @returns {{delimiter: string, hasHeader: boolean, headers: string[], rows: {cells: string[], line: number}[],
- *   columnCount: number}}
+ *   columnCount: number}} headers: '' for a column without a header name (the UI shows "Column n")
  */
 export function readTable(text, { delimiter = null, hasHeader = null } = {}) {
   const t = stripBom(text);
@@ -141,8 +146,8 @@ export function readTable(text, { delimiter = null, hasHeader = null } = {}) {
   const header = hasHeader === null ? detectHeader(recs) : hasHeader;
   const columnCount = recs.reduce((m, r) => Math.max(m, trimTrailingEmpty(r.cells).length), 0);
   const headers = header && recs.length
-    ? Array.from({ length: columnCount }, (_, i) => recs[0].cells[i] || `Column ${i + 1}`)
-    : Array.from({ length: columnCount }, (_, i) => `Column ${i + 1}`);
+    ? Array.from({ length: columnCount }, (_, i) => recs[0].cells[i] || '')
+    : Array.from({ length: columnCount }, () => '');
   return { delimiter: d, hasHeader: header, headers, rows: header ? recs.slice(1) : recs, columnCount };
 }
 
@@ -150,7 +155,7 @@ export function readTable(text, { delimiter = null, hasHeader = null } = {}) {
  * Detect the date order and the number style for a mapping (import-common.detectNumberStyle: decimal
  * marks, columns of three-digit groups read as thousands, and the energy column's plausibility).
  * @returns {{dateOrder: 'dmy'|'mdy', dateOrderAmbiguous: boolean, decimal: 'comma'|'dot',
- *   decimalConfidence: 'high'|'medium'|'low', decimalReason: string}}
+ *   decimalConfidence: 'high'|'medium'|'low', decimalReason: import('./import-common.js').ImportMsg}}
  */
 export function detectFormats(table, mapping) {
   const dates = mapping.date === undefined ? [] : table.rows.map((r) => r.cells[mapping.date] || '');
@@ -208,13 +213,19 @@ export function parseAmount(text, decimal) {
 
 export const MAX_ROW_KCAL = 10000;
 
+/** Stored names of imported entries without a food name (markers, shown translated: src/food/names.js). */
+export const IMPORTED_NAME = 'Imported'; // i18n-ignore: stored marker
+export const IMPORTED_SUFFIX = ' (imported)'; // i18n-ignore: stored marker
+
 /**
  * Turn mapped rows into entries.
  * @param {{rows: {cells: string[], line: number}[]}} table
  * @param {{mapping: Record<string, number>, dateOrder: 'dmy'|'mdy', decimal: 'comma'|'dot',
  *   mealMap?: Record<string, string>, defaultMeal: string, energy?: 'kcal'|'kj', sodiumToSalt?: boolean, today: string}} opts
  *   energy: which column provides energy when both are mapped (kJ is converted ÷ 4.184)
- * @returns {{entries: object[], skipped: {line: number, reason: string}[]}}
+ *   Entries without a food name are stored as 'Imported' or '<file meal> (imported)' (English markers, shown
+ *   translated by src/food/names.js itemName).
+ * @returns {{entries: object[], skipped: {line: number, reason: import('./import-common.js').ImportMsg}[]}}
  */
 export function buildFoodRows(table, { mapping, dateOrder, decimal, mealMap = {}, defaultMeal, energy = null, sodiumToSalt = true, today }) {
   const entries = [];
@@ -230,36 +241,36 @@ export function buildFoodRows(table, { mapping, dateOrder, decimal, mealMap = {}
   for (const r of table.rows) {
     if (r.cells.every((c) => !c)) continue;
     const dText = cell(r, 'date');
-    if (!dText) { skipped.push({ line: r.line, reason: 'No date' }); continue; }
+    if (!dText) { skipped.push({ line: r.line, reason: msg('import.food.noDate') }); continue; }
     const d = parseDateOnly(dText, { order: dateOrder, today }) || findDate(dText, { order: dateOrder, today });
-    if (!d || !d.date) { skipped.push({ line: r.line, reason: `Date "${dText}" not readable` }); continue; }
-    if (d.date > today) { skipped.push({ line: r.line, reason: `Date ${d.date} is in the future` }); continue; }
+    if (!d || !d.date) { skipped.push({ line: r.line, reason: msg('import.food.dateUnreadable', { text: dText }) }); continue; }
+    if (d.date > today) { skipped.push({ line: r.line, reason: msg('import.food.future', { date: d.date }) }); continue; }
 
     let meal = defaultMeal;
     if (mapping.meal !== undefined) {
       const mv = cell(r, 'meal');
       const chosen = Object.prototype.hasOwnProperty.call(mealMap, mv) ? mealMap[mv] : (guessMeal(mv) ?? defaultMeal);
-      if (chosen === 'skip') { skipped.push({ line: r.line, reason: `Meal "${mv}" is set to skip` }); continue; }
+      if (chosen === 'skip') { skipped.push({ line: r.line, reason: msg('import.food.mealSkipped', { meal: mv }) }); continue; }
       meal = isMeal(chosen) ? chosen : defaultMeal;
     }
 
     const e = useKj ? num(r, 'kj') : num(r, 'kcal');
-    if (e.bad) { skipped.push({ line: r.line, reason: `Energy "${e.s}" is not a number` }); continue; }
-    if (e.v === null) { skipped.push({ line: r.line, reason: 'No energy value' }); continue; }
+    if (e.bad) { skipped.push({ line: r.line, reason: msg('import.food.energyNaN', { text: e.s }) }); continue; }
+    if (e.v === null) { skipped.push({ line: r.line, reason: msg('import.food.noEnergy') }); continue; }
     const kcal = useKj ? kjToKcal(e.v) : e.v;
-    if (kcal < 0) { skipped.push({ line: r.line, reason: 'Negative energy' }); continue; }
-    if (kcal > MAX_ROW_KCAL) { skipped.push({ line: r.line, reason: `${Math.round(kcal)} kcal in one row is implausible` }); continue; }
+    if (kcal < 0) { skipped.push({ line: r.line, reason: msg('import.food.negativeEnergy') }); continue; }
+    if (kcal > MAX_ROW_KCAL) { skipped.push({ line: r.line, reason: msg('import.food.implausible', { kcal: Math.round(kcal) }) }); continue; }
 
     const vals = {};
     let bad = null;
     for (const f of ['protein', 'carbs', 'fat', 'sugars', 'fibre', 'satFat', 'salt', 'sodium']) {
       const x = num(r, f);
-      if (x.bad) { bad = `${f} "${x.s}" is not a number`; break; }
-      if (x.v !== null && x.v < 0) { bad = `Negative ${f}`; break; }
+      if (x.bad) { bad = msg('import.food.valueNaN', { field: msg(`import.field.${f}`), text: x.s }); break; }
+      if (x.v !== null && x.v < 0) { bad = msg('import.food.negativeValue', { field: msg(`import.field.${f}`) }); break; }
       vals[f] = x.v;
     }
     if (bad) { skipped.push({ line: r.line, reason: bad }); continue; }
-    if (kcal === 0 && !vals.protein && !vals.carbs && !vals.fat) { skipped.push({ line: r.line, reason: 'Empty row (0 kcal)' }); continue; }
+    if (kcal === 0 && !vals.protein && !vals.carbs && !vals.fat) { skipped.push({ line: r.line, reason: msg('import.food.emptyRow') }); continue; }
     let salt = vals.salt;
     if ((salt === null || salt === undefined) && sodiumToSalt && vals.sodium !== null && vals.sodium !== undefined) salt = (vals.sodium * 2.5) / 1000;
 
@@ -267,7 +278,7 @@ export function buildFoodRows(table, { mapping, dateOrder, decimal, mealMap = {}
     const name = cell(r, 'name').replace(/\s+/g, ' ');
     entries.push({
       line: r.line, date: d.date, meal,
-      name: name || (mapping.meal !== undefined && cell(r, 'meal') ? `${cell(r, 'meal')} (imported)` : 'Imported'),
+      name: name || (mapping.meal !== undefined && cell(r, 'meal') ? `${cell(r, 'meal')}${IMPORTED_SUFFIX}` : IMPORTED_NAME),
       amount, kcal: round(kcal, 1),
       protein: vals.protein ?? null, carbs: vals.carbs ?? null, fat: vals.fat ?? null,
       sugars: vals.sugars ?? null, fibre: vals.fibre ?? null, satFat: vals.satFat ?? null,
@@ -307,10 +318,10 @@ export const PLAUSIBLE_DAY_KCAL = Object.freeze({ min: 300, max: 15000 });
 function plausibilityWarnings(med) {
   if (med === null) return [];
   if (med < PLAUSIBLE_DAY_KCAL.min) {
-    return [{ code: 'median-low', message: `Median day only ${Math.round(med)} kcal. Check the energy column and number style.` }];
+    return [{ code: 'median-low', message: msg('import.food.medianLow', { kcal: Math.round(med) }) }];
   }
   if (med > PLAUSIBLE_DAY_KCAL.max) {
-    return [{ code: 'median-high', message: `Median day ${Math.round(med)} kcal is very high. kJ instead of kcal? Check the number style.` }];
+    return [{ code: 'median-high', message: msg('import.food.medianHigh', { kcal: Math.round(med) }) }];
   }
   return [];
 }

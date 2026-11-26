@@ -3,29 +3,31 @@ import {
   el, pageHeader, openSheet, numberInput, toast, fmtGrouped, fmtDay, fmtDate, fmtAmount, navigate, href, field,
   replaceChildren, iconButton, icon, ring, progressBar,
 } from '../ui/index.js';
-import { today, addDays, isValidDate, weekStart } from '../core/dates.js';
+import { today, addDays, isValidDate, weekStart, parseDate } from '../core/dates.js';
+import { dayRange } from '../i18n/dates.js';
 import { scale } from '../core/nutrition.js';
-import { MEALS, mealLabel, groupByMeal, totals, copyEntries, isQuickAdd } from '../core/food-diary.js';
+import { MEALS, groupByMeal, totals, copyEntries, isQuickAdd } from '../core/food-diary.js';
 import { targetStatus, shareOfDay, fmtPercent } from '../core/food-percent.js';
+import { t } from '../i18n/index.js';
 import { dayEntries, putEntry, putEntries, removeEntry, removeEntries, getTargets, updateFoodFromEntry, getFood } from './store.js';
 import { openFoodEditor } from './food-editor.js';
 import { openSaveAsMeal } from './meals.js';
 import { ensureCss, mealSelect, dateInput, macroText, mealDateRow, portionValues } from './widgets.js';
+import { mealName, itemName, isUnnamedQuickAdd, savedMealDefault } from './names.js';
+import { ensureDisplayNames } from './generic.js';
 import { PHOTO_DRAFT } from './photo-tab.js';
 import { loadDraft } from '../ui/draft.js';
 
-const LABEL = { kcal: 'Calories', protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
+/** Catalogue keys of the macro labels. */
+const LABEL = { kcal: 'food.nutrient.calories', protein: 'food.nutrient.protein', carbs: 'food.nutrient.carbs', fat: 'food.nutrient.fat' };
 const uuid = () => crypto.randomUUID();
 // Quick add = no food behind it AND stored as amount 100 (per100 = the totals). Photo items that were not
 // remembered also have no food but keep their real amount, so they stay editable by amount.
 const isQuick = (e) => isQuickAdd(e) && e.amount === 100;
 
-/** '16–22 Nov' (or '30 Nov – 6 Dec') for the Mon–Sun week of `date`. */
+/** '16–22 Nov' (or '30 Nov – 6 Dec') for the Mon–Sun week of `date`, in the app language (src/i18n/dates.js). */
 function weekRange(date) {
-  const a = fmtDate(weekStart(date)).split(' ');
-  const b = fmtDate(addDays(weekStart(date), 6)).split(' ');
-  const year = b[3] ? ` ${b[3]}` : '';
-  return a[2] === b[2] ? `${a[1]}–${b[1]} ${b[2]}${year}` : `${a[1]} ${a[2]} – ${b[1]} ${b[2]}${year}`;
+  return dayRange(parseDate(weekStart(date)), parseDate(addDays(weekStart(date), 6)));
 }
 
 /** Route: diary, diary/:date */
@@ -35,22 +37,22 @@ export async function mountDiary(container, params) {
   const isToday = date === today();
   const go = (d) => navigate(`diary/${d}`, { replace: true });
 
-  const picker = dateInput(date, { ariaLabel: 'Jump to date', onChange: (d) => { if (d !== date) go(d); } });
+  const picker = dateInput(date, { ariaLabel: t('food.diary.jumpToDate'), onChange: (d) => { if (d !== date) go(d); } });
   picker.classList.add('date-picker-input');
   picker.addEventListener('click', () => { try { picker.showPicker(); } catch { /* not supported: native tap opens it */ } });
-  const pickerBtn = el('label', { class: 'btn btn-icon btn-ghost date-picker', title: 'Pick a date' }, icon('calendar'), picker);
+  const pickerBtn = el('label', { class: 'btn btn-icon btn-ghost date-picker', title: t('food.date.pick') }, icon('calendar'), picker);
 
   container.append(pageHeader({
     title: fmtDay(date),
     subtitle: fmtDay(date) === fmtDate(date) ? null : fmtDate(date),
     actions: [
-      iconButton('chevron-left', { label: 'Previous day', onClick: () => go(addDays(date, -1)) }),
+      iconButton('chevron-left', { label: t('food.diary.previousDay'), onClick: () => go(addDays(date, -1)) }),
       pickerBtn,
-      iconButton('chevron-right', { label: 'Next day', onClick: () => go(addDays(date, 1)) }),
+      iconButton('chevron-right', { label: t('food.diary.nextDay'), onClick: () => go(addDays(date, 1)) }),
     ],
   }));
-  const todayLink = isToday ? null : el('a', { class: 'btn btn-sm today-link', href: href(`diary/${today()}`) }, 'Jump to today');
-  const summary = el('section', { class: 'card day-summary', 'aria-label': 'Day totals' });
+  const todayLink = isToday ? null : el('a', { class: 'btn btn-sm today-link', href: href(`diary/${today()}`) }, t('food.diary.jumpToToday'));
+  const summary = el('section', { class: 'card day-summary', 'aria-label': t('food.diary.dayTotals') });
   const mealsWrap = el('div', { class: 'stack meals' });
   // A meal-photo review left unfinished (e.g. the app was reloaded) is kept for 24 h: offer to continue.
   const pd = loadDraft(PHOTO_DRAFT);
@@ -59,24 +61,30 @@ export async function mountDiary(container, params) {
       el('a', { class: 'list-item photo-draft-link', href: href(`food/add/${pd.date}/${pd.meal}?tab=quick`) },
         icon('camera', { class: 'li-lead' }),
         el('span', { class: 'li-main' },
-          el('span', { class: 'li-title' }, 'Continue estimate'),
-          el('span', { class: 'li-sub' }, `Meal photo · ${mealLabel(pd.meal)}, ${fmtDay(pd.date)}`)),
+          el('span', { class: 'li-title' }, t('food.diary.continueEstimate')),
+          el('span', { class: 'li-sub' }, t('food.diary.continueEstimateSub', { meal: mealName(pd.meal), day: fmtDay(pd.date) }))),
         icon('chevron-right', { class: 'li-chevron' })))
     : null;
   // Weekly report for the Mon–Sun week of the day being viewed (route owned by trends).
   const reportLink = el('div', { class: 'card card-flush' },
     el('a', { class: 'list-item week-report-link', href: href(`trends/week/${weekStart(date)}`) },
       icon('file-chart-column', { class: 'li-lead' }),
-      el('span', { class: 'li-main li-title' }, 'Weekly report'),
+      el('span', { class: 'li-main li-title' }, t('food.diary.weeklyReport')),
       el('span', { class: 'li-trail t-sub muted' }, weekRange(date)),
       icon('chevron-right', { class: 'li-chevron' })));
   container.append(...[todayLink, draftLink, summary, mealsWrap, reportLink].filter(Boolean));
 
   let targets = await getTargets();
   let entries = [];
+  /** Stored foods of the day's entries (by id), for generic food names in the app language. */
+  let foods = new Map();
 
   async function render() {
     entries = await dayEntries(date);
+    const ids = [...new Set(entries.map((e) => e.foodId).filter(Boolean))];
+    foods = new Map((await Promise.all(ids.map((id) => getFood(id)))).filter(Boolean).map((f) => [f.id, f]));
+    // Generic (USDA) food names in the app language: the names file is loaded only when one is on screen.
+    await ensureDisplayNames([...foods.values()]);
     renderSummary();
     const byMeal = groupByMeal(entries);
     const dayKcal = totals(entries).kcal;
@@ -85,36 +93,36 @@ export async function mountDiary(container, params) {
 
   // ---------------------------------------------------------------- day summary
   const kcalRing = ring({ value: 0, max: 0, size: 148, stroke: 10 });
-  const restCap = el('span', { class: 't-cap muted' }, 'Left');
+  const restCap = el('span', { class: 't-cap muted' }, t('food.diary.left'));
   const restVal = el('span', { class: 't-head num' });
   const targetVal = el('span', { class: 't-head num' });
   const targetPct = el('span', { class: 't-sub num' });
   const macroCells = Object.fromEntries(['protein', 'carbs', 'fat'].map((key) => {
     const pct = el('span', { class: 'num pct' });
-    const bar = progressBar({ value: 0, max: 0, tone: key, label: LABEL[key] });
+    const bar = progressBar({ value: 0, max: 0, tone: key, label: t(LABEL[key]) });
     const amt = el('span', { class: 't-sub num macro-amounts' });
     const cell = el('div', { class: 'macro-bar' },
-      el('div', { class: 't-sub macro-label' }, el('span', { class: 'strong' }, LABEL[key]), pct), bar, amt);
+      el('div', { class: 't-sub macro-label' }, el('span', { class: 'strong' }, t(LABEL[key])), pct), bar, amt);
     return [key, { cell, pct, bar, amt }];
   }));
   summary.append(
     el('div', { class: 'hero-row' },
       el('div', { class: 'hero-side' }, restCap, restVal, el('span', { class: 't-sub muted' }, 'kcal')),
       kcalRing,
-      el('div', { class: 'hero-side is-right' }, el('span', { class: 't-cap muted' }, 'Target'), targetVal, targetPct)),
+      el('div', { class: 'hero-side is-right' }, el('span', { class: 't-cap muted' }, t('food.diary.target')), targetVal, targetPct)),
     el('div', { class: 'macro-bars' }, Object.values(macroCells).map((c) => c.cell)));
 
   function renderSummary() {
-    const t = totals(entries);
+    const tot = totals(entries);
     // One rounding rule for everything shown: eaten rounded once, left/over from the rounded value.
-    const st = Object.fromEntries(['kcal', 'protein', 'carbs', 'fat'].map((k) => [k, targetStatus(t[k], targets && targets[k])]));
+    const st = Object.fromEntries(['kcal', 'protein', 'carbs', 'fat'].map((k) => [k, targetStatus(tot[k], targets && targets[k])]));
     const kcal = st.kcal;
     // Ring and centre number both show eaten; left/over sits beside it (no target: '–').
     kcalRing.update({
       value: kcal.eaten, max: kcal.target ?? 0, tone: kcal.isOver ? 'warn' : 'accent',
-      label: fmtGrouped(kcal.eaten, 0), sub: 'kcal eaten',
+      label: fmtGrouped(kcal.eaten, 0), sub: t('food.diary.kcalEaten'),
     });
-    restCap.textContent = kcal.isOver ? 'Over' : 'Left';
+    restCap.textContent = t(kcal.isOver ? 'food.diary.over' : 'food.diary.left');
     restVal.textContent = fmtGrouped(kcal.isOver ? kcal.over : kcal.left, 0);
     restVal.classList.toggle('pct-over', kcal.isOver);
     targetVal.textContent = fmtGrouped(kcal.target, 0);
@@ -132,31 +140,35 @@ export async function mountDiary(container, params) {
     node.textContent = x && x.pct !== null ? fmtPercent(x.pct) : '';
     node.classList.toggle('pct-over', Boolean(x && x.isOver));
     node.classList.toggle('muted', !(x && x.isOver));
-    node.title = x && x.isOver ? 'Over target' : 'Of daily target';
+    node.title = t(x && x.isOver ? 'food.diary.overTarget' : 'food.diary.ofTarget');
   }
 
   // ---------------------------------------------------------------- meals
   function mealCard(m, list, dayKcal) {
-    const t = totals(list);
-    const share = list.length ? shareOfDay(t.kcal, dayKcal) : null;
-    return el('section', { class: 'card card-flush meal-card', 'aria-label': m.label },
+    const tot = totals(list);
+    const share = list.length ? shareOfDay(tot.kcal, dayKcal) : null;
+    const label = mealName(m.id);
+    return el('section', { class: 'card card-flush meal-card', 'aria-label': label },
       el('div', { class: 'meal-head' },
         el('div', { class: 'meal-title-wrap' },
-          el('h2', { class: 't-head meal-title' }, m.label),
-          list.length ? el('div', { class: 't-sub muted num meal-macros' }, macroText(t)) : null),
-        el('div', { class: 't-sub muted num meal-kcal' }, list.length ? `${fmtGrouped(t.kcal, 0)} kcal` : '–',
-          share === null ? null : el('div', { class: 'meal-share', 'aria-label': `${share} percent of the day's calories`, title: 'Share of the day’s calories' }, fmtPercent(share))),
-        list.length ? iconButton('ellipsis', { label: `${m.label} options`, onClick: () => mealMenu(m, list) }) : null,
-        el('a', { class: 'btn btn-icon btn-ghost meal-add', href: href(`food/add/${date}/${m.id}`), 'aria-label': `Add to ${m.label}` }, icon('plus'))),
+          el('h2', { class: 't-head meal-title' }, label),
+          list.length ? el('div', { class: 't-sub muted num meal-macros' }, macroText(tot)) : null),
+        el('div', { class: 't-sub muted num meal-kcal' }, list.length ? `${fmtGrouped(tot.kcal, 0)} kcal` : '–',
+          share === null ? null : el('div', { class: 'meal-share', 'aria-label': t('food.diary.shareAria', { pct: share }), title: t('food.diary.shareTitle') }, fmtPercent(share))),
+        list.length ? iconButton('ellipsis', { label: t('food.diary.mealOptions', { meal: label }), onClick: () => mealMenu(m, list) }) : null,
+        el('a', { class: 'btn btn-icon btn-ghost meal-add', href: href(`food/add/${date}/${m.id}`), 'aria-label': t('food.diary.addToMeal', { meal: label }) }, icon('plus'))),
       list.length ? el('div', { class: 'list' }, list.map(entryRow)) : null);
   }
+
+  /** Entry name in the app language (generic foods, 'Quick add'); user names as stored. */
+  function nameOf(e) { return itemName(e, e.foodId ? foods.get(e.foodId) : null); }
 
   function entryRow(e) {
     const v = scale(e.per100, e.amount);
     return el('button', { type: 'button', class: 'list-item entry-row', onClick: () => editEntry(e) },
       el('div', { class: 'li-main' },
-        el('div', { class: 'li-title' }, e.name),
-        el('div', { class: 'li-sub' }, isQuick(e) ? (e.name === 'Quick add' ? macroText(v) : `Quick add · ${macroText(v)}`) : [fmtAmount(e.amount, e.basis), e.brand].filter(Boolean).join(' · '))),
+        el('div', { class: 'li-title' }, nameOf(e)),
+        el('div', { class: 'li-sub' }, isQuick(e) ? (isUnnamedQuickAdd(e) ? macroText(v) : `${t('food.quickAdd.title')} · ${macroText(v)}`) : [fmtAmount(e.amount, e.basis), e.brand].filter(Boolean).join(' · '))),
       el('div', { class: 'li-trail num' }, fmtGrouped(v.kcal, 0), el('span', { class: 'vh' }, ' kcal')));
   }
 
@@ -164,40 +176,47 @@ export async function mountDiary(container, params) {
   function editEntry(entry) {
     let draft = { ...entry, per100: { ...entry.per100 } };
     const quick = isQuick(entry);
-    const amount = numberInput({ value: entry.amount, min: 0.1, max: 10000, decimals: 1, ariaLabel: 'Amount', onInput: update });
+    const amount = numberInput({ value: entry.amount, min: 0.1, max: 10000, decimals: 1, ariaLabel: t('food.portion.amount'), onInput: update });
     amount.classList.add('portion-amount');
     const values = el('div', { class: 'portion-values' });
-    const nameEl = el('div', { class: 't-head portion-name' }, entry.name);
+    // Shown name: translated while unchanged; once "Edit values" returns a name, that one.
+    const shownName = nameOf(entry);
+    let nameChanged = false;
+    const nameEl = el('div', { class: 't-head portion-name' }, shownName);
     const mealSel = mealSelect(entry.meal);
     const dateIn = dateInput(entry.date);
     let alsoUpdateFood = false;
     const sheet = openSheet({
-      title: quick ? 'Quick add' : 'Edit entry',
+      title: t(quick ? 'food.quickAdd.title' : 'food.entry.edit'),
       className: 'portion-sheet',
       content: [
         el('div', { class: 'portion-head' }, nameEl, entry.brand ? el('div', { class: 't-sub muted' }, entry.brand) : null),
-        quick ? null : field('Amount', amount, { unit: entry.basis }),
+        quick ? null : field(t('food.portion.amount'), amount, { unit: entry.basis }),
         values,
-        el('button', { type: 'button', class: 'btn btn-sm btn-ghost edit-values', onClick: editValues }, icon('pencil'), 'Edit values'),
+        el('button', { type: 'button', class: 'btn btn-sm btn-ghost edit-values', onClick: editValues }, icon('pencil'), t('food.portion.editValues')),
         mealDateRow(mealSel, dateIn),
       ],
     });
     sheet.footer.append(
-      el('button', { type: 'button', class: 'btn btn-ghost text-danger', onClick: del }, icon('trash-2'), 'Delete'),
-      el('button', { type: 'button', class: 'btn btn-primary grow', onClick: save }, 'Save'));
+      el('button', { type: 'button', class: 'btn btn-ghost text-danger', onClick: del }, icon('trash-2'), t('food.action.delete')),
+      el('button', { type: 'button', class: 'btn btn-primary grow', onClick: save }, t('food.action.save')));
 
     function update() {
       const v = scale(draft.per100, quick ? 100 : amount.getNumber() ?? 0);
-      nameEl.textContent = draft.name;
+      nameEl.textContent = nameChanged ? draft.name : shownName;
       replaceChildren(values, portionValues(v));
     }
     async function editValues() {
-      const food = quick ? { ...draft, name: draft.name } : draft;
+      // The editor shows the name as the user sees it; an unchanged name keeps the stored one (so a generic
+      // food keeps its English record name and stays translated).
+      const shown = nameChanged ? draft.name : shownName;
+      const food = { ...draft, name: shown };
       const r = await openFoodEditor({
-        food, mode: 'entry', title: quick ? 'Quick add values' : 'Edit entry values', canUpdateFood: !quick && Boolean(entry.foodId),
+        food, mode: 'entry', title: t(quick ? 'food.quickAdd.valuesTitle' : 'food.entry.editValues'), canUpdateFood: !quick && Boolean(entry.foodId),
       });
       if (!r) return;
-      draft = { ...draft, name: r.food.name, basis: r.food.basis, per100: r.food.per100 };
+      if (r.food.name !== shown) nameChanged = true;
+      draft = { ...draft, name: nameChanged ? r.food.name : draft.name, basis: r.food.basis, per100: r.food.per100 };
       alsoUpdateFood = r.alsoUpdateFood;
       update();
     }
@@ -205,7 +224,7 @@ export async function mountDiary(container, params) {
       const a = quick ? 100 : amount.getNumber();
       const d = dateIn.getValue();
       if (a === null || a <= 0) { amount.focus(); return; }
-      if (!d) { toast('Choose a valid date.', { type: 'error' }); return; }
+      if (!d) { toast(t('food.date.invalid'), { type: 'error' }); return; }
       const updated = { ...draft, amount: a, meal: mealSel.value, date: d };
       try {
         await putEntry(updated);
@@ -214,18 +233,18 @@ export async function mountDiary(container, params) {
           if (f) await updateFoodFromEntry(updated);
         }
         sheet.close(true);
-        toast(d !== date ? `Moved to ${fmtDay(d)}` : 'Entry saved', { type: 'success' });
+        toast(d !== date ? t('food.entry.moved', { day: fmtDay(d) }) : t('food.entry.saved'), { type: 'success' });
         render();
       } catch (err) {
         console.error(err);
-        toast(`Could not save: ${err.message || err}`, { type: 'error' });
+        toast(t('food.error.save', { error: err.message || err }), { type: 'error' });
       }
     }
     async function del() {
       await removeEntry(entry.id);
       sheet.close(true);
       render();
-      toast(`Deleted ${entry.name}`, { action: { label: 'Undo', onClick: async () => { await putEntries([entry]); render(); } } });
+      toast(t('food.entry.deleted', { name: shownName }), { action: { label: t('food.action.undo'), onClick: async () => { await putEntries([entry]); render(); } } });
     }
     update();
   }
@@ -234,12 +253,13 @@ export async function mountDiary(container, params) {
   function mealMenu(m, list) {
     const item = (iconName, label, onClick, cls) => el('button', { type: 'button', class: ['list-item', cls], onClick },
       icon(iconName, { class: 'li-lead' }), el('span', { class: 'li-main' }, label));
+    const label = mealName(m.id);
     const sheet = openSheet({
-      title: m.label,
+      title: label,
       content: el('div', { class: 'list menu-list' },
-        item('copy', 'Copy to another day…', () => { sheet.close(); copyMeal(m, list); }),
-        item('bookmark', 'Save as meal…', () => { sheet.close(); openSaveAsMeal(list, `${m.label} ${fmtDate(date)}`); }),
-        item('trash-2', `Delete all (${list.length})`, () => { sheet.close(); deleteAll(m, list); }, 'text-danger')),
+        item('copy', t('food.diary.copyToDay'), () => { sheet.close(); copyMeal(m, list); }),
+        item('bookmark', t('food.diary.saveAsMeal'), () => { sheet.close(); openSaveAsMeal(list, savedMealDefault(m.id, date), { names: list.map(nameOf) }); }),
+        item('trash-2', t('food.diary.deleteAll', { count: list.length }), () => { sheet.close(); deleteAll(m, list); }, 'text-danger')),
     });
   }
 
@@ -247,29 +267,29 @@ export async function mountDiary(container, params) {
     const dateIn = dateInput(isToday ? addDays(date, 1) : today());
     const mealSel = mealSelect(m.id);
     const sheet = openSheet({
-      title: `Copy ${m.label.toLowerCase()}`,
+      title: t('food.diary.copyTitle', { meal: mealName(m.id) }),
       content: [
-        el('p', { class: 't-sub muted num' }, `${list.length} item${list.length === 1 ? '' : 's'} · ${fmtGrouped(totals(list).kcal, 0)} kcal`),
-        mealDateRow(mealSel, dateIn, { dateLabel: 'To date', mealFirst: false }),
+        el('p', { class: 't-sub muted num' }, t('food.diary.itemsKcal', { count: list.length, kcal: fmtGrouped(totals(list).kcal, 0) })),
+        mealDateRow(mealSel, dateIn, { dateLabel: t('food.diary.toDate'), mealFirst: false }),
       ],
     });
     sheet.footer.append(
-      el('button', { type: 'button', class: 'btn', onClick: () => sheet.close() }, 'Cancel'),
+      el('button', { type: 'button', class: 'btn', onClick: () => sheet.close() }, t('food.action.cancel')),
       el('button', { type: 'button', class: 'btn btn-primary grow', onClick: async () => {
         const d = dateIn.getValue();
-        if (!d) { toast('Choose a valid date.', { type: 'error' }); return; }
+        if (!d) { toast(t('food.date.invalid'), { type: 'error' }); return; }
         const copies = copyEntries(list, { date: d, meal: mealSel.value, now: Date.now(), newId: uuid });
         await putEntries(copies);
         sheet.close();
         if (d === date) render();
-        toast(`Copied to ${mealLabel(mealSel.value)}, ${fmtDay(d)}`, { type: 'success', action: { label: 'Open', onClick: () => navigate(`diary/${d}`) } });
-      } }, 'Copy'));
+        toast(t('food.diary.copied', { meal: mealName(mealSel.value), day: fmtDay(d) }), { type: 'success', action: { label: t('food.action.open'), onClick: () => navigate(`diary/${d}`) } });
+      } }, t('food.action.copy')));
   }
 
   async function deleteAll(m, list) {
     await removeEntries(list.map((e) => e.id));
     render();
-    toast(`Deleted ${list.length} from ${m.label}`, { action: { label: 'Undo', onClick: async () => { await putEntries(list); render(); } } });
+    toast(t('food.diary.deletedFrom', { count: list.length, meal: mealName(m.id) }), { action: { label: t('food.action.undo'), onClick: async () => { await putEntries(list); render(); } } });
   }
 
   // Keep in sync if targets change elsewhere or the tab regains focus (e.g. the day rolled over).

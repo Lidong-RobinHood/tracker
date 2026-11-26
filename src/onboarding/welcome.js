@@ -12,9 +12,13 @@ import { currentPlatform, installGuide } from './install.js';
 import { requestPersistence } from './backup.js';
 import { ensureCss } from './shell.js';
 import { loadDraft, saveDraft, clearDraft } from '../ui/draft.js';
+import { t } from '../i18n/index.js';
 
 import { MIN_KG, MAX_KG } from '../core/body-weight.js'; // same limits everywhere
-const MACRO_LABEL = { protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
+const MACRO_LABEL = { protein: 'onboarding.macro.protein', carbs: 'onboarding.macro.carbs', fat: 'onboarding.macro.fat' };
+const macroLabel = (k) => t(MACRO_LABEL[k]);
+/** Activity level label – hint, translated by id (core.activity.<id>, see src/core/adaptive.js). */
+const activityText = (a) => `${t(`core.activity.${a.id}`)} – ${t(`core.activity.${a.id}.hint`)}`;
 /** localStorage draft of the setup (answers, typed values, current step), so a reload loses nothing. */
 const DRAFT = 'welcome';
 
@@ -44,18 +48,18 @@ export async function mountWelcome(container) {
   const header = el('div');
   container.append(header, body);
 
-  const skipAll = el('button', { type: 'button', class: 'btn btn-ghost', onClick: () => finish('diary', true) }, 'Skip setup');
+  const skipAll = el('button', { type: 'button', class: 'btn btn-ghost', onClick: () => finish('diary', true) }, t('onboarding.welcome.skipAll'));
 
   // ---------------------------------------------------------------- step: about you (inputs kept across steps)
   const sel = (value, options, ariaLabel) => el('select', { class: 'select', 'aria-label': ariaLabel },
     options.map(([v, label]) => el('option', { value: v, selected: v === (value ?? '') }, label)));
   const about = {
-    sex: sel(profile.sex, [['', 'Not set'], ['female', 'Female'], ['male', 'Male'], ['other', 'Other / prefer not to say']], 'Sex'),
-    birthYear: numberInput({ value: profile.birthYear, integer: true, min: 1900, max: new Date().getFullYear() - 10, ariaLabel: 'Birth year' }),
-    height: numberInput({ value: profile.heightCm, min: 100, max: 250, decimals: 1, ariaLabel: 'Height' }),
+    sex: sel(profile.sex, [['', t('onboarding.about.notSet')], ['female', t('onboarding.about.female')], ['male', t('onboarding.about.male')], ['other', t('onboarding.about.other')]], t('onboarding.about.sex')),
+    birthYear: numberInput({ value: profile.birthYear, integer: true, min: 1900, max: new Date().getFullYear() - 10, ariaLabel: t('onboarding.about.birthYear') }),
+    height: numberInput({ value: profile.heightCm, min: 100, max: 250, decimals: 1, ariaLabel: t('onboarding.about.height') }),
     weight: numberInput({ value: lastWeight && lastWeight.date === todayStr ? lastWeight.kg : null, min: MIN_KG, max: MAX_KG, decimals: 2,
-      ariaLabel: "Today's weight", placeholder: lastWeight ? fmtNum(lastWeight.kg, 2) : '' }),
-    activity: sel(profile.activity, [['', 'Not set'], ...ACTIVITY_LEVELS.map((a) => [a.id, `${a.label} – ${a.hint}`])], 'Activity level'),
+      ariaLabel: t('onboarding.about.weightAria'), placeholder: lastWeight ? fmtNum(lastWeight.kg, 2) : '' }),
+    activity: sel(profile.activity, [['', t('onboarding.about.notSet')], ...ACTIVITY_LEVELS.map((a) => [a.id, activityText(a)])], t('onboarding.about.activity')),
   };
   if (typed.about) for (const [k, input] of Object.entries(about)) if (typeof typed.about[k] === 'string') input.value = typed.about[k];
   /** Profile as currently typed (for the estimate), and the weight to use for it. */
@@ -65,18 +69,18 @@ export async function mountWelcome(container) {
 
   function aboutStep() {
     return [
-      el('h2', { class: 'ob-title' }, 'About you'),
-      el('p', { class: 'muted' }, 'For a first estimate. All optional.'),
+      el('h2', { class: 'ob-title' }, t('onboarding.about.title')),
+      el('p', { class: 'muted' }, t('onboarding.about.lead')),
       el('div', { class: 'card stack' },
-        el('div', { class: 'grid-2' }, field('Sex', about.sex), field('Birth year', about.birthYear)),
-        el('div', { class: 'grid-2' }, field('Height', about.height, { unit: 'cm' }), field('Weight today', about.weight, { unit: 'kg' })),
-        field('Activity level', about.activity, { hint: 'Including your workouts' })),
+        el('div', { class: 'grid-2' }, field(t('onboarding.about.sex'), about.sex), field(t('onboarding.about.birthYear'), about.birthYear)),
+        el('div', { class: 'grid-2' }, field(t('onboarding.about.height'), about.height, { unit: 'cm' }), field(t('onboarding.about.weightToday'), about.weight, { unit: 'kg' })),
+        field(t('onboarding.about.activity'), about.activity, { hint: t('onboarding.about.activityHint') })),
     ];
   }
   function readAbout() {
-    const checks = [[about.birthYear, 'birth year'], [about.height, 'height'], [about.weight, `weight (${MIN_KG}–${MAX_KG} kg)`]];
-    for (const [input, name] of checks) {
-      if (input.value.trim() && input.getNumber() === null) { input.focus(); toast(`Enter a valid ${name} or leave it empty.`, { type: 'error' }); return false; }
+    const checks = [[about.birthYear, 'onboarding.about.errorBirthYear'], [about.height, 'onboarding.about.errorHeight'], [about.weight, 'onboarding.about.errorWeight']];
+    for (const [input, key] of checks) {
+      if (input.value.trim() && input.getNumber() === null) { input.focus(); toast(t(key, { min: MIN_KG, max: MAX_KG }), { type: 'error' }); return false; }
     }
     const a = { sex: about.sex.value || null, birthYear: about.birthYear.getNumber(), heightCm: about.height.getNumber(),
       weightKg: about.weight.getNumber(), activity: about.activity.value || null };
@@ -89,24 +93,24 @@ export async function mountWelcome(container) {
   const editor = targetsEditor(targets, typed.editor);
   const estimateBox = el('div', { class: 'stack ob-estimate', 'aria-live': 'polite' });
   let proposal = null;
-  const useEstimate = el('button', { type: 'button', class: 'btn btn-sm', hidden: true, onClick: () => { applyProposal(true); } }, 'Use the estimate');
+  const useEstimate = el('button', { type: 'button', class: 'btn btn-sm', hidden: true, onClick: () => { applyProposal(true); } }, t('onboarding.goal.useEstimate'));
 
   function refreshEstimate() {
     const r = rate.getRate();
     const p = proposeTargets({ profile: typedProfile(), weightKg: estimateWeight(), rateKgPerWeek: r ?? 0, adaptive: adaptive || {}, asOf: todayStr });
     proposal = p.target;
     if (!p.target) {
-      estimateBox.replaceChildren(el('p', { class: 't-sub' }, 'Fill in About you for an estimate, or type targets below.'));
+      estimateBox.replaceChildren(el('p', { class: 't-sub' }, t('onboarding.goal.fillAbout')));
       useEstimate.hidden = true;
       return;
     }
     estimateBox.replaceChildren(...[
-      el('div', { class: 'ob-est-row' }, el('span', { class: 'ob-est-label' }, 'Expenditure', infoButton('expenditure')), el('strong', null, `${fmtGrouped(p.tdee)} kcal / day`)),
-      el('div', { class: 'ob-est-row' }, el('span', { class: 'ob-est-label' }, 'Suggested target'), el('strong', null, `${fmtGrouped(p.target.kcal)} kcal`)),
-      el('div', { class: 't-sub muted' }, `Protein ${p.target.protein} g · carbs ${p.target.carbs} g · fat ${p.target.fat} g`),
-      p.target.limitedBy === 'floor' ? el('p', { class: 't-sub text-warning' }, 'Raised to the calorie floor.') : null,
-      p.target.proteinLimited ? el('p', { class: 't-sub text-warning' }, `Protein capped at ${p.target.protein} g to fit calories (setting: ${p.target.proteinWanted} g).`) : null,
-      el('p', { class: 't-sub muted' }, 'Formula estimate, not from your data yet.'),
+      el('div', { class: 'ob-est-row' }, el('span', { class: 'ob-est-label' }, t('onboarding.goal.expenditure'), infoButton('expenditure')), el('strong', null, t('onboarding.goal.kcalPerDay', { kcal: fmtGrouped(p.tdee) }))),
+      el('div', { class: 'ob-est-row' }, el('span', { class: 'ob-est-label' }, t('onboarding.goal.suggested')), el('strong', null, `${fmtGrouped(p.target.kcal)} kcal`)),
+      el('div', { class: 't-sub muted' }, t('onboarding.goal.macros', { protein: p.target.protein, carbs: p.target.carbs, fat: p.target.fat })),
+      p.target.limitedBy === 'floor' ? el('p', { class: 't-sub text-warning' }, t('onboarding.goal.floor')) : null,
+      p.target.proteinLimited ? el('p', { class: 't-sub text-warning' }, t('onboarding.goal.proteinCapped', { protein: p.target.protein, wanted: p.target.proteinWanted })) : null,
+      el('p', { class: 't-sub muted' }, t('onboarding.goal.formula')),
     ].filter(Boolean));
     applyProposal(false);
   }
@@ -123,14 +127,14 @@ export async function mountWelcome(container) {
   function goalStep() {
     refreshEstimate();
     return [
-      el('div', { class: 'ob-title-row' }, el('h2', { class: 'ob-title' }, 'Your goal'), infoButton('goal')),
+      el('div', { class: 'ob-title-row' }, el('h2', { class: 'ob-title' }, t('onboarding.goal.title')), infoButton('goal')),
       el('div', { class: 'card set-card' }, rate),
       el('div', { class: 'card stack' }, estimateBox),
       el('section', { class: 'card stack' },
-        el('div', { class: 'row-between' }, el('div', { class: 'ob-title-row' }, el('h3', { class: 'card-title' }, 'Daily targets'), infoButton('macros')), useEstimate),
+        el('div', { class: 'row-between' }, el('div', { class: 'ob-title-row' }, el('h3', { class: 'card-title' }, t('onboarding.goal.dailyTargets')), infoButton('macros')), useEstimate),
         editor.el),
       el('p', { class: 't-sub muted ob-foot' },
-        'After about 2 weeks of logging, Trends proposes targets each Monday. You decide.', infoButton('checkin')),
+        t('onboarding.goal.checkinNote'), infoButton('checkin')),
     ];
   }
   function readGoal() {
@@ -142,7 +146,7 @@ export async function mountWelcome(container) {
     }
     const input = editor.read();
     const check = buildTargets(targets, input);
-    if (!check.ok) { editor.focus(check.field); toast(check.error, { type: 'error' }); return false; }
+    if (!check.ok) { editor.focus(check.field); toast(t(check.errorKey), { type: 'error' }); return false; }
     answers.rateKgPerWeek = r;
     answers.targets = input;
     return true;
@@ -151,21 +155,21 @@ export async function mountWelcome(container) {
   // ---------------------------------------------------------------- steps: intro, install, data
   function introStep() {
     return [
-      el('h2', { class: 'ob-title' }, 'Welcome to Tracker'),
-      el('p', null, 'Log food, weight and workouts. Get targets, weekly reports and training stats.'),
+      el('h2', { class: 'ob-title' }, t('onboarding.intro.title')),
+      el('p', null, t('onboarding.intro.lead')),
       el('section', { class: 'card stack ob-key' },
-        el('div', { class: 'ob-title-row' }, icon('shield', { class: 'ob-key-ic' }), el('h3', { class: 'card-title' }, 'Your data stays on this phone')),
+        el('div', { class: 'ob-title-row' }, icon('shield', { class: 'ob-key-ic' }), el('h3', { class: 'card-title' }, t('onboarding.intro.dataTitle'))),
         el('ul', { class: 'ob-list' },
-          el('li', null, 'No account, no cloud. Only you can see your data.'),
-          el('li', null, 'Clearing browser data or deleting the app deletes everything.'),
-          el('li', null, 'Export a backup now and then: Settings › Data.')),
-        el('p', { class: 't-sub muted' }, 'Online only for food lookups and, if set up, meal photos.')),
+          el('li', null, t('onboarding.intro.noAccount')),
+          el('li', null, t('onboarding.intro.clearing')),
+          el('li', null, t('onboarding.intro.export'))),
+        el('p', { class: 't-sub muted' }, t('onboarding.intro.online'))),
     ];
   }
   function installStep() {
     return [
-      el('h2', { class: 'ob-title' }, 'Add it to your home screen'),
-      el('p', { class: 'muted' }, 'Works offline, and the browser is less likely to clear data.'),
+      el('h2', { class: 'ob-title' }, t('onboarding.installStep.title')),
+      el('p', { class: 'muted' }, t('onboarding.install.why')),
       el('div', { class: 'card' }, installGuide(plat)),
     ];
   }
@@ -176,21 +180,21 @@ export async function mountWelcome(container) {
     fileInput.value = '';
     if (!file) return;
     let data;
-    try { data = JSON.parse(await file.text()); } catch { toast('That file is not valid JSON.', { type: 'error' }); return; }
+    try { data = JSON.parse(await file.text()); } catch { toast(t('onboarding.data.notJson'), { type: 'error' }); return; }
     await importFlow(data, { reloadTo: 'diary' });
   });
   function dataStep() {
     const item = (props, title, sub) => el(props.href ? 'a' : 'button', { class: 'list-item', ...(props.href ? {} : { type: 'button' }), ...props },
       el('span', { class: 'li-lead' }, icon(props.href ? 'file-text' : 'upload')),
-      el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, title), el('div', { class: 'li-sub ob-wrap' }, sub)),
+      el('div', { class: 'li-main' }, el('div', { class: 'li-title ob-wrap' }, title), el('div', { class: 'li-sub ob-wrap' }, sub)),
       icon('chevron-right', { class: 'li-chevron' }));
     return [
-      el('h2', { class: 'ob-title' }, 'Bring your data'),
+      el('h2', { class: 'ob-title' }, t('onboarding.data.title')),
       el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
         item({ href: href('import'), onClick: (e) => { e.preventDefault(); finish('import'); } },
-          'Import from other tools', 'Workout sheet, body weights, food diary'),
+          t('onboarding.data.import'), t('onboarding.data.importSub')),
         item({ onClick: () => fileInput.click() },
-          'Restore a Tracker backup', 'Replaces everything on this device.'))),
+          t('onboarding.data.restore'), t('onboarding.data.restoreSub')))),
       fileInput,
     ];
   }
@@ -201,15 +205,16 @@ export async function mountWelcome(container) {
 
   function render() {
     const step = STEPS[i];
-    header.replaceChildren(pageHeader({ title: 'Setup', subtitle: `Step ${i + 1} of ${STEPS.length}`, actions: [skipAll] }),
-      progressBar({ value: i + 1, max: STEPS.length, label: `Step ${i + 1} of ${STEPS.length}` }));
+    const stepText = t('onboarding.welcome.step', { n: i + 1, total: STEPS.length });
+    header.replaceChildren(pageHeader({ title: t('onboarding.welcome.title'), subtitle: stepText, actions: [skipAll] }),
+      progressBar({ value: i + 1, max: STEPS.length, label: stepText }));
     const last = i === STEPS.length - 1;
-    const nextLabel = last ? 'Start fresh' : step === 'install' && plat.install.startsWith('ios') ? 'Continue in the browser' : 'Next';
+    const nextLabel = t(last ? 'onboarding.welcome.startFresh' : step === 'install' && plat.install.startsWith('ios') ? 'onboarding.welcome.continueBrowser' : 'onboarding.welcome.next');
     const nav = el('div', { class: 'stack ob-nav' },
       el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: () => next(true) }, nextLabel),
       el('div', { class: 'row-between' },
-        i > 0 ? el('button', { type: 'button', class: 'btn btn-ghost', onClick: () => go(i - 1) }, icon('chevron-left', { size: 18 }), 'Back') : el('span'),
-        READ[step] || step === 'install' ? el('button', { type: 'button', class: 'btn btn-ghost', onClick: () => next(false) }, 'Skip this step') : el('span')));
+        i > 0 ? el('button', { type: 'button', class: 'btn btn-ghost', onClick: () => go(i - 1) }, icon('chevron-left', { size: 18 }), t('common.back')) : el('span'),
+        READ[step] || step === 'install' ? el('button', { type: 'button', class: 'btn btn-ghost', onClick: () => next(false) }, t('onboarding.welcome.skipStep')) : el('span')));
     body.replaceChildren(...VIEW[step](), nav);
     body.dataset.step = step;
     window.scrollTo(0, 0);
@@ -246,7 +251,7 @@ export async function mountWelcome(container) {
     busy = true;
     try {
       const w = setupWrites(answers, { profile, goal, targets }, { today: todayStr, now: Date.now(), skipped });
-      if (w.error) { toast(w.error, { type: 'error' }); return; }
+      if (w.errorKey) { toast(t(w.errorKey), { type: 'error' }); return; }
       await db.transaction(['settings', 'weights'], 'readwrite', async (t) => {
         for (const [key, value] of Object.entries(w.settings)) t.put('settings', { key, value });
         if (w.weight) t.put('weights', w.weight);
@@ -257,18 +262,18 @@ export async function mountWelcome(container) {
       clearDraft(DRAFT);
       requestPersistence();
       const wrote = Object.keys(w.settings).length || w.weight;
-      if (wrote) toast('Setup saved. Change it any time in Settings.', { type: 'success' });
+      if (wrote) toast(t('onboarding.welcome.saved'), { type: 'success' });
       navigate(dest, { replace: true });
     } catch (err) {
       console.error(err);
-      toast(`Could not save: ${err.message}`, { type: 'error' });
+      toast(t('onboarding.welcome.saveFailed', { error: err.message }), { type: 'error' });
     } finally {
       busy = false;
     }
   }
 
   render();
-  if (draft) toast('Answers restored.', { duration: 4000 });
+  if (draft) toast(t('onboarding.welcome.restored'), { duration: 4000 });
   return () => { clearTimeout(persistTimer); document.documentElement.classList.remove('ob-focus'); };
 }
 
@@ -281,24 +286,24 @@ function targetsEditor(targets, saved = null) {
   let edited = !!(saved && saved.edited);
   const listeners = [];
   const markEdited = () => { edited = true; for (const fn of listeners) fn(); };
-  const kcal = numberInput({ value: targets.kcal, min: 0, max: 20000, decimals: 0, ariaLabel: 'Calories target', onInput: () => { markEdited(); update(); } });
+  const kcal = numberInput({ value: targets.kcal, min: 0, max: 20000, decimals: 0, ariaLabel: t('onboarding.targets.kcalAria'), onInput: () => { markEdited(); update(); } });
   const grams = Object.fromEntries(MACROS.map((k) => [k, numberInput({ value: targets[k], min: 0, max: 2000, decimals: 0,
-    ariaLabel: `${MACRO_LABEL[k]} target in grams`, onInput: () => { markEdited(); update(); } })]));
+    ariaLabel: t('onboarding.targets.gramsAria', { macro: macroLabel(k) }), onInput: () => { markEdited(); update(); } })]));
   const initialPct = mode === 'percent' && targets.pct ? targets.pct : pctFromGrams(targets, 0) || { protein: 30, carbs: 40, fat: 30 };
   const pct = Object.fromEntries(MACROS.map((k) => [k, numberInput({ value: initialPct[k], min: 0, max: 100, decimals: 1,
-    ariaLabel: `${MACRO_LABEL[k]} share of calories in percent`, onInput: () => { markEdited(); update(); } })]));
+    ariaLabel: t('onboarding.targets.pctAria', { macro: macroLabel(k) }), onInput: () => { markEdited(); update(); } })]));
   const pctHints = Object.fromEntries(MACROS.map((k) => [k, el('div', { class: 'field-hint' })]));
   const sumLine = el('p', { class: 't-sub', 'aria-live': 'polite' });
   const chips = SPLIT_PRESETS.map((p) => el('button', { type: 'button', class: 'chip', 'aria-pressed': 'false',
-    'aria-label': `${p.pct.protein} % protein, ${p.pct.carbs} % carbs, ${p.pct.fat} % fat`,
+    'aria-label': t('onboarding.targets.presetAria', { protein: p.pct.protein, carbs: p.pct.carbs, fat: p.pct.fat }),
     onClick: () => { for (const k of MACROS) pct[k].setNumber(p.pct[k]); markEdited(); update(); } }, p.label.replace(/\//g, ' / ')));
-  const tabs = segmented({ ariaLabel: 'Enter macros as', value: mode,
-    options: [{ value: 'grams', label: 'Grams' }, { value: 'percent', label: 'Percent' }], onChange: (m) => switchMode(m) });
+  const tabs = segmented({ ariaLabel: t('onboarding.targets.modeAria'), value: mode,
+    options: [{ value: 'grams', label: t('onboarding.targets.grams') }, { value: 'percent', label: t('onboarding.targets.percent') }], onChange: (m) => switchMode(m) });
   const withHint = (f, hint) => { f.append(hint); return f; };
-  const gramsPanel = el('div', { class: 'grid-3' }, MACROS.map((k) => field(MACRO_LABEL[k], grams[k], { unit: 'g' })));
+  const gramsPanel = el('div', { class: 'grid-3' }, MACROS.map((k) => field(macroLabel(k), grams[k], { unit: 'g' })));
   const pctPanel = el('div', { class: 'stack' },
-    el('div', { class: 'chips', role: 'group', 'aria-label': 'Preset splits' }, chips),
-    el('div', { class: 'grid-3' }, MACROS.map((k) => withHint(field(MACRO_LABEL[k], pct[k], { unit: '%' }), pctHints[k]))),
+    el('div', { class: 'chips', role: 'group', 'aria-label': t('onboarding.targets.presetsAria') }, chips),
+    el('div', { class: 'grid-3' }, MACROS.map((k) => withHint(field(macroLabel(k), pct[k], { unit: '%' }), pctHints[k]))),
     sumLine);
 
   if (saved) {
@@ -322,7 +327,8 @@ function targetsEditor(targets, saved = null) {
     const v = validateSplit(p);
     const rest = carbsRest(p);
     sumLine.className = `t-sub ${v.ok ? 'text-success' : 'text-warning'}`;
-    sumLine.textContent = v.ok ? `Total ${fmtNum(v.sum)} %` : `Total ${fmtNum(v.sum)} %, must be 100${rest !== null && !v.ok ? ` · carbs ${fmtNum(rest)} % fits` : ''}`;
+    sumLine.textContent = v.ok ? t('onboarding.targets.total', { sum: fmtNum(v.sum) })
+      : rest !== null ? t('onboarding.targets.totalFix', { sum: fmtNum(v.sum), carbs: fmtNum(rest) }) : t('onboarding.targets.totalWrong', { sum: fmtNum(v.sum) });
     for (const [n, preset] of SPLIT_PRESETS.entries()) chips[n].setAttribute('aria-pressed', String(MACROS.every((k) => p[k] === preset.pct[k])));
   }
   function switchMode(m) {
@@ -339,7 +345,7 @@ function targetsEditor(targets, saved = null) {
   }
   update();
   return {
-    el: el('div', { class: 'stack' }, field('Calories', kcal, { unit: 'kcal' }), tabs, gramsPanel, pctPanel),
+    el: el('div', { class: 'stack' }, field(t('onboarding.targets.kcal'), kcal, { unit: 'kcal' }), tabs, gramsPanel, pctPanel),
     edited: () => edited,
     onEdit: (fn) => listeners.push(fn),
     /** Everything typed, for the draft. */

@@ -1,11 +1,15 @@
 // Data access and small shared helpers for the workout views. All reads/writes go through db.js.
 import * as db from '../db/db.js';
 import { el, append, openModal, navigate } from '../ui/index.js';
-import { today } from '../core/dates.js';
-import { buildEntry, byRecent, finishTime, rescheduleWorkout, applySchedule, sessionStats } from '../core/workout.js';
-import { muscleName } from '../core/muscles.js';
+import { today, parseDate } from '../core/dates.js';
+import {
+  buildEntry, byRecent, finishTime, rescheduleWorkout, applySchedule, sessionStats, formatTarget, formatSets, formatWeight,
+} from '../core/workout.js';
 import { isBaseline } from '../core/baseline.js';
 import { DEFAULT_INCREMENT, SEED_EXERCISES } from '../data/exercises.js';
+import { t, compareText } from '../i18n/index.js';
+import { exerciseName, muscleName, routineName, workoutSessionName, equipmentName as equipmentLabel } from '../i18n/names.js';
+import { dayMonth } from '../i18n/dates.js';
 
 let cssLoaded = false;
 /** Load workout.css once. */
@@ -101,20 +105,85 @@ export function askChoice({ title, message, choices }) {
 }
 
 /** Yes/no with the same tap protection as askChoice. @returns {Promise<boolean>} */
-export async function confirmAction({ title, message, confirmLabel, cancelLabel = 'Cancel', danger = false }) {
+export async function confirmAction({ title, message, confirmLabel, cancelLabel = t('workout.action.cancel'), danger = false }) {
   return (await askChoice({ title, message, choices: [
     { label: cancelLabel, value: false }, { label: confirmLabel, value: true, kind: danger ? 'danger' : 'primary' },
   ] })) === true;
 }
 
-/** Active (not archived) exercises, sorted by name. */
+// ---------------------------------------------------------------- display names and formats
+
+/**
+ * Display name of an exercise: built-in and not renamed → the app language (names.js exerciseName);
+ * custom exercises and renamed built-in ones as stored.
+ * @param {{id?: string, name?: string}|null|undefined} ex
+ */
+export const exLabel = (ex) => exerciseName(ex);
+
+/** Equipment ids in display order (labels: equipmentName). */
+export const EQUIPMENT_IDS = ['barbell', 'dumbbell', 'machine', 'cable', 'bodyweight', 'other'];
+/** 'Barbell' in the app language (names.js; unknown ids as they are). */
+export function equipmentName(id) {
+  return equipmentLabel(id ?? '');
+}
+
+/** Translated name and search words of an exercise for the picker / library search (exercise-usage.js). */
+export function searchAlt(ex) {
+  const muscles = [...(ex.primary || []), ...(ex.secondary || [])].map(muscleName).join(' ');
+  return { name: exLabel(ex), terms: `${equipmentName(ex.equipment)} ${muscles}` };
+}
+
+/** Active (not archived) exercises, sorted by display name. */
 export function activeExercises(exMap) {
-  return [...exMap.values()].filter((e) => !e.archived).sort((a, b) => a.name.localeCompare(b.name));
+  return [...exMap.values()].filter((e) => !e.archived).sort((a, b) => compareText(exLabel(a), exLabel(b)));
+}
+
+/** A list of names in the app language: 'A, B' (zh 'A、B'). @param {string[]} items */
+export const joinList = (items) => items.join(t('workout.listSep'));
+
+/** Labels for the core format helpers (core/workout.js formatTarget / formatSets / formatWeight). */
+const formatLabels = () => ({
+  sets: (n) => t('workout.format.sets', { count: n }),
+  bw: t('workout.format.bw'),
+  drop: t('workout.format.drop'),
+});
+/** '3 × 6–8 @ 100 kg', '4 sets' in the app language. */
+export const fmtTarget = (target) => formatTarget(target, formatLabels());
+/** '100 × 7, 100 × 8 + drop 80 × 5' in the app language. */
+export const fmtSets = (sets) => formatSets(sets, formatLabels());
+/** '102.5', bodyweight label for 0 / empty. */
+export const fmtWeight = (w) => formatWeight(w, formatLabels());
+
+/** Stored default workout name (data, not UI: a session started without a routine). */
+export const DEFAULT_WORKOUT_NAME = 'Workout'; // i18n-ignore: stored sentinel name
+/** Routines by id, kept by loadWorkouts / loadRoutines / loadRoutineIndex for workoutTitle (null = not loaded yet). */
+let routineIndex = null;
+const setRoutineIndex = (list) => { routineIndex = new Map(list.filter((r) => r && r.id).map((r) => [r.id, r])); return list; };
+
+/** Load the routines workoutTitle needs (views that read workouts from db directly call this first). */
+export async function loadRoutineIndex() {
+  setRoutineIndex(await db.getAll('routines'));
+}
+
+/**
+ * Display title of a workout: the starting point, the default name 'Workout' and the day name of a routine
+ * from a built-in split (stored in English, see names.js workoutSessionName) in the app language; every
+ * other name as stored.
+ * @param {{name?: string, routineId?: string|null}} w
+ * @param {Map<string, object>|null} [routines] routines by id (default: the ones loaded last)
+ */
+export function workoutTitle(w, routines = routineIndex) {
+  if (!w) return '';
+  if (isBaseline(w)) return t('workout.startingPoint.title');
+  if (!w.name || w.name === DEFAULT_WORKOUT_NAME) return t('workout.session.defaultName');
+  return workoutSessionName(w, routines) ?? w.name;
 }
 
 /** @returns {Promise<object[]>} all workouts, newest first */
 export async function loadWorkouts() {
-  return (await db.getAll('workouts')).sort(byRecent);
+  const [workouts, routines] = await Promise.all([db.getAll('workouts'), db.getAll('routines')]);
+  setRoutineIndex(routines);
+  return workouts.sort(byRecent);
 }
 
 // Unfinished workouts. Rule: at most one LIVE workout (started with Start / Empty workout, no
@@ -146,24 +215,24 @@ export function findUnfinished(workouts) {
  */
 async function settleOpenWorkout(open) {
   const n = sessionStats(open).setsDone;
-  const name = open.name || 'Workout';
+  const name = workoutTitle(open);
   if (!n) {
     const c = await askChoice({
-      title: 'Workout in progress',
-      message: `“${name}” has no sets done. Discard it and start?`,
-      choices: [{ label: 'Keep it open', value: 'keep' }, { label: 'Discard & start', value: 'discard', kind: 'primary' }],
+      title: t('workout.open.title'),
+      message: t('workout.open.emptyMessage', { name }),
+      choices: [{ label: t('workout.open.keep'), value: 'keep' }, { label: t('workout.open.discardStart'), value: 'discard', kind: 'primary' }],
     });
     if (c !== 'discard') return false;
     await db.remove('workouts', open.id);
     return true;
   }
   const c = await askChoice({
-    title: 'Workout in progress',
-    message: `“${name}” is open with ${n} done set${n === 1 ? '' : 's'}. Finish it, or discard and lose ${n === 1 ? 'it' : 'them'}?`,
+    title: t('workout.open.title'),
+    message: t('workout.open.doneMessage', { name, count: n }),
     choices: [
-      { label: 'Finish it & start', value: 'finish', kind: 'primary' },
-      { label: `Discard (${n} set${n === 1 ? '' : 's'}) & start`, value: 'discard', kind: 'danger' },
-      { label: 'Cancel', value: 'cancel' },
+      { label: t('workout.open.finishStart'), value: 'finish', kind: 'primary' },
+      { label: t('workout.open.discardSetsStart', { count: n }), value: 'discard', kind: 'danger' },
+      { label: t('workout.action.cancel'), value: 'cancel' },
     ],
   });
   if (c === 'finish') {
@@ -179,28 +248,27 @@ async function settleOpenWorkout(open) {
 
 /** @returns {Promise<object[]>} routines sorted by order then name */
 export async function loadRoutines() {
-  return (await db.getAll('routines')).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name));
+  return setRoutineIndex(await db.getAll('routines')).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || compareText(routineName(a), routineName(b)));
 }
 
-/** Exercise display name, robust to deleted exercises. */
+/** Exercise display name (exLabel), robust to deleted exercises. */
 export function exName(exMap, id) {
   const e = exMap.get(id);
-  return e ? e.name : 'Unknown exercise';
+  return e ? exLabel(e) : t('workout.exercise.unknown');
 }
 
 /** 'Chest · Triceps, Shoulders' */
 export function musclesLine(ex) {
   if (!ex) return '';
-  const p = (ex.primary || []).map(muscleName).join(', ');
-  const s = (ex.secondary || []).map(muscleName).join(', ');
+  const p = joinList((ex.primary || []).map(muscleName));
+  const s = joinList((ex.secondary || []).map(muscleName));
   return s ? `${p} · ${s}` : p;
 }
 
-/** '12 Nov' (year added when not current) from a YYYY-MM-DD date; non-breaking spaces */
+/** '12 Nov' (year added when not current) from a YYYY-MM-DD date, in the app language; non-breaking spaces */
 export function shortDate(date) {
-  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const [y, m, d] = date.split('-').map(Number);
-  return `${d}\u00a0${MONTHS[m - 1]}${y !== new Date().getFullYear() ? `\u00a0${y}` : ''}`;
+  const d = parseDate(date);
+  return dayMonth(d, { year: d.getFullYear() !== new Date().getFullYear() }).replace(/ /g, '\u00a0');
 }
 
 /**
@@ -250,7 +318,7 @@ export async function startWorkout(routine, past = null) {
     id: crypto.randomUUID(),
     date: today(),
     routineId: routine ? routine.id : null,
-    name: routine ? routine.name : 'Workout',
+    name: routine ? routine.name : DEFAULT_WORKOUT_NAME, // stored name (language-neutral), shown by workoutTitle
     startedAt: now,
     finishedAt: null,
     exercises: [],
@@ -259,7 +327,7 @@ export async function startWorkout(routine, past = null) {
   };
   if (past) {
     const r = rescheduleWorkout(w, past, now);
-    if (!r.ok) throw new Error(r.error);
+    if (!r.ok) throw new Error(t(r.error, r.params));
     applySchedule(w, r.value);
   }
   const before = past ? workouts.filter((x) => byRecent(x, w) > 0) : workouts;
@@ -282,11 +350,11 @@ export async function nextRoutineOrder() {
   return rs.reduce((m, r) => Math.max(m, (r.order ?? 0) + 1), 0);
 }
 
-/** An existing exercise (archived included) with the same name, ignoring case and spaces. */
+/** An existing exercise (archived included) with the same stored or displayed name, ignoring case and spaces. */
 export function findByName(exMap, name, exceptId = null) {
-  const key = (n) => n.toLowerCase().replace(/\s+/g, ' ').trim();
+  const key = (n) => String(n ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
   const k = key(name);
-  return [...exMap.values()].find((e) => e.id !== exceptId && key(e.name) === k) || null;
+  return [...exMap.values()].find((e) => e.id !== exceptId && (key(e.name) === k || key(exLabel(e)) === k)) || null;
 }
 
 /** A new custom exercise record from form values. */

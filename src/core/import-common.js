@@ -4,6 +4,15 @@ import { isValidDate, today as todayStr } from './dates.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 
+/**
+ * A user-facing message as data: catalogue key (namespace 'import') + params. The importers run in a
+ * worker without catalogues, so they never translate; the UI shows msgText(m) (src/import/messages.js).
+ * A param may itself be a message or a list of messages (translated and joined by the UI).
+ * @typedef {{key: string, params?: Record<string, any>}} ImportMsg
+ * @param {string} key @param {Record<string, any>} [params] @returns {ImportMsg}
+ */
+export const msg = (key, params) => (params ? { key, params } : { key });
+
 /** Remove a UTF-8 byte order mark. */
 export function stripBom(text) {
   const s = String(text ?? '');
@@ -92,7 +101,7 @@ function weekdayIn(text) {
  * @param {{order?: 'dmy'|'mdy', today?: string}} [opts] order for 12/11/26 style dates (default dmy);
  *   today (YYYY-MM-DD) picks the year for dates written without one (the most recent such day).
  * @returns {{date: string|null, start: number, end: number, ambiguous: boolean, weekdayMismatch: boolean,
- *   error: string|null}|null} null when no date-like text is present; date null + error when it is
+ *   error: ImportMsg|null}|null} null when no date-like text is present; date null + error when it is
  *   date-shaped but not a real day (e.g. 31.02.2026)
  */
 export function findDate(text, { order = 'dmy', today = todayStr() } = {}) {
@@ -114,7 +123,7 @@ export function findDate(text, { order = 'dmy', today = todayStr() } = {}) {
     }
     const date = `${y}-${pad(mo)}-${pad(d)}`;
     const base = { start: m.index, end: m.index + m[0].length, ambiguous };
-    if (!isValidDate(date) || y < 1900 || y > 2100) return { ...base, date: null, weekdayMismatch: false, error: `"${m[0].trim()}" is not a valid date` };
+    if (!isValidDate(date) || y < 1900 || y > 2100) return { ...base, date: null, weekdayMismatch: false, error: msg('import.date.invalid', { text: m[0].trim() }) };
     let weekdayMismatch = false;
     if (g.wd !== null && g.wd !== undefined) {
       const [yy, mm, dd] = date.split('-').map(Number);
@@ -344,7 +353,8 @@ export const PLAUSIBLE_ROW_KCAL = Object.freeze({ min: 20, max: 10000 });
  * counter-vote; 'low' = strong evidence for both styles or contradictory patterns.
  * @param {{values: string[], kcalPerUnit?: number}[]} columns
  * @param {{delimiter?: string}} [opts]
- * @returns {{decimal: 'comma'|'dot', confidence: 'high'|'medium'|'low', reason: string}}
+ * @returns {{decimal: 'comma'|'dot', confidence: 'high'|'medium'|'low', reason: ImportMsg}} reason: one message, or
+ *   import.style.reasons with params.list = the column findings (joined by the UI)
  */
 export function detectNumberStyle(columns, { delimiter = null } = {}) {
   const strong = { comma: 0, dot: 0 };
@@ -360,7 +370,7 @@ export function detectNumberStyle(columns, { delimiter = null } = {}) {
     if (n.comma + n.dot + n.comma3 + n.dot3 === 0) continue;
     anySeparator = true;
     let vote = null; let kind = null; let weight = 0;
-    if (n.comma && n.dot) { strong.comma += n.comma; strong.dot += n.dot; reasons.push('a column has both decimal commas and decimal dots'); continue; }
+    if (n.comma && n.dot) { strong.comma += n.comma; strong.dot += n.dot; reasons.push(msg('import.style.mixedColumn')); continue; }
     if (n.comma) { vote = 'comma'; kind = 'strong'; weight = n.comma; } else if (n.dot) { vote = 'dot'; kind = 'strong'; weight = n.dot; } else if (n.dot3 && !n.comma3) {
       if (!ignoreDotGroups) { vote = 'comma'; kind = 'weak'; weight = n.dot3; }
     } else if (n.comma3 && !n.dot3) { vote = 'dot'; kind = 'weak'; weight = n.comma3; } else undecided = true;
@@ -373,24 +383,24 @@ export function detectNumberStyle(columns, { delimiter = null } = {}) {
       const okComma = ok('comma'); const okDot = ok('dot');
       if (okComma !== okDot) {
         vote = okComma ? 'comma' : 'dot'; kind = 'strong'; weight = Math.max(weight, 1);
-        reasons.push(`the energy column is only plausible read as ${okComma ? '1.234,5' : '1,234.5'}`);
+        reasons.push(msg('import.style.energyPlausible', { style: okComma ? '1.234,5' : '1,234.5' }));
       }
     }
     if (!vote) continue;
     if (kind === 'strong') strong[vote] += weight; else weak[vote] += weight;
-    if (kind === 'weak') reasons.push(`a column has only three-digit groups (${vote === 'comma' ? '1.050' : '1,050'}), read as thousands`);
+    if (kind === 'weak') reasons.push(msg('import.style.thousands', { example: vote === 'comma' ? '1.050' : '1,050' }));
   }
   const pick = (a) => (a.comma > a.dot ? 'comma' : 'dot');
-  if (!anySeparator) return { decimal: 'dot', confidence: 'high', reason: 'no decimal or thousands separators' };
-  if (strong.comma && strong.dot) return { decimal: pick(strong), confidence: 'low', reason: 'the file has numbers in both styles' };
+  if (!anySeparator) return { decimal: 'dot', confidence: 'high', reason: msg('import.style.noSeparators') };
+  if (strong.comma && strong.dot) return { decimal: pick(strong), confidence: 'low', reason: msg('import.style.bothStyles') };
   if (strong.comma || strong.dot) {
     const d = pick(strong);
     const other = d === 'comma' ? 'dot' : 'comma';
-    return { decimal: d, confidence: weak[other] || undecided ? 'medium' : 'high', reason: reasons.join('; ') || 'decimal marks in the values' };
+    return { decimal: d, confidence: weak[other] || undecided ? 'medium' : 'high', reason: reasons.length ? msg('import.style.reasons', { list: reasons }) : msg('import.style.decimalMarks') };
   }
-  if (weak.comma && weak.dot) return { decimal: pick(weak), confidence: 'low', reason: 'three-digit groups with both separators' };
-  if (weak.comma || weak.dot) return { decimal: pick(weak), confidence: 'medium', reason: reasons.join('; ') };
-  return { decimal: 'dot', confidence: 'low', reason: 'separators could not be told apart' };
+  if (weak.comma && weak.dot) return { decimal: pick(weak), confidence: 'low', reason: msg('import.style.groupsBoth') };
+  if (weak.comma || weak.dot) return { decimal: pick(weak), confidence: 'medium', reason: msg('import.style.reasons', { list: reasons }) };
+  return { decimal: 'dot', confidence: 'low', reason: msg('import.style.undecided') };
 }
 
 /**

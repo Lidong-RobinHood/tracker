@@ -1,4 +1,12 @@
 // Client-side downscaling of a meal photo before upload (long edge ≤ 1568 px, JPEG).
+// Errors carry `key`: a catalogue key (namespace food) for the UI; the message is for logs.
+
+/** Error with a catalogue key. */
+function keyError(key, message) {
+  const e = new Error(message);
+  e.key = key;
+  return e;
+}
 export const LONG_EDGE = 1568;
 export const JPEG_QUALITY = 0.85;
 
@@ -26,10 +34,10 @@ async function decode(blob) {
  */
 export async function prepareImage(blob) {
   let src;
-  try { src = await decode(blob); } catch { throw new Error('This file could not be read as an image.'); }
+  try { src = await decode(blob); } catch { throw keyError('food.photo.unreadable', 'not readable as an image'); } // i18n-ignore (log message)
   const w0 = src.width || src.naturalWidth;
   const h0 = src.height || src.naturalHeight;
-  if (!w0 || !h0) throw new Error('This file could not be read as an image.');
+  if (!w0 || !h0) throw keyError('food.photo.unreadable', 'image without size'); // i18n-ignore (log message)
   const f = Math.min(1, LONG_EDGE / Math.max(w0, h0));
   const width = Math.max(1, Math.round(w0 * f));
   const height = Math.max(1, Math.round(h0 * f));
@@ -43,7 +51,7 @@ export async function prepareImage(blob) {
   ctx.drawImage(src, 0, 0, width, height);
   if (src.close) src.close();
   const out = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY));
-  if (!out) throw new Error('The photo could not be prepared.');
+  if (!out) throw keyError('food.photo.prepareFailed', 'canvas.toBlob returned null'); // i18n-ignore (log message)
   return { blob: out, width, height };
 }
 
@@ -52,7 +60,7 @@ export function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result).slice(String(r.result).indexOf(',') + 1));
-    r.onerror = () => reject(r.error || new Error('Could not read the photo.'));
+    r.onerror = () => reject(r.error || new Error('FileReader failed'));
     r.readAsDataURL(blob);
   });
 }

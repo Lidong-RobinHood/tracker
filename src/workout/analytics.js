@@ -10,15 +10,23 @@ import { MUSCLES } from '../core/muscles.js';
 import { volumeWeights } from '../core/volume.js';
 import { workoutSets, mapSteps, sessionBands, tonnageStep, tonnageBands } from '../core/routine-sets.js';
 import { setsMap, setsMapRow, selectableMap } from './muscle-map.js';
-import { analyseWorkout, METRICS, roundToTotal } from '../core/workout-analytics.js';
+import { analyseWorkout, roundToTotal } from '../core/workout-analytics.js';
 import { trendOf } from '../core/workout-progress.js';
-import { fmtTonnage, tonnageParts, pctText, durationParts } from './progress-ui.js';
-import { formatSets } from '../core/workout.js';
-import { ensureCss, loadExercises, loadWorkouts, exName, shortDate } from './data.js';
+import {
+  fmtTonnage, tonnageParts, pctText, durationParts, dateShort, exLabel, workoutTitle, metricLabel, metricShort, repsText,
+} from './progress-ui.js';
+import { ensureCss, loadExercises, loadWorkouts, fmtSets } from './data.js';
 import { trendChart, hBars, vBars } from './analytics-charts.js';
 import { isBaseline } from '../core/baseline.js';
+import { t } from '../i18n/index.js';
+import { monthLong, monthYear } from '../i18n/dates.js';
+import { muscleName } from '../i18n/names.js';
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+/** Month name of 'YYYY-MM' ('November'), or with the year ('November 2026'). */
+const monthOfKey = (ym) => monthLong(Number(ym.slice(5, 7)) - 1);
+const monthYearOfKey = (ym) => monthYear(new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, 1));
+/** Muscle of a tonnage row ('unknown' = exercises without a muscle). */
+const tonMuscle = (id) => (id === 'unknown' ? t('analysis.unknownExercise') : muscleName(id));
 
 // ---------------------------------------------------------------- formatting
 
@@ -37,7 +45,7 @@ function valueText(metric, b) {
     case 'tonnageSet': return `${fmtNum(b.weight, 2)} × ${b.reps} = ${exKg(b.value)}`;
     case 'e1rm': return kg(b.value, 1);
     case 'tonnage': return exKg(b.value);
-    default: return `${fmtNum(b.value, 0)} reps`;
+    default: return repsText(b.value);
   }
 }
 
@@ -52,12 +60,13 @@ function cellText(metric, b) {
   }
 }
 
-const ROW_UNIT = { heaviest: 'kg × reps', tonnageSet: '', e1rm: 'kg', tonnage: '', bwReps: 'reps', bwTotal: 'reps' };
+/** Unit shown after a metric's row label. */
+const rowUnit = (k) => (k === 'heaviest' ? t('analysis.unit.kgReps') : k === 'e1rm' ? 'kg' : k === 'bwReps' || k === 'bwTotal' ? t('analysis.unit.reps') : '');
 
 /** '+2.5 kg', '−1 rep', '±0 kg'. e1rm is shown with 1 decimal, so its change is too. */
 function absText(d, metric) {
   if (!d) return '';
-  const unit = d.unit === 'reps' ? (Math.abs(d.abs) === 1 ? 'rep' : 'reps') : d.unit;
+  const unit = d.unit === 'reps' ? t('analysis.unit.repsCount', { count: Math.abs(d.abs) }) : d.unit;
   if (d.abs === 0) return `±0 ${unit}`;
   return `${d.abs > 0 ? '+' : '−'}${metric === 'tonnage' || metric === 'tonnageSet' ? exKg(Math.abs(d.abs)) : `${fmtNum(Math.abs(d.abs), metric === 'e1rm' ? 1 : 2)} ${unit}`}`;
 }
@@ -66,7 +75,7 @@ function absText(d, metric) {
 const pctSpan = (p) => el('span', { class: ['wk-pct', `is-${trendOf(p)}`] }, p === null || p === undefined ? '–' : pctText(p));
 
 /** When a best was set: '12 Nov', or 'starting point, 12 Nov' for the starting point. */
-const when = (b) => (b.baseline ? `starting point, ${shortDate(b.date)}` : shortDate(b.date));
+const when = (b) => (b.baseline ? t('analysis.an.whenStart', { date: dateShort(b.date) }) : dateShort(b.date));
 
 // ---------------------------------------------------------------- mount
 
@@ -74,32 +83,33 @@ export async function mountAnalytics(container, { id }) {
   ensureCss();
   const [w, exMap, workouts, rawWeights] = await Promise.all([db.get('workouts', id), loadExercises(), loadWorkouts(), db.getSetting('volume')]);
   if (!w) {
-    append(container, pageHeader({ title: 'Analysis', back: 'workout/history' }),
-      emptyState('Workout not found.',
-        el('a', { class: 'btn', href: href('workout/history') }, 'Open history')));
+    append(container, pageHeader({ title: t('analysis.an.title'), back: 'workout/history' }),
+      emptyState(t('analysis.an.notFound'),
+        el('a', { class: 'btn', href: href('workout/history') }, t('analysis.an.openHistory'))));
     return;
   }
   if (isBaseline(w)) { navigate('workout/starting-point', { replace: true }); return; }
   const res = analyseWorkout(workouts, w, exMap);
-  const name = (exId) => exName(exMap, exId);
+  const name = (exId) => exLabel(exMap, exId);
 
   container.classList.add('wk-an');
   append(container, pageHeader({
-    title: w.name || 'Workout',
-    subtitle: `Analysis · ${fmtDate(w.date)}${Number.isFinite(w.startedAt) ? ` · ${fmtTime(w.startedAt)}` : ''}${w.finishedAt ? '' : ' · in progress'}`,
+    title: workoutTitle(w),
+    subtitle: [t('analysis.an.title'), fmtDate(w.date), Number.isFinite(w.startedAt) ? fmtTime(w.startedAt) : null,
+      w.finishedAt ? null : t('analysis.inProgress')].filter(Boolean).join(' · '),
     back: `workout/history/${encodeURIComponent(w.id)}`,
   }));
 
   append(container, headerStrip(w, res));
 
   if (!res.exercises.length) {
-    append(container, emptyState('No done sets yet.'));
+    append(container, emptyState(t('analysis.an.noSets')));
     return;
   }
 
   append(container, recordsSection(res, name));
   append(container, el('section', { class: 'section' },
-    sectionHeader('Exercises', { info: 'records' }),
+    sectionHeader(t('analysis.an.exercises'), { info: 'records' }),
     res.exercises.map((r) => exerciseBlock(r, w, res, name))));
   append(container, wholeWorkout(w, res, exMap, volumeWeights(rawWeights)));
   append(container, monthSection(w, res, name));
@@ -108,38 +118,44 @@ export async function mountAnalytics(container, { id }) {
 // ---------------------------------------------------------------- header
 
 function headerStrip(w, res) {
-  const t = res.totals;
+  const tot = res.totals;
   const prev = res.routine.prev;
   const pct = res.routine.pct;
-  const ton = tonnageParts(t.load);
+  const ton = tonnageParts(tot.load);
   return el('div', { class: 'stack' },
     el('div', { class: 'tiles' },
-      statTile({ label: 'Duration', ...durationParts(t.durationMs), sub: w.finishedAt ? null : 'in progress' }),
-      el('div', { class: 'tile', title: prev ? `Tonnage versus the previous ${w.name} on ${fmtDate(prev.date)}: ${tKg(res.routine.prevTonnage)}` : null },
-        el('span', { class: 'tile-label' }, 'Tonnage'),
+      statTile({ label: t('analysis.duration'), ...durationParts(tot.durationMs), sub: w.finishedAt ? null : t('analysis.inProgress') }),
+      el('div', { class: 'tile', title: prev ? t('analysis.tonnageVsPrevTitle', { name: workoutTitle(w), date: fmtDate(prev.date), tonnage: tKg(res.routine.prevTonnage) }) : null },
+        el('span', { class: 'tile-label' }, t('analysis.tonnage')),
         el('span', { class: 'tile-value' }, ton.value, el('small', { class: 'tile-unit' }, ton.unit)),
-        el('span', { class: 'tile-sub' }, prev ? [pct === null ? '–' : pctSpan(pct), ` vs ${shortDate(prev.date)}`] : w.routineId ? 'first of routine' : 'no routine')),
-      statTile({ label: 'Sets', value: String(t.sets), sub: t.dropsets ? `+ ${t.dropsets} drop` : null })),
-    t.dropLoad ? el('p', { class: 't-sub muted wk-pad-x' }, `+ ${tKg(t.dropLoad)} dropset tonnage`) : null);
+        el('span', { class: 'tile-sub' }, prev ? [pct === null ? '–' : pctSpan(pct), ' ', t('analysis.vsDate', { date: dateShort(prev.date) })]
+          : t(w.routineId ? 'analysis.firstOfRoutine' : 'analysis.noRoutine'))),
+      statTile({ label: t('analysis.sets'), value: String(tot.sets), sub: tot.dropsets ? t('analysis.plusDrop', { n: tot.dropsets }) : null })),
+    tot.dropLoad ? el('p', { class: 't-sub muted wk-pad-x' }, t('analysis.dropTonnage', { tonnage: tKg(tot.dropLoad) })) : null);
 }
 
 // ---------------------------------------------------------------- records
 
-const GROUPS = [['pr', 'All-time records'], ['month', 'Monthly bests'], ['matched', 'Matched your best']];
+/** Record groups in display order; titles: analysis.an.group.<status>. */
+const GROUPS = ['pr', 'month', 'matched'];
 
 function recordsSection(res, name) {
-  const sec = el('section', { class: 'section' }, sectionHeader('Records', { info: 'records' }));
+  const sec = el('section', { class: 'section' }, sectionHeader(t('analysis.records'), { info: 'records' }));
   const beaten = res.records.filter((r) => r.status !== 'matched');
   if (!beaten.length) {
     const m = res.closestMiss;
     const allFirst = res.exercises.every((x) => x.firstTime);
     append(sec, el('div', { class: 'card stack' },
-      el('p', null, allFirst ? 'No records: every exercise is new.' : 'No records this workout.'),
+      el('p', null, t(allFirst ? 'analysis.an.noRecordsNew' : 'analysis.an.noRecords')),
       m ? el('p', { class: 't-sub muted' },
-        `Closest: ${name(m.exerciseId)} · ${METRICS[m.metric].short} ${absText({ ...m.delta, abs: -m.delta.abs }, m.metric).replace(/^\+/, '')} under your best (${valueText(m.metric, m.best)}, ${when(m.best)})`)
+        t('analysis.an.closest', {
+          name: name(m.exerciseId), metric: metricShort(m.metric), gap: absText({ ...m.delta, abs: -m.delta.abs }, m.metric).replace(/^\+/, ''),
+          best: valueText(m.metric, m.best), when: when(m.best),
+        }))
         : null));
   }
-  for (const [status, title] of GROUPS) {
+  for (const status of GROUPS) {
+    const title = t(`analysis.an.group.${status}`);
     const list = res.records.filter((r) => r.status === status);
     if (!list.length) continue;
     append(sec, el('div', { class: 'wk-an-group' },
@@ -160,7 +176,10 @@ function matchedRows(list, name) {
     el('div', { class: 'li-main' },
       el('div', { class: 'li-title' }, name(exId)),
       el('div', { class: 'li-sub wk-wrap' },
-        `${rs.map((r) => `${METRICS[r.metric].short} ${valueText(r.metric, r.cur)}`).join(', ')} · same as ${[...new Set(rs.map((r) => when(r.prevAll)))].join(', ')}`))));
+        t('analysis.an.matched', {
+          list: rs.map((r) => t('analysis.an.metricValue', { metric: metricShort(r.metric), value: valueText(r.metric, r.cur) })).join(t('analysis.listSep')),
+          when: [...new Set(rs.map((r) => when(r.prevAll)))].join(t('analysis.listSep')),
+        })))));
 }
 
 /** Records grouped by exercise, in first-seen order. */
@@ -177,7 +196,7 @@ function recordRow(r) {
   const ref = r.status === 'month' ? r.prevMonth : r.prevAll;
   return el('div', { class: ['wk-an-rec', `is-${r.status}`] },
     el('div', { class: 'wk-an-rec-main' },
-      el('div', { class: 't-sub muted' }, METRICS[r.metric].label),
+      el('div', { class: 't-sub muted' }, metricLabel(r.metric)),
       el('div', { class: 'wk-an-rec-sub' }, `${valueText(r.metric, ref)} (${when(ref)}) → ${valueText(r.metric, r.cur)}`)),
     el('div', { class: 'wk-an-rec-delta' },
       el('div', { class: 'wk-an-rec-abs' }, absText(r.delta, r.metric)),
@@ -190,15 +209,15 @@ function exerciseBlock(r, w, res, name) {
   const keys = r.mode === 'reps' ? ['bwReps', 'bwTotal'] : ['heaviest', 'tonnageSet', 'e1rm', 'tonnage'];
   const status = Object.fromEntries(r.statuses.map((s) => [s.metric, s.status]));
   const recs = r.statuses.filter((s) => s.status === 'pr').length;
-  const monthName = MONTHS[Number(res.month.slice(5, 7)) - 1];
-  const holder = (b) => (!b ? '' : b.workoutId === w.id ? 'this workout' : b.baseline ? 'starting point' : shortDate(b.date));
+  const monthName = monthOfKey(res.month);
+  const holder = (b) => (!b ? '' : b.workoutId === w.id ? t('analysis.an.thisWorkout') : b.baseline ? t('analysis.an.startingPoint') : dateShort(b.date));
 
   const table = el('table', { class: 'wk-an-table' },
     el('thead', {}, el('tr', {},
-      el('th', { scope: 'col' }, el('span', { class: 'wk-an-sr' }, 'Metric')),
-      el('th', { scope: 'col' }, 'Workout'),
+      el('th', { scope: 'col' }, el('span', { class: 'wk-an-sr' }, t('analysis.an.metric'))),
+      el('th', { scope: 'col' }, t('analysis.workout')),
       el('th', { scope: 'col' }, monthName),
-      el('th', { scope: 'col' }, 'All time'))),
+      el('th', { scope: 'col' }, t('analysis.an.allTime')))),
     el('tbody', {}, keys.map((k) => {
       const cur = r.scopes.workout[k];
       const mon = r.scopes.month[k];
@@ -207,47 +226,47 @@ function exerciseBlock(r, w, res, name) {
       const monRec = mon && mon.workoutId === w.id && (st === 'pr' || st === 'month');
       const allRec = all && all.workoutId === w.id && st === 'pr';
       return el('tr', {},
-        el('th', { scope: 'row' }, METRICS[k].label, el('span', { class: 'wk-an-unit' }, ROW_UNIT[k])),
+        el('th', { scope: 'row' }, metricLabel(k), el('span', { class: 'wk-an-unit' }, rowUnit(k))),
         el('td', {}, cellText(k, cur)),
         el('td', { class: monRec ? 'is-rec' : null }, cellText(k, mon), el('span', { class: 'wk-an-when' }, holder(mon))),
         el('td', { class: allRec ? 'is-rec' : null }, cellText(k, all), el('span', { class: 'wk-an-when' }, holder(all))));
     })));
 
   const notes = [
-    r.dropsets ? `${r.dropsets} dropset${r.dropsets === 1 ? '' : 's'} (${exKg(r.dropTonnage)}) not counted` : null,
-    r.undone ? `${r.undone} not done` : null,
+    r.dropsets ? t('analysis.an.dropsNotCounted', { count: r.dropsets, tonnage: exKg(r.dropTonnage) }) : null,
+    r.undone ? t('analysis.an.notDone', { n: r.undone }) : null,
   ].filter(Boolean).join(' · ');
 
-  const tagText = r.firstTime ? 'first time' : recs ? `${recs} record${recs === 1 ? '' : 's'}`
-    : r.sessions === 1 && r.startingPoint ? 'vs starting point' : `${r.sessions} session${r.sessions === 1 ? '' : 's'}`;
+  const tagText = r.firstTime ? t('analysis.an.firstTime') : recs ? t('analysis.an.recordCount', { count: recs })
+    : r.sessions === 1 && r.startingPoint ? t('analysis.an.vsStart') : t('analysis.sessionCount', { count: r.sessions });
   return el('article', { class: 'card wk-an-ex' },
     el('a', { class: 'wk-an-ex-head', href: href(`workout/exercises/${encodeURIComponent(r.exerciseId)}`) },
       el('h3', { class: 'wk-an-ex-name' }, name(r.exerciseId)),
       recs ? tag(tagText, { tone: 'accent', icon: 'trophy' }) : el('span', { class: 't-sub muted' }, tagText),
       icon('chevron-right', { class: 'li-chevron' })),
-    el('p', { class: 't-sub wk-an-sets' }, el('span', { class: 'muted' }, 'kg × reps  '), formatSets(r.sets) || '–'),
+    el('p', { class: 't-sub wk-an-sets' }, el('span', { class: 'muted' }, `${t('analysis.unit.kgReps')}  `), fmtSets(r.sets) || '–'),
     notes ? el('p', { class: 't-sub muted' }, notes) : null,
     el('div', { class: 'wk-an-scroll' }, table),
     trendBlock(r, status));
 }
 
 function trendBlock(r, status) {
-  const t = r.trend;
-  const reps = t.metric === 'bwReps';
-  const label = reps ? 'Most reps in a set, per session' : 'Best est. 1RM per session, kg';
-  if (t.points.length < 2) {
-    return el('p', { class: 't-sub muted' }, `${label}: no trend yet (first session).`);
+  const tr = r.trend;
+  const reps = tr.metric === 'bwReps';
+  const label = t(reps ? 'analysis.an.trendReps' : 'analysis.an.trendE1rm');
+  if (tr.points.length < 2) {
+    return el('p', { class: 't-sub muted' }, t('analysis.an.noTrend', { label }));
   }
-  const format = reps ? (v) => `${fmtNum(v, 0)} reps` : (v) => kg(v, 1);
-  const cur = t.points[t.points.length - 1];
+  const format = reps ? (v) => repsText(v) : (v) => kg(v, 1);
+  const cur = tr.points[tr.points.length - 1];
   return el('figure', { class: 'wk-an-fig' },
-    el('figcaption', { class: 't-cap muted' }, `${label} · last ${t.points.length}`),
+    el('figcaption', { class: 't-cap muted' }, t('analysis.an.trendCaption', { label, n: tr.points.length })),
     trendChart({
-      points: t.points,
-      best: t.best ? t.best.value : null,
+      points: tr.points,
+      best: tr.best ? tr.best.value : null,
       format,
-      record: status[t.metric] === 'pr',
-      ariaLabel: `${label} over ${t.points.length} sessions. This workout ${format(cur.value)}; all-time best ${t.best ? format(t.best.value) : 'none'}.`,
+      record: status[tr.metric] === 'pr',
+      ariaLabel: t('analysis.an.trendAria', { label, count: tr.points.length, value: format(cur.value), best: tr.best ? format(tr.best.value) : t('analysis.none') }),
     }));
 }
 
@@ -256,7 +275,7 @@ function trendBlock(r, status) {
 /** Tonnage by muscle with whole-kg rows that add up to the session total shown (largest remainder). */
 function muscleRows(muscles) {
   const shown = roundToTotal(muscles.map((m) => m.tonnage));
-  return muscles.map((m, i) => ({ label: m.name, value: m.tonnage, text: tKg(shown[i]) }));
+  return muscles.map((m, i) => ({ label: tonMuscle(m.muscle), value: m.tonnage, text: tKg(shown[i]) }));
 }
 
 /** Sets / Tonnage of the muscle map, kept while the app runs. */
@@ -275,19 +294,18 @@ function musclesSection(w, res, exMap, weights) {
   const maxTon = Math.max(0, ...res.muscles.filter((m) => m.muscle !== 'unknown').map((m) => m.tonnage));
   const map = setsMap();
   const sel = selectableMap(map, (id) => {
-    const m = MUSCLES.find((x) => x.id === id);
     const s = sets[id];
-    const t = ton.get(id);
-    return [el('span', { class: 'strong' }, m ? m.name : id),
-      ` · ${fmtNum(s.total, 2)} ${s.total === 1 ? 'set' : 'sets'} · ${t ? t.text : '0 kg'}`];
+    const tn = ton.get(id);
+    return [el('span', { class: 'strong' }, muscleName(id)),
+      ` · ${t('analysis.an.muscleLine', { count: s.total, n: fmtNum(s.total, 2), tonnage: tn ? tn.text : '0 kg' })}`];
   });
   const body = el('div');
   const toggle = segmented({
-    small: true, ariaLabel: 'Shade muscles by', value: muscleView.mode,
-    options: [{ value: 'sets', label: 'Sets' }, { value: 'tonnage', label: 'Tonnage' }],
+    small: true, ariaLabel: t('analysis.an.shadeBy'), value: muscleView.mode,
+    options: [{ value: 'sets', label: t('analysis.sets') }, { value: 'tonnage', label: t('analysis.tonnage') }],
     onChange: (v) => { muscleView.mode = v; paint(); },
   });
-  const header = sectionHeader('Muscles', { trail: toggle });
+  const header = sectionHeader(t('analysis.an.muscles'), { trail: toggle });
   const title = header.querySelector('.section-title');
   let info = null;
   const paint = () => {
@@ -297,13 +315,13 @@ function musclesSection(w, res, exMap, weights) {
     info = fresh;
     setBodyMapValues(map, bySets ? mapSteps(sets) : Object.fromEntries(MUSCLES.map((m) => [m.id, tonnageStep(ton.has(m.id) ? ton.get(m.id).value : 0, maxTon)])));
     map.setAttribute('aria-label', bySets
-      ? `Sets per muscle: ${setRows.map((m) => `${m.name} ${fmtNum(sets[m.id].total, 2)}`).join(', ') || 'none'}`
-      : `Tonnage by muscle: ${res.muscles.map((m) => `${m.name} ${ton.get(m.muscle).text}`).join(', ') || 'none'}`);
+      ? t('analysis.an.setsAria', { list: setRows.map((m) => `${muscleName(m.id)} ${fmtNum(sets[m.id].total, 2)}`).join(t('analysis.listSep')) || t('analysis.none') })
+      : t('analysis.an.tonnageAria', { list: res.muscles.map((m) => `${tonMuscle(m.muscle)} ${ton.get(m.muscle).text}`).join(t('analysis.listSep')) || t('analysis.none') }));
     const bars = bySets
-      ? (setRows.length ? hBars(setRows.map((m) => ({ label: m.name, value: sets[m.id].total, text: fmtNum(sets[m.id].total, 2) }))) : el('p', { class: 't-sub muted' }, 'No done sets.'))
-      : (res.muscles.length ? hBars(muscleRows(res.muscles)) : el('p', { class: 't-sub muted' }, 'No sets with weight.'));
+      ? (setRows.length ? hBars(setRows.map((m) => ({ label: muscleName(m.id), value: sets[m.id].total, text: fmtNum(sets[m.id].total, 2) }))) : el('p', { class: 't-sub muted' }, t('analysis.an.noDoneSets')))
+      : (res.muscles.length ? hBars(muscleRows(res.muscles)) : el('p', { class: 't-sub muted' }, t('analysis.an.noWeightSets')));
     replaceChildren(body,
-      setsMapRow(map, bySets ? sessionBands(weights) : tonnageBands(maxTon, tKg), bySets ? 'Sets per muscle' : 'Tonnage by muscle'),
+      setsMapRow(map, bySets ? sessionBands(weights) : tonnageBands(maxTon, tKg), t(bySets ? 'analysis.an.setsPerMuscle' : 'analysis.an.tonnageByMuscle')),
       sel.line,
       el('div', { class: 'wk-an-mbars' }, bars));
     sel.refresh();
@@ -317,11 +335,11 @@ function wholeWorkout(w, res, exMap, weights) {
   out.push(musclesSection(w, res, exMap, weights));
   const h = res.routine.history;
   out.push(el('section', { class: 'section' },
-    sectionHeader(h.length > 1 ? `Session tonnage · last ${h.length}` : 'Session tonnage', { info: 'tonnage' }),
+    sectionHeader(h.length > 1 ? t('analysis.an.sessionTonnageLast', { n: h.length }) : t('analysis.an.sessionTonnage'), { info: 'tonnage' }),
     el('div', { class: 'card' }, h.length > 1
       ? vBars(h.map((s) => ({ date: s.date, value: s.tonnage, text: tKg(s.tonnage), current: s.current })),
-        `Session tonnage of the last ${h.length} ${w.name} sessions, ${h.map((s) => `${fmtDate(s.date)} ${tKg(s.tonnage)}`).join(', ')}`)
-      : el('p', { class: 't-sub muted' }, w.routineId ? 'First session of this routine.' : 'Not from a routine.'))));
+        t('analysis.an.sessionTonnageAria', { count: h.length, name: workoutTitle(w), list: h.map((s) => `${fmtDate(s.date)} ${tKg(s.tonnage)}`).join(t('analysis.listSep')) }))
+      : el('p', { class: 't-sub muted' }, t(w.routineId ? 'analysis.an.firstOfRoutine' : 'analysis.an.notFromRoutine')))));
   return out;
 }
 
@@ -336,26 +354,26 @@ function monthOrder(list, res) {
 
 function monthSection(w, res, name) {
   const m = res.monthView;
-  const monthName = `${MONTHS[Number(m.month.slice(5, 7)) - 1]} ${m.month.slice(0, 4)}`;
-  const holder = (b) => (!b ? '' : b.workoutId === w.id ? 'this workout' : b.baseline ? 'starting point' : shortDate(b.date));
+  const monthName = monthYearOfKey(m.month);
+  const holder = (b) => (!b ? '' : b.workoutId === w.id ? t('analysis.an.thisWorkout') : b.baseline ? t('analysis.an.startingPoint') : dateShort(b.date));
   const ton = tonnageParts(m.tonnage);
   return el('section', { class: 'section' },
-    sectionHeader(`${monthName} · up to ${shortDate(w.date)}`, { info: 'records' }),
+    sectionHeader(t('analysis.an.monthUpTo', { month: monthName, date: dateShort(w.date) }), { info: 'records' }),
     el('div', { class: 'tiles' },
-      statTile({ label: 'Sessions', value: String(m.sessions) }),
-      statTile({ label: 'Tonnage', value: ton.value, unit: ton.unit }),
-      statTile({ label: 'Records', value: String(m.records), sub: 'all-time' })),
+      statTile({ label: t('analysis.sessions'), value: String(m.sessions) }),
+      statTile({ label: t('analysis.tonnage'), value: ton.value, unit: ton.unit }),
+      statTile({ label: t('analysis.records'), value: String(m.records), sub: t('analysis.allTimeSub') })),
     el('div', { class: 'card wk-an-scroll' }, el('table', { class: 'wk-an-table wk-an-mtable' },
       el('thead', {}, el('tr', {},
-        el('th', { scope: 'col' }, 'Exercise'),
-        el('th', { scope: 'col' }, 'Heaviest set', el('span', { class: 'wk-an-unit' }, 'kg × reps')),
-        el('th', { scope: 'col' }, 'Tonnage set'))),
+        el('th', { scope: 'col' }, t('analysis.an.exercise')),
+        el('th', { scope: 'col' }, metricLabel('heaviest'), el('span', { class: 'wk-an-unit' }, t('analysis.unit.kgReps'))),
+        el('th', { scope: 'col' }, t('analysis.an.tonnageSetCol')))),
       el('tbody', {}, monthOrder(m.exercises, res).map((x) => el('tr', {},
         el('th', { scope: 'row' }, name(x.exerciseId)),
         x.heaviest
           ? el('td', {}, cellText('heaviest', x.heaviest), el('span', { class: 'wk-an-when' }, holder(x.heaviest)))
           : x.bwReps
-            ? el('td', {}, `BW × ${x.bwReps.reps}`, el('span', { class: 'wk-an-when' }, holder(x.bwReps)))
+            ? el('td', {}, t('analysis.an.bwReps', { reps: x.bwReps.reps }), el('span', { class: 'wk-an-when' }, holder(x.bwReps)))
             : el('td', {}, '–'),
         x.tonnageSet
           ? el('td', {}, exKg(x.tonnageSet.value), el('span', { class: 'wk-an-when' }, `${fmtNum(x.tonnageSet.weight, 2)} × ${x.tonnageSet.reps} · ${holder(x.tonnageSet)}`))

@@ -1,0 +1,40 @@
+// zh catalogue, namespace 'core'. Flat 'key': 'text' with {placeholders}; see docs/I18N.md.
+export default {
+  // activity levels (core/adaptive.js ACTIVITY_LEVELS, by id)
+  'core.activity.sedentary': '久坐',
+  'core.activity.sedentary.hint': '办公室工作，很少运动',
+  'core.activity.light': '轻度活跃',
+  'core.activity.light.hint': '每周运动 1–3 天',
+  'core.activity.moderate': '中度活跃',
+  'core.activity.moderate.hint': '每周运动 3–5 天',
+  'core.activity.active': '非常活跃',
+  'core.activity.active.hint': '每周高强度运动 6–7 天',
+  'core.activity.extra': '极度活跃',
+  'core.activity.extra.hint': '体力劳动外加训练',
+  // what the expenditure estimate still needs (core/adaptive.js estimateExpenditure().missing)
+  'core.missing.weighIns_other': '还需称重 {count} 次（{days} 天内）',
+  'core.missing.completeDays_other': '还需 {count} 个完整记录日（{days} 天内）',
+  'core.missing.history_other': '还需 {count} 天的历史数据',
+  'core.missing.staleWeighIn': '一次称重（已 {days} 天未称重）',
+  // goal rate (core/goal-display.js, core/goal-rate.js)
+  'core.goal.summary': '{rate} kg / 周',
+  'core.goal.summaryKcal': '{rate} kg / 周 · {kcal} kcal / 天',
+  'core.goal.errorAmount': '请输入大于 0 的数值',
+  'core.goal.errorMax': '最多 {max} kg / 周',
+  'core.goal.speechMaintain': '保持，每周 0 千克',
+  'core.goal.speechLose': '每周减 {n} 千克',
+  'core.goal.speechGain': '每周增 {n} 千克',
+  'core.goal.speechLoseEmpty': '减重，请输入每周千克数',
+  'core.goal.speechGainEmpty': '增重，请输入每周千克数',
+  'core.goal.maintain': '保持',
+  'core.goal.lose': '每周减重 {amount} kg',
+  'core.goal.gain': '每周增重 {amount} kg',
+  'core.goal.loseMax': '减重：每周最多 {max} kg',
+  'core.goal.gainMax': '增重：每周最多 {max} kg',
+  // target validation (core/setup.js buildTargets)
+  'core.setup.errorKcal': '请输入有效的热量目标。',
+  'core.setup.errorSplit': '三个百分比之和必须为 100。',
+  'core.setup.error.protein': '请输入有效的蛋白质目标。',
+  'core.setup.error.carbs': '请输入有效的碳水目标。',
+  'core.setup.error.fat': '请输入有效的脂肪目标。',
+};

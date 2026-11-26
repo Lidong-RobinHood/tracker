@@ -1,5 +1,9 @@
 // Open Food Facts network client (barcode lookup + text search) with timeouts and a client-side rate limit.
-import { productUrl, searchUrl, interpretProductResponse, parseSearchResponse, rateLimitDelay, rateLimitMessage } from '../core/off.js';
+// Error texts are translated here (the core returns {key, params}); callers show `error` as it is.
+import { productUrl, searchUrl, interpretProductResponse, parseSearchResponse, rateLimitDelay, rateLimitError } from '../core/off.js';
+import { t, getLanguage } from '../i18n/index.js';
+
+const errText = (e) => (e && e.key ? t(e.key, e.params) : String(e || ''));
 
 const TIMEOUT_MS = 15000;
 const SEARCH_LIMIT = { max: 8, windowMs: 60000 }; // OFF asks for ≤ 10 search requests/min
@@ -8,9 +12,9 @@ const searchCache = new Map(); // query -> results (this session only)
 
 function offlineMessage() {
   return typeof navigator !== 'undefined' && navigator.onLine === false
-    ? 'Offline. Your foods, generic foods and Quick add still work.'
+    ? t('food.off.offline')
     // A rate-limit/overload answer from OFF has no CORS header, so the browser reports it as a network error too.
-    : 'Could not reach Open Food Facts. Try again in a minute.';
+    : t('food.off.unreachable');
 }
 
 async function fetchJson(url, signal) {
@@ -25,7 +29,7 @@ async function fetchJson(url, signal) {
     return { status: res.status, json };
   } catch (err) {
     if (signal && signal.aborted) throw err;              // caller cancelled: propagate AbortError
-    if (ctrl.signal.aborted) return { status: 0, error: 'Open Food Facts timed out. Try again.' };
+    if (ctrl.signal.aborted) return { status: 0, error: t('food.off.timeout') };
     return { status: 0, error: offlineMessage() };
   } finally {
     clearTimeout(timer);
@@ -40,7 +44,8 @@ async function fetchJson(url, signal) {
 export async function lookupBarcode(code, { signal } = {}) {
   const r = await fetchJson(productUrl(code), signal);
   if (r.status === 0) return { outcome: 'error', error: r.error };
-  return interpretProductResponse(r.status, r.json);
+  const out = interpretProductResponse(r.status, r.json, { lang: getLanguage() });
+  return out.error ? { ...out, error: errText(out.error) } : out;
 }
 
 /** ms until another search request is allowed (0 = now). */
@@ -53,16 +58,16 @@ export function searchWait() {
  * @returns {Promise<{ok: true, results: Array<{food: object, missing: string[], kcalConverted: boolean}>} | {ok: false, error: string, retryInMs?: number}>}
  */
 export async function searchProducts(query, { signal } = {}) {
-  const key = query.trim().toLowerCase();
+  const key = `${getLanguage()}:${query.trim().toLowerCase()}`;
   if (searchCache.has(key)) return { ok: true, results: searchCache.get(key) };
   const wait = searchWait();
-  if (wait > 0) return { ok: false, error: `Search limit reached. Try again in ${Math.ceil(wait / 1000)} s.`, retryInMs: wait };
+  if (wait > 0) return { ok: false, error: t('food.off.limit', { s: Math.ceil(wait / 1000) }), retryInMs: wait };
   searchTimes.push(Date.now());
   const r = await fetchJson(searchUrl(query), signal);
   if (r.status === 0) return { ok: false, error: r.error };
-  if (r.status === 429 || r.status === 503) return { ok: false, error: rateLimitMessage(r.status), retryInMs: 60000 };
-  if (r.status < 200 || r.status >= 300 || !r.json) return { ok: false, error: `Open Food Facts search failed (HTTP ${r.status}).` };
-  const results = parseSearchResponse(r.json);
+  if (r.status === 429 || r.status === 503) return { ok: false, error: errText(rateLimitError(r.status)), retryInMs: 60000 };
+  if (r.status < 200 || r.status >= 300 || !r.json) return { ok: false, error: t('food.off.searchFailed', { status: r.status }) };
+  const results = parseSearchResponse(r.json, { lang: getLanguage() });
   searchCache.set(key, results);
   return { ok: true, results };
 }

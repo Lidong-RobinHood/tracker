@@ -5,6 +5,13 @@
  * @param {string|number|null|undefined} input
  * @returns {number|null} null for empty or invalid input
  */
+/**
+ * A number text with the percent sign, the one form used for every percentage on screen (all languages,
+ * like the catalogues' '{n} %'): '62 %' with a no-break space (U+00A0), so the sign never wraps alone.
+ * @param {string|number} text already formatted number ('62', '+2.5', '−3.1')
+ */
+export const withPercent = (text) => `${text}\u00a0%`;
+
 export function parseDecimal(input) {
   if (typeof input === 'number') return Number.isFinite(input) ? input : null;
   const s = String(input ?? '').trim().replace(',', '.');

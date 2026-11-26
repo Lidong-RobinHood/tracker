@@ -47,6 +47,7 @@ export const PHOTO_SCHEMA = Object.freeze({
 });
 
 // ---------------------------------------------------------------------------------- prompt
+// i18n-ignore-start (LLM prompts stay English)
 export const SYSTEM_PROMPT = `You estimate the food in a single meal photo for a personal nutrition diary. The user will review and correct every value before anything is logged, so be accurate and honest rather than confident-sounding.
 
 What to report
@@ -95,6 +96,8 @@ export function systemPromptFor({ schemaInRequest = true } = {}) {
   return `${SYSTEM_PROMPT}\n\nThe JSON schema of the answer (reply with one JSON object only, no other text):\n${JSON.stringify(PHOTO_SCHEMA)}`;
 }
 
+// i18n-ignore-end
+
 /** Trim, collapse whitespace, cap the length, drop characters that could close our quoting. */
 export function cleanHint(hint) {
   return String(hint ?? '').replace(/"""/g, '"').replace(/\s+/g, ' ').trim().slice(0, HINT_MAX);
@@ -103,39 +106,44 @@ export function cleanHint(hint) {
 // ---------------------------------------------------------------------------------- errors
 /**
  * Error kinds the UI distinguishes. `retry`: a manual "Try again" makes sense.
- * `{p}` is replaced by the provider's name (e.g. "Google Gemini" or the custom service's host).
+ * The text is the catalogue key `food.photoError.<kind in camelCase>` (namespace food); `{p}` in it is the provider's name
+ * (e.g. "Google Gemini" or the custom service's host), or a generic wording when params.p is null.
  */
-export const ERROR_TEXT = {
-  auth: { retry: false, message: 'The API key was rejected by {p}. Check it or paste a new one in Photo settings.' },
-  billing: { retry: false, message: 'No credit or quota left at {p}. Check billing with {p}.' },
-  permission: { retry: false, message: 'Key not allowed to use this model (403). Check its permissions at {p}.' },
-  model: { retry: false, message: 'The selected model is not available to your account at {p}. Choose another model in Photo settings.' },
-  too_large: { retry: false, message: 'The photo is too large for the API. Try a different photo.' },
-  rate_limit: { retry: true, message: 'Too many requests right now (rate limit). Wait a minute, then try again.' },
-  overloaded: { retry: true, message: 'Model overloaded. Try again shortly.' },
-  server: { retry: true, message: '{p} error. Try again shortly.' },
-  bad_request: { retry: false, message: '{p} rejected the request.' },
-  network: { retry: true, message: 'Could not reach {p}. Check your connection and try again.' },
-  offline: { retry: true, message: 'You are offline. Connect to the internet and try again.' },
-  refusal: { retry: false, message: '{p} refused this photo. Try another, or enter the values.' },
-  truncated: { retry: true, message: 'Answer cut off. Try again.' },
-  unusable: { retry: true, message: 'Unusable answer. Try again.' },
-  empty: { retry: false, message: 'No food was recognised in this photo.' },
-  cancelled: { retry: true, message: 'Analysis cancelled.' },
-  no_key: { retry: false, message: 'No API key is set.' },
-};
+export const ERROR_KINDS = Object.freeze({
+  auth: { retry: false },
+  billing: { retry: false },
+  permission: { retry: false },
+  model: { retry: false },
+  too_large: { retry: false },
+  rate_limit: { retry: true },
+  overloaded: { retry: true },
+  server: { retry: true },
+  bad_request: { retry: false },
+  network: { retry: true },
+  offline: { retry: true },
+  refusal: { retry: false },
+  truncated: { retry: true },
+  unusable: { retry: true },
+  empty: { retry: false },
+  cancelled: { retry: true },
+  no_key: { retry: false },
+});
 
 /**
  * @param {string} kind @param {string} [detail] provider's own error text (redacted, shortened)
- * @param {{provider?: string, message?: string}} [opts] provider name for `{p}`; `message` overrides the default text
- * @returns {{ok: false, kind: string, message: string, retry: boolean, detail?: string}}
+ * @param {{provider?: string|null, key?: string, params?: Record<string, string|number>}} [opts]
+ *   provider name for `{p}`; `key` (+ `params`) replaces the kind's default text
+ * @returns {{ok: false, kind: string, key: string, params: {p: string|null}, retry: boolean, detail?: string}}
  */
 export function photoError(kind, detail, opts = {}) {
-  const k = ERROR_TEXT[kind] ? kind : 'unusable';
-  const e = ERROR_TEXT[k];
-  const message = (opts.message || e.message).replace(/\{p\}/g, opts.provider || 'the API provider');
+  const k = ERROR_KINDS[kind] ? kind : 'unusable';
   const d = detail ? redactSecrets(String(detail)).slice(0, 300) : '';
-  return { ok: false, kind: k, message, retry: e.retry, ...(d ? { detail: d } : {}) };
+  return {
+    ok: false, kind: k, retry: ERROR_KINDS[k].retry,
+    key: opts.key || `food.photoError.${k.replace(/_([a-z])/g, (m, c) => c.toUpperCase())}`, // too_large → tooLarge
+    params: { ...(opts.params || {}), p: opts.provider || null },
+    ...(d ? { detail: d } : {}),
+  };
 }
 
 /**
@@ -213,59 +221,67 @@ export function energyCheck(per100) {
 }
 
 /**
+ * A message for the UI to translate: catalogue key (namespace food) + values. Arrays in params (nutrient ids)
+ * are translated and joined by the UI.
+ * @typedef {{key: string, params?: Record<string, string|number|string[]>}} PhotoMsg
+ */
+
+/**
  * Validation flags for an item's values (used again after the user edits them).
- * @param {{amount: number|null, per100: Record<string, number|null>}} item
- * @returns {string[]} human-readable warnings
+ * @param {{amount: number|null, basis?: string, per100: Record<string, number|null>}} item
+ * @returns {PhotoMsg[]} warnings
  */
 export function itemWarnings(item) {
   const w = [];
   const p = item.per100 || {};
+  const basis = item.basis === 'ml' ? 'ml' : 'g';
   const missing = REQUIRED_NUTRIENTS.filter((k) => typeof p[k] !== 'number' || !Number.isFinite(p[k]));
-  if (missing.length) w.push(`Missing: ${missing.join(', ')}.`);
-  if (!(typeof item.amount === 'number' && item.amount > 0)) w.push('Amount missing.');
-  const per = `/ 100 ${item.basis === 'ml' ? 'ml' : 'g'}`;
+  if (missing.length) w.push({ key: 'food.photoWarn.missing', params: { fields: missing } });
+  if (!(typeof item.amount === 'number' && item.amount > 0)) w.push({ key: 'food.photoWarn.amountMissing' });
   const sum = (p.protein || 0) + (p.carbs || 0) + (p.fat || 0);
-  if (sum > 100.5) w.push(`Macros total ${round(sum, 0)} g ${per}, over 100 g.`);
-  if (typeof p.sugars === 'number' && typeof p.carbs === 'number' && p.sugars > p.carbs + 0.5) w.push('Sugars are higher than carbs.');
-  if (typeof p.satFat === 'number' && typeof p.fat === 'number' && p.satFat > p.fat + 0.5) w.push('Saturated fat is higher than fat.');
+  if (sum > 100.5) w.push({ key: 'food.photoWarn.macrosOver', params: { sum: round(sum, 0), basis } });
+  if (typeof p.sugars === 'number' && typeof p.carbs === 'number' && p.sugars > p.carbs + 0.5) w.push({ key: 'food.photoWarn.sugarsOverCarbs' });
+  if (typeof p.satFat === 'number' && typeof p.fat === 'number' && p.satFat > p.fat + 0.5) w.push({ key: 'food.photoWarn.satFatOverFat' });
   const e = energyCheck(p);
-  // '1 956' with a narrow no-break space, like fmtGrouped.
-  if (!e.ok) w.push(`kcal does not fit the macros (about ${String(Math.round(e.macroKcal)).replace(/\B(?=(\d{3})+$)/g, '\u202f')} kcal ${per}).`);
+  if (!e.ok) w.push({ key: 'food.photoWarn.kcalMismatch', params: { kcal: Math.round(e.macroKcal), basis } });
   return w;
 }
+
+/** Name given to an item the model did not name. A marker: the UI shows it translated. */
+export const UNNAMED_ITEM = 'Unnamed item'; // i18n-ignore (marker, translated at display time)
 
 /**
  * Turn one raw model item into a safe review row. Never throws.
  * @param {any} raw
  * @returns {{name: string, amount: number|null, basis: 'g'|'ml', per100: Record<string, number|null>,
- *            confidence: 'low'|'medium'|'high'|'unknown', assumptions: string, fixes: string[], warnings: string[]}}
+ *            confidence: 'low'|'medium'|'high'|'unknown', assumptions: string, fixes: PhotoMsg[], warnings: PhotoMsg[]}}
  */
 export function sanitiseItem(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
   const fixes = [];
   let name = typeof r.name === 'string' ? r.name.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
-  if (!name) { name = 'Unnamed item'; fixes.push('No name was given.'); }
+  if (!name) { name = UNNAMED_ITEM; fixes.push({ key: 'food.photoFix.noName' }); }
 
   const unit = String(r.unit ?? r.basis ?? 'g').trim().toLowerCase();
   const basis = unit === 'ml' ? 'ml' : 'g';
 
   let amount = toNumber(r.amount ?? r.grams ?? r.amount_g);
-  if (amount !== null && (amount <= 0 || amount > MAX_AMOUNT)) { fixes.push(`An implausible amount (${amount}) was removed.`); amount = null; }
+  if (amount !== null && (amount <= 0 || amount > MAX_AMOUNT)) { fixes.push({ key: 'food.photoFix.amountRemoved', params: { value: amount } }); amount = null; }
   if (amount !== null) amount = round(amount, 1);
-  if (amount === 0) { fixes.push('An amount below 0.05 was removed.'); amount = null; }
+  if (amount === 0) { fixes.push({ key: 'food.photoFix.amountTiny' }); amount = null; }
 
   const src = r.per100 && typeof r.per100 === 'object' ? r.per100 : r;
   const per100 = {};
   const removed = new Set();
   for (const k of NUTRIENTS) {
     let v = toNumber(src[k] ?? (k === 'satFat' ? src.saturatedFat ?? src.saturated_fat : k === 'fibre' ? src.fiber : undefined));
-    if (v !== null && (v < 0 || v > MAX_PER100[k])) { fixes.push(`An implausible ${k} value (${v}) was removed.`); v = null; removed.add(k); }
+    if (v !== null && (v < 0 || v > MAX_PER100[k])) { fixes.push({ key: 'food.photoFix.valueRemoved', params: { fields: [k], value: v } }); v = null; removed.add(k); }
     per100[k] = v === null ? null : round(v, k === 'kcal' ? 0 : 1);
   }
   // kcal not given (not: given but absurd) and macros known → compute it, and say so.
   if (per100.kcal === null && !removed.has('kcal') && ['protein', 'carbs', 'fat'].every((k) => per100[k] !== null)) {
     per100.kcal = round(macroKcal(per100), 0);
-    if (per100.kcal <= MAX_PER100.kcal) fixes.push('kcal was calculated from the macros.');
+    if (per100.kcal <= MAX_PER100.kcal) fixes.push({ key: 'food.photoFix.kcalFromMacros' });
     else per100.kcal = null;
   }
 
@@ -316,7 +332,7 @@ export function setPortionValue(per100, amount, key, value) {
 /** Item name shortened for a meal title: "Chicken thigh, grilled" → "Chicken thigh". */
 function shortItemName(name) {
   const n = String(name || '').replace(/\s+/g, ' ').trim();
-  if (!n || n === 'Unnamed item') return '';
+  if (!n || n === UNNAMED_ITEM) return '';
   return (n.split(/\s*[,(]\s*/)[0] || n).trim();
 }
 
@@ -324,9 +340,15 @@ function shortItemName(name) {
  * Short meal name for logging an estimate as one entry: the main items (most kcal first), else the hint.
  * @param {Array<{name: string, amount: number|null, per100: object}>} items
  * @param {string} [hint]
- * @returns {string} at most ENTRY_NAME_MAX characters, 'Meal photo' if nothing usable
+ * @param {{fallback?: string, more?: (n: number) => string, sep?: string}} [labels] default: the stored English form
+ *   ('Meal photo', ' + 2 more', ', '); the UI passes translated texts only for the suggestion it shows
+ * @returns {string} at most ENTRY_NAME_MAX characters, labels.fallback ('Meal photo') if nothing usable
  */
-export function photoMealName(items, hint = '') {
+/** Stored name of a photo logged as one entry when nothing else is usable (shown translated: src/food/names.js). */
+export const PHOTO_MEAL_NAME = 'Meal photo'; // i18n-ignore: stored marker
+
+// i18n-ignore-next-line (stored English: ' + 2 more' is shown translated by src/food/names.js itemName)
+export function photoMealName(items, hint = '', { fallback = PHOTO_MEAL_NAME, more: moreText = (n) => ` + ${n} more`, sep = ', ' } = {}) {
   const ranked = (items || [])
     .map((it, i) => ({ i, name: shortItemName(it && it.name), kcal: sumEntries([{ per100: it && it.per100, amount: it && it.amount }]).kcal }))
     .filter((x) => x.name)
@@ -337,14 +359,14 @@ export function photoMealName(items, hint = '') {
     const shown = names.slice(0, 3);
     const more = names.length - shown.length;
     // "Rice, chicken thigh, broccoli": lower-case later words unless they look like an acronym/brand ("BBQ").
-    let s = shown.map((n, i) => (i > 0 && /^[A-Z][a-z]/.test(n) ? n.charAt(0).toLowerCase() + n.slice(1) : n)).join(', ');
-    if (more) s += ` + ${more} more`;
+    let s = shown.map((n, i) => (i > 0 && /^[A-Z][a-z]/.test(n) ? n.charAt(0).toLowerCase() + n.slice(1) : n)).join(sep);
+    if (more) s += moreText(more);
     if (s.length > ENTRY_NAME_MAX) s = `${s.slice(0, ENTRY_NAME_MAX - 1).trimEnd()}…`;
     return s;
   }
   const h = cleanHint(hint);
   if (h) return h.length > ENTRY_NAME_MAX ? `${h.slice(0, ENTRY_NAME_MAX - 1).trimEnd()}…` : h;
-  return 'Meal photo';
+  return fallback;
 }
 
 /**

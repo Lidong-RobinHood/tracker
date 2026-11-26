@@ -2,13 +2,13 @@
 // Ported from the step-1 barcode test page (removed in 0.5.2; see git history).
 import { kjToKcal, emptyPer100, missingFields } from './nutrition.js';
 import { parseDecimal, round } from './numbers.js';
-import { servingFromText, parseAmountText, cleanServings, basisFromQuantity, PACK_LABEL } from './portion.js';
+import { servingFromText, parseAmountText, cleanServings, basisFromQuantity, PACK_LABEL, multipackLabel } from './portion.js';
 
 export const OFF_BASE = 'https://world.openfoodfacts.org';
 
 /** Fields requested from OFF (keeps responses small). */
 export const OFF_FIELDS = [
-  'code', 'product_name', 'product_name_en', 'product_name_de', 'generic_name', 'brands', 'quantity',
+  'code', 'product_name', 'product_name_en', 'product_name_de', 'product_name_zh', 'generic_name', 'brands', 'quantity',
   'serving_size', 'serving_quantity', 'nutrition_data_per', 'nutriments',
 ].join(',');
 
@@ -25,7 +25,7 @@ export function productUrl(code) {
  */
 export function searchUrl(query, { pageSize = 24 } = {}) {
   const q = new URLSearchParams({
-    search_terms: String(query).trim(), search_simple: '1', action: 'process', json: '1',
+    search_terms: String(query).trim(), search_simple: '1', action: 'process', json: '1', // i18n-ignore (API parameters)
     page_size: String(pageSize), fields: OFF_FIELDS,
   });
   return `${OFF_BASE}/cgi/search.pl?${q}`;
@@ -34,15 +34,20 @@ export function searchUrl(query, { pageSize = 24 } = {}) {
 const num = (x) => (x === null || x === undefined || x === '' ? null : parseDecimal(typeof x === 'number' ? x : String(x)));
 const r = (n, d = 2) => (n === null ? null : round(n, d));
 
+/** Languages with their own product_name_<lang> field we prefer (English keeps OFF's main product_name first). */
+const NAME_LANGS = ['de', 'zh'];
+
 /**
  * Map an OFF product object to our food shape (not yet stored: no id/timestamps).
  * @param {any} p OFF product
+ * @param {{lang?: string}} [opts] app language: product_name_<lang> is preferred when OFF has it (de, zh)
  * @returns {{food: object, missing: string[], kcalConverted: boolean}}
  */
-export function offProductToFood(p) {
+export function offProductToFood(p, { lang } = {}) {
   p = p || {};
   const n = p.nutriments || {};
-  const name = [p.product_name, p.product_name_en, p.product_name_de, p.generic_name]
+  const own = NAME_LANGS.includes(lang) ? p[`product_name_${lang}`] : null;
+  const name = [own, p.product_name, p.product_name_en, p.product_name_de, p.generic_name]
     .map((s) => String(s ?? '').trim()).find(Boolean) || '';
   let kcal = num(n['energy-kcal_100g']);
   let kcalConverted = false;
@@ -70,7 +75,7 @@ export function offProductToFood(p) {
   if (serving) servings.push(serving);
   const pack = parseAmountText(quantity);
   // Multipack ("6 x 330 ml"): the single unit is a serving, the whole pack is the total.
-  if (pack && pack.count > 1 && pack.each > 0) servings.push({ label: `1 of ${pack.count}`, amount: pack.each });
+  if (pack && pack.count > 1 && pack.each > 0) servings.push({ label: multipackLabel(pack.count), amount: pack.each });
   if (pack && pack.amount <= 5000) servings.push({ label: PACK_LABEL, amount: pack.amount });
 
   const brands = String(p.brands ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -91,22 +96,27 @@ export function offProductToFood(p) {
 }
 
 /**
- * Classify a product lookup response. `json` may be null when the body was not JSON.
- * @param {number} status HTTP status @param {any} json
- * @returns {{outcome: 'complete'|'incomplete'|'not_found'|'error', food?: object, missing?: string[],
- *            kcalConverted?: boolean, error?: string}}
+ * An error for the UI to translate: catalogue key (namespace food) + values.
+ * @typedef {{key: string, params?: Record<string, string|number>}} OffError
  */
-export function interpretProductResponse(status, json) {
-  if (status === 429 || status === 503) return { outcome: 'error', error: rateLimitMessage(status) };
+
+/**
+ * Classify a product lookup response. `json` may be null when the body was not JSON.
+ * @param {number} status HTTP status @param {any} json @param {{lang?: string}} [opts] see offProductToFood
+ * @returns {{outcome: 'complete'|'incomplete'|'not_found'|'error', food?: object, missing?: string[],
+ *            kcalConverted?: boolean, error?: OffError}}
+ */
+export function interpretProductResponse(status, json, opts = {}) {
+  if (status === 429 || status === 503) return { outcome: 'error', error: rateLimitError(status) };
   if (status === 404 || (status >= 200 && status < 300)) {
     if (json && json.status === 1 && json.product) {
-      const m = offProductToFood(json.product);
+      const m = offProductToFood(json.product, opts);
       return { outcome: m.missing.length ? 'incomplete' : 'complete', ...m };
     }
-    if (json && json.status === 0) return { outcome: 'not_found', error: json.status_verbose || 'product not found' };
-    return { outcome: 'error', error: `Unexpected response from Open Food Facts (HTTP ${status}).` };
+    if (json && json.status === 0) return { outcome: 'not_found', error: { key: 'food.off.notFound' } };
+    return { outcome: 'error', error: { key: 'food.off.unexpected', params: { status } } };
   }
-  return { outcome: 'error', error: `Open Food Facts error (HTTP ${status}). Try again later.` };
+  return { outcome: 'error', error: { key: 'food.off.httpError', params: { status } } };
 }
 
 /**
@@ -114,13 +124,13 @@ export function interpretProductResponse(status, json) {
  * incomplete ones are kept and flagged (`missing`).
  * @returns {Array<{food: object, missing: string[], kcalConverted: boolean}>}
  */
-export function parseSearchResponse(json) {
+export function parseSearchResponse(json, opts = {}) {
   const list = (json && Array.isArray(json.products)) ? json.products : [];
   const out = [];
   const seen = new Set();
   for (const p of list) {
     if (!p || !p.code || seen.has(String(p.code))) continue;
-    const m = offProductToFood(p);
+    const m = offProductToFood(p, opts);
     if (!m.food.name) continue;
     seen.add(String(p.code));
     out.push(m);
@@ -128,8 +138,9 @@ export function parseSearchResponse(json) {
   return out;
 }
 
-export function rateLimitMessage(status) {
-  return `Open Food Facts is busy (HTTP ${status === 503 ? 503 : 429}). Try again in a minute.`;
+/** @returns {OffError} 'Open Food Facts is busy (HTTP 429)…' */
+export function rateLimitError(status) {
+  return { key: 'food.off.busy', params: { status: status === 503 ? 503 : 429 } };
 }
 
 /**

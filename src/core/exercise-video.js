@@ -12,31 +12,34 @@ const MAX_LEN = 2000;
 export const isVideoId = (id) => typeof id === 'string' && ID_RE.test(id);
 export const watchUrl = (id) => `https://www.youtube.com/watch?v=${id}`;
 export const thumbnailUrl = (id) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+// The search query stays English in every app language (exercise names are stored in English and
+// English tutorials are the best results); only the visible link label is translated in the UI.
+export const searchQuery = (name) => `${name} proper form tutorial`; // i18n-ignore: YouTube search query, not UI
 export const searchUrl = (name) =>
-  `https://www.youtube.com/results?search_query=${encodeURIComponent(`${name} proper form tutorial`)}`;
+  `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery(name))}`;
 
 /**
  * Parse a user-entered tutorial link.
  * - '' / whitespace → { ok: true, kind: 'none', value: '' } (use the default)
  * - YouTube watch?v=, youtu.be/, /shorts/, /embed/, /live/ → { ok, kind: 'youtube', videoId, url, value }
  * - any other https URL → { ok, kind: 'link', url, host, value }
- * - anything else → { ok: false, error }
+ * - anything else → { ok: false, error } — error is a catalogue key (workout.video.err*), translated by the UI
  * `value` is what to store as exercise.videoUrl.
  * @param {unknown} input
  */
 export function parseVideoUrl(input) {
   if (input === null || input === undefined) return { ok: true, kind: 'none', value: '' };
-  if (typeof input !== 'string') return { ok: false, error: 'Not a link.' };
+  if (typeof input !== 'string') return { ok: false, error: 'workout.video.errNotLink' };
   const text = input.trim();
   if (!text) return { ok: true, kind: 'none', value: '' };
-  if (text.length > MAX_LEN) return { ok: false, error: 'Link is too long.' };
-  if (/\s/.test(text)) return { ok: false, error: 'A link cannot contain spaces.' };
+  if (text.length > MAX_LEN) return { ok: false, error: 'workout.video.errTooLong' };
+  if (/\s/.test(text)) return { ok: false, error: 'workout.video.errSpaces' };
 
   // Allow "youtube.com/watch?v=…" / "youtu.be/…" typed without a scheme.
   const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(text) ? text
     : /^(www\.|m\.)?(youtube\.com|youtu\.be)\//i.test(text) ? `https://${text}` : text;
   let u;
-  try { u = new URL(withScheme); } catch { return { ok: false, error: 'Enter a full link starting with https://' }; }
+  try { u = new URL(withScheme); } catch { return { ok: false, error: 'workout.video.errFull' }; }
   const host = u.hostname.toLowerCase();
   const isYt = YT_HOSTS.has(host) || SHORT_HOSTS.has(host);
 
@@ -48,13 +51,13 @@ export function parseVideoUrl(input) {
     else if (seg[0] === 'watch') { videoPath = true; id = u.searchParams.get('v'); }
     else if (['shorts', 'embed', 'live', 'v'].includes(seg[0])) { videoPath = true; id = seg[1] ?? null; }
     if (videoPath) {
-      if (!isVideoId(id)) return { ok: false, error: 'This YouTube link has no valid video id.' };
+      if (!isVideoId(id)) return { ok: false, error: 'workout.video.errNoId' };
       return { ok: true, kind: 'youtube', videoId: id, url: watchUrl(id), value: text };
     }
     // Other YouTube pages (channel, playlist, search) fall through to a plain link if https.
   }
-  if (u.protocol !== 'https:') return { ok: false, error: 'Use a secure link starting with https://' };
-  if (!host || !host.includes('.') || u.username || u.password) return { ok: false, error: 'This is not a valid web link.' };
+  if (u.protocol !== 'https:') return { ok: false, error: 'workout.video.errInsecure' };
+  if (!host || !host.includes('.') || u.username || u.password) return { ok: false, error: 'workout.video.errInvalid' };
   return { ok: true, kind: 'link', url: u.href, host: host.replace(/^www\./, ''), value: text };
 }
 
@@ -86,6 +89,6 @@ export function exerciseVideo(exercise, videos = {}) {
       match: v.match === 'close' ? 'close' : 'exact',
     };
   }
-  const query = `${(ex.name || 'exercise').trim()} proper form tutorial`;
-  return { kind: 'search', source: 'search', url: searchUrl((ex.name || 'exercise').trim()), query };
+  const name = (ex.name || 'exercise').trim(); // i18n-ignore: search query word, stays English
+  return { kind: 'search', source: 'search', url: searchUrl(name), query: searchQuery(name) };
 }

@@ -31,7 +31,9 @@
 .rc-empty { margin: 0; padding: 0 var(--s1); }
 .rc-ck-list { margin: 0; padding: 0; list-style: none; }
 .rc-ck-row { gap: var(--s3); padding-right: var(--s1); }
-.rc-ck-row .li-sub { white-space: normal; }
+.rc-ck-row .li-sub, .rc-ck-row .li-title { white-space: normal; }
+/* range list: the source line may wrap (longer in German) */
+.rc-src-sub { white-space: normal; }
 .rc-mark {
   flex: none; display: inline-block; width: 10px; height: 10px; border-radius: var(--r-full);
   border: 2px solid var(--ink-2); box-sizing: border-box;

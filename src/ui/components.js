@@ -1,5 +1,6 @@
 // Small reusable building blocks that match the classes in app.css (see docs/CONTRACT.md › Components).
 import { el } from './dom.js';
+import { t } from '../i18n/index.js';
 import { back as goBack } from './nav.js';
 import { icon } from './icons.js';
 import { infoButton } from './info.js';
@@ -28,7 +29,7 @@ export function iconButton(name, { label, onClick, class: cls, variant = 'ghost'
  */
 export function pageHeader({ title, subtitle, back, actions = [], info }) {
   const backBtn = back
-    ? iconButton('chevron-left', { label: 'Back', class: 'page-back', onClick: () => goBack(typeof back === 'string' ? back : 'diary') })
+    ? iconButton('chevron-left', { label: t('common.back'), class: 'page-back', onClick: () => goBack(typeof back === 'string' ? back : 'diary') })
     : null;
   return el('header', { class: ['page-header', back ? 'has-back' : null] },
     backBtn,

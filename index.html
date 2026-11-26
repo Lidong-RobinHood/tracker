@@ -19,13 +19,31 @@
 <script>
 // If the app's code cannot be loaded (offline on first visit, or the host is briefly unavailable),
 // show a message with a reload button instead of a blank page.
+// The text is chosen like src/i18n/index.js does (stored choice 'tracker.language', else the device
+// languages); it cannot use the catalogues, which are modules that may be what failed to load.
 window.__bootFail = function () {
   var m = document.getElementById('main');
   if (!m || m.childElementCount) return;
+  var T = {
+    en: ['The app could not be loaded. Check your connection and try again.', 'Reload'],
+    de: ['Die App konnte nicht geladen werden. Prüfe deine Verbindung und versuche es noch einmal.', 'Neu laden'],
+    zh: ['无法加载应用。请检查网络连接后重试。', '重新加载']
+  };
+  var lang = null;
+  try { lang = localStorage.getItem('tracker.language'); } catch (e) { /* storage blocked */ }
+  if (!T[lang]) {
+    var prefs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+    lang = 'en';
+    for (var i = 0; i < prefs.length; i++) {
+      var base = String(prefs[i] || '').toLowerCase().split(/[-_]/)[0];
+      if (T[base]) { lang = base; break; }
+    }
+  }
+  try { document.documentElement.lang = lang === 'zh' ? 'zh-Hans' : lang; } catch (e) { /* ignore */ }
   var p = document.createElement('p'); p.className = 'empty';
-  p.textContent = 'The app could not be loaded. Check your connection and try again.';
+  p.textContent = T[lang][0];
   var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-primary';
-  b.textContent = 'Reload'; b.onclick = function () { location.reload(); };
+  b.textContent = T[lang][1]; b.onclick = function () { location.reload(); };
   var d = document.createElement('div'); d.className = 'view'; d.appendChild(p); d.appendChild(b);
   m.appendChild(d);
 };
@@ -36,6 +54,6 @@ window.addEventListener('load', function () { setTimeout(window.__bootFail, 8000
 <body>
 <main id="main" class="app-main"></main>
 <nav id="tabbar" class="tabbar" aria-label="Sections"></nav>
-<noscript><p class="empty">This app needs JavaScript.</p></noscript>
+<noscript><p class="empty">This app needs JavaScript.<br><span lang="de">Diese App braucht JavaScript.</span><br><span lang="zh-Hans">此应用需要 JavaScript。</span></p></noscript>
 </body>
 </html>

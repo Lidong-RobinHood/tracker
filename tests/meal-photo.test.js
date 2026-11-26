@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parsePhotoAnswer, sanitiseItem, energyCheck, itemWarnings, toNumber, parseJsonLoose,
-  maskKey, keyLooksValid, userPrompt, cleanHint, PHOTO_SCHEMA, photoError, redactSecrets, isValidModelId, systemPromptFor, SYSTEM_PROMPT,
+  maskKey, keyLooksValid, userPrompt, cleanHint, PHOTO_SCHEMA, photoError, redactSecrets, isValidModelId, systemPromptFor, SYSTEM_PROMPT, UNNAMED_ITEM,
 } from '../src/core/meal-photo.js';
 
 const good = {
@@ -73,14 +73,15 @@ test('negative and absurd values are removed and reported', () => {
   assert.equal(it.per100.fat, 20);
   assert.equal(it.per100.salt, null);
   assert.ok(it.fixes.length >= 5);
-  assert.ok(it.warnings.some((w) => w.startsWith('Missing: kcal, protein, carbs')));
-  assert.ok(it.warnings.includes('Amount missing.'));
+  assert.ok(it.warnings.some((w) => w.key === 'food.photoWarn.missing' && w.params.fields.join(',') === 'kcal,protein,carbs'));
+  assert.ok(it.warnings.some((w) => w.key === 'food.photoWarn.amountMissing'));
+  assert.ok(it.fixes.some((f) => f.key === 'food.photoFix.valueRemoved' && f.params.fields[0] === 'kcal' && f.params.value === 1500));
   assert.equal(sanitiseItem({ name: 'x', amount: 99999, per100: {} }).amount, null);
 });
 
 test('macros summing over 100 g per 100 g are flagged', () => {
   const it = sanitiseItem({ name: 'Bad', amount: 100, per100: { kcal: 700, protein: 50, carbs: 40, fat: 30 } });
-  assert.ok(it.warnings.some((w) => /Macros total 120 g \/ 100 g/.test(w)));
+  assert.ok(it.warnings.some((w) => w.key === 'food.photoWarn.macrosOver' && w.params.sum === 120 && w.params.basis === 'g'));
 });
 
 test('kcal vs 4/4/9 consistency', () => {
@@ -91,7 +92,7 @@ test('kcal vs 4/4/9 consistency', () => {
   assert.equal(energyCheck({ kcal: 20, protein: 1, carbs: 3, fat: 0.2 }).ok, true); // small absolute difference ok
   assert.equal(energyCheck({ kcal: null, protein: 1, carbs: 3, fat: 0 }).ok, true); // cannot check
   const it = sanitiseItem({ name: 'Rice?', amount: 100, per100: { kcal: 500, protein: 2.7, carbs: 28, fat: 0.3 } });
-  assert.ok(it.warnings.some((w) => /kcal does not fit the macros \(about [0-9 \u202f]+ kcal \/ 100 g\)/.test(w)));
+  assert.ok(it.warnings.some((w) => w.key === 'food.photoWarn.kcalMismatch' && w.params.kcal === 126 && w.params.basis === 'g'));
   // fibre counts ~2 kcal/g
   assert.equal(energyCheck({ kcal: 60, protein: 2, carbs: 5, fat: 0.5, fibre: 10 }).ok, true);
 });
@@ -99,7 +100,9 @@ test('kcal vs 4/4/9 consistency', () => {
 test('missing kcal is computed from macros; missing name and confidence get defaults', () => {
   const it = sanitiseItem({ amount: 100, per100: { protein: 10, carbs: 10, fat: 10 } });
   assert.equal(it.per100.kcal, 170);
-  assert.ok(it.fixes.includes('kcal was calculated from the macros.'));
+  assert.ok(it.fixes.some((f) => f.key === 'food.photoFix.kcalFromMacros'));
+  assert.ok(it.fixes.some((f) => f.key === 'food.photoFix.noName'));
+  assert.equal(it.name, UNNAMED_ITEM);
   assert.equal(it.name, 'Unnamed item');
   assert.equal(it.confidence, 'unknown');
   assert.equal(sanitiseItem(null).name, 'Unnamed item');
@@ -110,8 +113,8 @@ test('missing kcal is computed from macros; missing name and confidence get defa
 
 test('sugars > carbs and satFat > fat are flagged; warnings re-run after edits', () => {
   const it = sanitiseItem({ name: 'x', amount: 10, per100: { kcal: 100, protein: 0, carbs: 10, fat: 6, sugars: 20, satFat: 8 } });
-  assert.ok(it.warnings.includes('Sugars are higher than carbs.'));
-  assert.ok(it.warnings.includes('Saturated fat is higher than fat.'));
+  assert.ok(it.warnings.some((w) => w.key === 'food.photoWarn.sugarsOverCarbs'));
+  assert.ok(it.warnings.some((w) => w.key === 'food.photoWarn.satFatOverFat'));
   assert.deepEqual(itemWarnings({ amount: 10, per100: { kcal: 94, protein: 0, carbs: 10, fat: 6, sugars: 5, satFat: 3 } }), []);
 });
 
@@ -155,11 +158,15 @@ test('prompt helpers: hint quoting and schema-in-prompt fallback', () => {
 
 test('errors name the provider and never show a key', () => {
   const e = photoError('billing', 'Incorrect API key provided: sk-proj-abcdefghijklmnop1234', { provider: 'OpenAI' });
-  assert.match(e.message, /at OpenAI/);
+  assert.equal(e.key, 'food.photoError.billing');
+  assert.equal(e.params.p, 'OpenAI');
+  assert.equal(e.retry, false);
   assert.ok(!e.detail.includes('sk-proj-abcdefghijklmnop1234'));
-  assert.match(photoError('auth').message, /the API provider/);
+  assert.equal(photoError('auth').params.p, null); // the UI says "the API provider"
   assert.equal(photoError('nope').kind, 'unusable');
-  assert.equal(photoError('network', '', { message: 'custom' }).message, 'custom');
+  assert.equal(photoError('nope').key, 'food.photoError.unusable');
+  assert.equal(photoError('network', '', { key: 'food.x', params: { a: 1 } }).key, 'food.x');
+  assert.equal(photoError('network', '', { key: 'food.x', params: { a: 1 } }).params.a, 1);
   assert.equal(redactSecrets('key AIzaSyA1234567890abcdefgh here'), 'key [key hidden] here');
   assert.equal(redactSecrets('my secret-key-value-123 leaked', 'secret-key-value-123'), 'my [key hidden] leaked');
 });
@@ -231,5 +238,11 @@ test('item 8: toNumber reads a comma before exactly three digits as thousands; t
   assert.equal(toNumber('1.234'), 1.234);
   const it = sanitiseItem({ name: 'Salt', amount: 0.04, per100: { kcal: 0 } });
   assert.equal(it.amount, null);
-  assert.ok(it.fixes.some((f) => /amount/i.test(f)));
+  assert.ok(it.fixes.some((f) => f.key === 'food.photoFix.amountTiny'));
+});
+
+test('photoMealName takes translated labels', () => {
+  const items = ['Rice', 'Chicken', 'Broccoli', 'Oil', 'Sauce'].map((name, i) => ({ name, amount: 100, per100: { kcal: 100 - i } }));
+  assert.equal(photoMealName(items, '', { more: (n) => ` + ${n} weitere` }), 'Rice, chicken, broccoli + 2 weitere');
+  assert.equal(photoMealName([], '', { fallback: 'Mahlzeitenfoto' }), 'Mahlzeitenfoto');
 });

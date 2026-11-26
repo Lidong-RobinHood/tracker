@@ -28,6 +28,7 @@ const singularKey = (s) => normaliseName(s).split(' ').map((w) => (w.length > 3 
  * Common names, abbreviations and German gym terms → seed exercise id (slug without "seed:").
  * Written as people type them; keys are normalised with nameKey() at load.
  */
+// i18n-ignore-start (matching data: names people type in their sheets, not UI text)
 const ALIAS_LIST = {
   'bench-press': ['Benchpress', 'Bench', 'BP', 'Flat Bench', 'Barbell Bench', 'BB Bench', 'Bankdrücken', 'Flachbank', 'Flachbankdrücken', 'LH Bankdrücken'],
   'incline-bench-press': ['Incline Bench', 'Incline Benchpress', 'Incline BB Press', 'Schrägbank', 'Schrägbankdrücken', 'LH Schrägbank'],
@@ -86,6 +87,7 @@ const ALIAS_LIST = {
   'back-extension': ['Hyperextension', 'Hyperextensions', 'Rückenstrecker'],
   'machine-chest-press': ['Chest Press', 'Brustpresse'],
 };
+// i18n-ignore-end
 
 /**
  * Abbreviations people type for a word inside a name ("incline db", "bb row", "bw dips"), as opposed
@@ -158,10 +160,7 @@ export function matchExercise(name, exercises, saved = {}) {
   return result(null, 'none', bestScore);
 }
 
-/** Human label for a confidence value. */
-export function confidenceLabel(c) {
-  return {
-    saved: 'Your earlier choice', exact: 'Exact name', alias: 'Known name', high: 'Very likely',
-    medium: 'Likely', low: 'Unsure', none: 'No match',
-  }[c] || c;
+/** Catalogue key of the label for a confidence value (namespace 'import'; the UI translates). */
+export function confidenceKey(c) {
+  return `import.match.${c}`;
 }

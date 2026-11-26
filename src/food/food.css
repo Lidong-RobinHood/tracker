@@ -43,6 +43,8 @@
 .meal-head { display: flex; align-items: center; gap: var(--s1); min-height: 52px; padding: var(--s1) var(--s1) var(--s1) var(--s4); }
 .meal-title-wrap { flex: 1 1 auto; min-width: 0; padding: var(--s1) 0; }
 .meal-macros { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Chinese macro labels are two characters each (蛋白 · 碳水 · 脂肪): wrap instead of cutting off the fat value. */
+:lang(zh) .meal-head .meal-macros { white-space: normal; }
 .meal-kcal { white-space: nowrap; padding-left: var(--s1); text-align: right; }
 .meal-card .list { border-top: 1px solid var(--line); }
 .meal-card .meal-head .btn-icon.meal-add { color: var(--accent); }
@@ -50,6 +52,8 @@
 .menu-list .list-item { padding: var(--s2) 0; }
 .menu-list .list-item.text-danger, .menu-list .list-item.text-danger .li-lead { color: var(--bad-text); }
 .photo-draft-link .li-sub, .week-report-link .li-trail { white-space: nowrap; }
+/* Longer translations ("Wochenbericht" beside the date range at 320 px): wrap instead of cutting off. */
+.week-report-link .li-title { white-space: normal; overflow-wrap: anywhere; }
 /* the row's li-main / li-title / li-sub are spans: stack them (else title and sub run together on one line) */
 .photo-draft-link .li-main { display: flex; flex-direction: column; }
 

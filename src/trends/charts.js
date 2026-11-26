@@ -3,10 +3,11 @@
 // right) and the daily intake bars. Each chart has a readout line above it: mouse hover follows the
 // pointer; a tap pins the nearest point until another point is tapped.
 import { el, fmtGrouped, fmtDate } from '../ui/index.js';
-import { daysBetween, weekday } from '../core/dates.js';
+import { daysBetween, weekday, parseDate } from '../core/dates.js';
+import { t } from '../i18n/index.js';
+import { dayMonth } from '../i18n/dates.js';
 
 const NS = 'http://www.w3.org/2000/svg';
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** SVG element helper: attributes set with setAttribute, children appended (text as textContent). */
 function s(tag, attrs = {}, ...children) {
@@ -19,8 +20,8 @@ function s(tag, attrs = {}, ...children) {
   return n;
 }
 
-/** Axis date: '20 Oct'. */
-export const shortDate = (d) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+/** Axis date: '20 Oct' (de '20. Okt.', zh '10月20日'). */
+export const shortDate = (d) => dayMonth(parseDate(d));
 
 /** ~count nice ticks; the domain is widened to whole steps. @returns {{ticks: number[], step: number, lo: number, hi: number}} */
 function niceTicks(lo, hi, count = 4) {
@@ -99,7 +100,7 @@ export function trendChart(o) {
     s('text', { class: 'tr-axis', x: W - R + 6, y: y(v) + 4, 'text-anchor': 'start' }, fmtGrouped(v, axisDec))));
   const xLabels = [
     s('text', { class: 'tr-axis', x: L, y: H - 6, 'text-anchor': 'start' }, shortDate(from)),
-    s('text', { class: 'tr-axis', x: W - R, y: H - 6, 'text-anchor': 'end' }, to === o.today ? 'Today' : shortDate(to)),
+    s('text', { class: 'tr-axis', x: W - R, y: H - 6, 'text-anchor': 'end' }, to === o.today ? t('trends.chart.today') : shortDate(to)),
   ];
   const linePts = (o.lead != null ? [{ date: from, line: o.lead }] : []).concat(items.filter((r) => r.line != null));
   const path = linePts.length > 1 ? linePts.map((r, i) => `${i ? 'L' : 'M'}${x(r.date).toFixed(1)},${y(r.line).toFixed(1)}`).join('') : null;
@@ -181,22 +182,24 @@ export function intakeChart(days, target, weeks, todayStr) {
   const targetLine = target ? s('line', { class: 'tr-target', x1: L, x2: W - R, y1: y(target), y2: y(target) }) : null;
   const cursor = s('rect', { class: 'tr-col', x: 0, y: T, width: slot, height: H - T - B, visibility: 'hidden' });
 
-  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Daily calories for the last ${n} days with target and weekly averages` },
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': t('trends.chart.intakeAria', { days: n }) },
     grid, cursor, bars, targetLine, avgs, xLabels);
   const readout = el('div', { class: 't-sub tr-readout', 'aria-live': 'polite' });
-  const def = () => { readout.textContent = target ? `Target ${fmtGrouped(target)} kcal · tap a bar` : 'Tap a bar'; };
+  const def = () => { readout.textContent = target ? t('trends.chart.intakeDefault', { kcal: fmtGrouped(target) }) : t('trends.chart.tapBar'); };
   attachHover(svg, W, days.map((_, i) => x(i) + slot / 2), (i) => {
     if (i === null) { cursor.setAttribute('visibility', 'hidden'); def(); return; }
     const d = days[i];
     cursor.setAttribute('x', x(i)); cursor.setAttribute('visibility', 'visible');
     const wk = weeks.find((w) => d.date >= w.from && d.date <= w.to);
-    readout.textContent = `${fmtDate(d.date)} · ${d.kcal ? `${fmtGrouped(d.kcal)} kcal` : 'not logged'}${d.date === todayStr ? ' so far' : ''}`
-      + `${wk && wk.avg ? ` · week avg ${fmtGrouped(wk.avg)}` : ''}`;
+    const kcal = !d.kcal ? t('trends.chart.notLogged')
+      : t(d.date === todayStr ? 'trends.chart.kcalSoFar' : 'trends.chart.kcal', { kcal: fmtGrouped(d.kcal) });
+    readout.textContent = [fmtDate(d.date), kcal, wk && wk.avg ? t('trends.chart.weekAvg', { kcal: fmtGrouped(wk.avg) }) : null]
+      .filter(Boolean).join(' · ');
   });
   def();
   const legend = el('ul', { class: 'legend legend-row tr-legend' },
-    el('li', null, el('span', { class: 'tr-key tr-key-bar', 'aria-hidden': 'true' }), 'Day'),
-    el('li', null, el('span', { class: 'tr-key tr-key-avg', 'aria-hidden': 'true' }), 'Week average'),
-    target ? el('li', null, el('span', { class: 'tr-key tr-key-target', 'aria-hidden': 'true' }), 'Target') : null);
+    el('li', null, el('span', { class: 'tr-key tr-key-bar', 'aria-hidden': 'true' }), t('trends.chart.legendDay')),
+    el('li', null, el('span', { class: 'tr-key tr-key-avg', 'aria-hidden': 'true' }), t('trends.chart.legendWeekAvg')),
+    target ? el('li', null, el('span', { class: 'tr-key tr-key-target', 'aria-hidden': 'true' }), t('trends.chart.legendTarget')) : null);
   return el('div', { class: 'tr-chart' }, readout, svg, legend);
 }

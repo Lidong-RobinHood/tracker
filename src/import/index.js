@@ -6,8 +6,8 @@ import { mountFoodImport } from './food-view.js';
 
 /** @type {import('../types.js').Route[]} */
 export const routes = [
-  { path: 'import', title: 'Import data', tab: 'settings', mount: mountHub },
-  { path: 'import/workouts', title: 'Import workouts', tab: 'settings', mount: mountWorkoutImport },
-  { path: 'import/weights', title: 'Import body weight', tab: 'settings', mount: mountWeightImport },
-  { path: 'import/food', title: 'Import food diary', tab: 'settings', mount: mountFoodImport },
+  { path: 'import', titleKey: 'import.title', tab: 'settings', mount: mountHub },
+  { path: 'import/workouts', titleKey: 'import.workouts.title', tab: 'settings', mount: mountWorkoutImport },
+  { path: 'import/weights', titleKey: 'import.weights.title', tab: 'settings', mount: mountWeightImport },
+  { path: 'import/food', titleKey: 'import.food.title', tab: 'settings', mount: mountFoodImport },
 ];

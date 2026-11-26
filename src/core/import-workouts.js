@@ -22,7 +22,7 @@
 // paste is refused with the line numbers, because cells cannot be assigned to the right exercise
 // safely; the user pastes one column group at a time. Any other unreadable line is listed with its
 // line number and left out.
-import { splitLines, findDate, detectDateOrder, parseNumber } from './import-common.js';
+import { splitLines, findDate, detectDateOrder, parseNumber, msg } from './import-common.js';
 import { normaliseTarget } from './workout.js';
 import { isValidDate } from './dates.js';
 
@@ -79,7 +79,7 @@ export function classifyLine(raw, dateOpts) {
 
   const drop = DROPSET_RE.exec(text);
   if (drop) return { kind: 'dropset', text, reps: drop[1], weight: drop[2] };
-  if (/^(?:drop\s*-?\s*set|dropsatz|drop|ds)\b/i.test(text) && /\d/.test(text)) return { kind: 'unknown', text, message: 'Dropset needs reps and weight, e.g. "Dropset 5x 80"' };
+  if (/^(?:drop\s*-?\s*set|dropsatz|drop|ds)\b/i.test(text) && /\d/.test(text)) return { kind: 'unknown', text, message: msg('import.workouts.dropsetNeeds') };
 
   const tgt = TARGET_RE.exec(text);
   if (tgt) return { kind: 'target', text, sets: +tgt[1], reps: +tgt[2], repsMax: tgt[3] ? +tgt[3] : null, setLike: !tgt[3] ? { a: tgt[1], b: tgt[2] } : null };
@@ -116,27 +116,27 @@ export function classifyLine(raw, dateOpts) {
 
 /**
  * Read a set from numbers.
- * @returns {{ok: true, set: {weight: number|null, reps: number}}|{ok: false, error: string}}
+ * @returns {{ok: true, set: {weight: number|null, reps: number}}|{ok: false, error: import('./import-common.js').ImportMsg}}
  */
 function readSet(nums, bw, repsFirst, units = {}) {
   const kg = units.kg || []; const reps = units.reps || [];
   if (nums.length === 1 || bw) {
-    if (nums.length !== 1) return { ok: false, error: 'Bodyweight set with two numbers' };
-    if (kg.length && !bw) return { ok: false, error: `Weight without reps? "${nums[0]} kg" has no reps. Write weight and reps, e.g. "${nums[0]} kg x 8"` };
+    if (nums.length !== 1) return { ok: false, error: msg('import.workouts.bwTwoNumbers') };
+    if (kg.length && !bw) return { ok: false, error: msg('import.workouts.weightNoReps', { n: nums[0] }) };
     return checkSet(null, parseNumber(nums[0]));
   }
   const a = parseNumber(nums[0]);
   const b = parseNumber(nums[1]);
-  if (kg.length > 1 || reps.length > 1 || (kg.length && reps.length && kg[0] === reps[0])) return { ok: false, error: 'Both numbers carry the same unit (kg or reps); which one is the weight?' };
+  if (kg.length > 1 || reps.length > 1 || (kg.length && reps.length && kg[0] === reps[0])) return { ok: false, error: msg('import.workouts.sameUnit') };
   // An explicit unit decides; without one the column order (and the switch) does.
   const weightIdx = kg.length ? kg[0] : reps.length ? 1 - reps[0] : repsFirst ? 1 : 0;
   return weightIdx === 0 ? checkSet(a, b) : checkSet(b, a);
 }
 
 function checkSet(weight, reps) {
-  if (reps === null || !Number.isInteger(reps)) return { ok: false, error: `Reps must be a whole number${reps !== null ? ` (got ${reps})` : ''}. Is the column order right?` };
-  if (reps < 1 || reps > MAX_REPS) return { ok: false, error: `Reps ${reps} is outside 1–${MAX_REPS}` };
-  if (weight !== null && (weight < 0 || weight > MAX_WEIGHT)) return { ok: false, error: `Weight ${weight} kg is outside 0–${MAX_WEIGHT} kg` };
+  if (reps === null || !Number.isInteger(reps)) return { ok: false, error: reps !== null ? msg('import.workouts.repsWholeGot', { value: reps }) : msg('import.workouts.repsWhole') };
+  if (reps < 1 || reps > MAX_REPS) return { ok: false, error: msg('import.workouts.repsRange', { reps, max: MAX_REPS }) };
+  if (weight !== null && (weight < 0 || weight > MAX_WEIGHT)) return { ok: false, error: msg('import.workouts.weightRange', { weight, max: MAX_WEIGHT }) };
   return { ok: true, set: { weight: weight === 0 ? null : weight, reps } };
 }
 
@@ -145,10 +145,11 @@ function checkSet(weight, reps) {
  * @param {string} text
  * @param {{today: string, repsFirst?: boolean, dateOrder?: 'auto'|'dmy'|'mdy'}} opts
  *   repsFirst: two-number rows are "reps weight" instead of "weight reps"
- * @returns {{workouts: ParsedWorkout[], issues: Issue[], fatal: string|null, dateOrder: 'dmy'|'mdy',
+ * @returns {{workouts: ParsedWorkout[], issues: Issue[], fatal: ImportMsg|null, dateOrder: 'dmy'|'mdy',
  *   dateOrderAmbiguous: boolean, lineCount: number}}
  *
- * @typedef {{line: number, text: string, message: string, level: 'error'|'warning'|'info'}} Issue
+ * @typedef {import('./import-common.js').ImportMsg} ImportMsg {key, params}; the UI translates
+ * @typedef {{line: number, text: string, message: ImportMsg, level: 'error'|'warning'|'info'}} Issue
  * @typedef {{index: number, line: number, date: string|null, dateLine: number|null, name: string|null,
  *   exercises: ParsedExercise[]}} ParsedWorkout
  * @typedef {{name: string, line: number, target: {sets: number, reps: number, repsMax: number|null}|null,
@@ -179,11 +180,10 @@ export function assemble(lines, cls, { repsFirst = false, today, dateOrder = 'dm
   const multi = [];
   cls.forEach((c, i) => { if (c.kind === 'multi') multi.push(i + 1); });
   if (multi.length) {
-    for (const n of multi.slice(0, 20)) issue(n - 1, 'Several columns side by side');
+    for (const n of multi.slice(0, 20)) issue(n - 1, msg('import.workouts.multiLine'));
     return {
       workouts: [], issues, dateOrder, dateOrderAmbiguous, lineCount: lines.length,
-      fatal: `Several column groups side by side (line${multi.length > 1 ? 's' : ''} ${multi.slice(0, 8).join(', ')}${multi.length > 8 ? ', …' : ''}). `
-        + 'Import one group at a time.',
+      fatal: msg(multi.length > 8 ? 'import.workouts.multiFatalMore' : 'import.workouts.multiFatal', { count: multi.length, lines: multi.slice(0, 8) }),
     };
   }
 
@@ -202,7 +202,7 @@ export function assemble(lines, cls, { repsFirst = false, today, dateOrder = 'dm
   const pushSet = (i, nums, bw, type, units) => {
     const st = loaded.get(ex) || { abs: false, added: false };
     if (type === 'normal' && nums.length === 1 && !bw && !(units && units.kg && units.kg.length) && st.abs && !st.added) {
-      issue(i, `Weight without reps? Write "${nums[0]} 8", or "BW ${nums[0]}" for bodyweight reps`);
+      issue(i, msg('import.workouts.weightNoRepsBw', { n: nums[0] }));
       return;
     }
     const r = readSet(nums, bw, type === 'normal' ? repsFirst : false, units);
@@ -217,15 +217,15 @@ export function assemble(lines, cls, { repsFirst = false, today, dateOrder = 'dm
   cls.forEach((c, i) => {
     switch (c.kind) {
       case 'blank': return;
-      case 'header': issue(i, 'Column header, ignored', 'info'); return;
+      case 'header': issue(i, msg('import.workouts.headerIgnored'), 'info'); return;
       case 'date': {
-        if (c.error || !c.date) { issue(i, `${c.error || 'Not a valid date'}`); return; }
+        if (c.error || !c.date) { issue(i, c.error || msg('import.date.notValid')); return; }
         if (!cur || cur.exercises.length || cur.date) newWorkout(i);
         cur.date = c.date;
         cur.dateLine = i + 1;
         if (c.name) cur.name = c.name;
-        if (c.weekdayMismatch) issue(i, `The weekday does not match ${c.date}; the date is used`, 'warning');
-        if (c.date > today) issue(i, `${c.date} is in the future`, 'error');
+        if (c.weekdayMismatch) issue(i, msg('import.workouts.weekdayMismatch', { date: c.date }), 'warning');
+        if (c.date > today) issue(i, msg('import.workouts.future', { date: c.date }), 'error');
         return;
       }
       case 'name': {
@@ -244,28 +244,28 @@ export function assemble(lines, cls, { repsFirst = false, today, dateOrder = 'dm
           newWorkout(i).name = c.name;
           return;
         }
-        issue(i, next ? 'Text without sets below it, ignored' : 'Exercise name with no sets below it, ignored', 'warning');
+        issue(i, msg(next ? 'import.workouts.textNoSets' : 'import.workouts.nameNoSets'), 'warning');
         return;
       }
       case 'target': {
-        if (!ex) { issue(i, 'Sets x reps line without an exercise name above it'); return; }
+        if (!ex) { issue(i, msg('import.workouts.targetNoName')); return; }
         if (!ex.target && !ex.sets.length && (c.sets <= 10 || !c.setLike)) { ex.target = { sets: c.sets, reps: c.reps, repsMax: c.repsMax }; return; }
         if (c.setLike) { pushSet(i, [c.setLike.a, c.setLike.b], false, 'normal'); return; }
-        issue(i, 'A second sets x reps line in the same exercise');
+        issue(i, msg('import.workouts.secondTarget'));
         return;
       }
       case 'set': {
-        if (!ex) { issue(i, 'Numbers without an exercise name above them'); return; }
+        if (!ex) { issue(i, msg('import.workouts.numbersNoName')); return; }
         pushSet(i, c.nums, c.bw, 'normal', { kg: c.kg, reps: c.reps });
         return;
       }
       case 'dropset': {
-        if (!ex) { issue(i, 'Dropset without an exercise name above it'); return; }
+        if (!ex) { issue(i, msg('import.workouts.dropsetNoName')); return; }
         pushSet(i, [c.weight, c.reps], false, 'dropset'); // dropset lines are always reps x weight
         return;
       }
       default:
-        issue(i, c.message || 'Could not read this line');
+        issue(i, c.message || msg('import.workouts.unreadable'));
     }
   });
 
@@ -273,7 +273,7 @@ export function assemble(lines, cls, { repsFirst = false, today, dateOrder = 'dm
   for (const w of workouts) {
     w.exercises = w.exercises.filter((e) => {
       if (e.sets.length) return true;
-      if (!issues.some((x) => x.line === e.line)) issues.push({ line: e.line, text: lines[e.line - 1], message: 'Exercise without readable sets, left out', level: 'warning' });
+      if (!issues.some((x) => x.line === e.line)) issues.push({ line: e.line, text: lines[e.line - 1], message: msg('import.workouts.exerciseNoSets'), level: 'warning' });
       return false;
     });
   }
@@ -314,10 +314,11 @@ export function plausibleTimes(date, k, now) {
  * Workout records (SPEC §3) from a parse result. Pure: ids and time are passed in.
  * @param {ParsedWorkout[]} workouts
  * @param {{dates: string[], exerciseIds: Record<string, string>, importId: string, now: number,
- *   newId: () => string}} opts dates[i] for workouts[i]; exerciseIds keyed by exercise name as parsed
+ *   newId: () => string, defaultName?: string}} opts dates[i] for workouts[i]; exerciseIds keyed by exercise name as parsed;
+ *   defaultName: stored name of a workout without one (the UI passes it in the app language)
  * @returns {object[]} finished workouts with done sets, tagged with importId
  */
-export function buildWorkoutRecords(workouts, { dates, exerciseIds, importId, now, newId }) {
+export function buildWorkoutRecords(workouts, { dates, exerciseIds, importId, now, newId, defaultName = 'Workout' }) { // i18n-ignore (fallback; the UI passes the translated name)
   const perDay = new Map();
   return workouts.map((w, i) => {
     const date = dates[i];
@@ -339,7 +340,7 @@ export function buildWorkoutRecords(workouts, { dates, exerciseIds, importId, no
       };
     });
     return {
-      id: newId(), date, routineId: null, name: w.name || 'Workout', startedAt, finishedAt,
+      id: newId(), date, routineId: null, name: w.name || defaultName, startedAt, finishedAt,
       exercises, createdAt: now, updatedAt: now, importId,
     };
   });

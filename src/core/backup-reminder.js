@@ -50,9 +50,11 @@ export function snoozeUntil(now) {
   return now + SNOOZE_DAYS * DAY;
 }
 
-/** 'today', 'yesterday', '5 days ago' for a past export timestamp; 'never' for none. */
-export function lastExportText(lastExportAt, now) {
-  if (!(typeof lastExportAt === 'number' && lastExportAt > 0)) return 'never';
-  const d = Math.max(0, daysBetween(fromTimestamp(lastExportAt), fromTimestamp(now)));
-  return d === 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`;
+/**
+ * Whole calendar days since a past export (0 = today), null when never exported. The UI words it
+ * (settings.data.lastExport* keys); core returns data, not text (docs/I18N.md).
+ */
+export function exportAgeDays(lastExportAt, now) {
+  if (!(typeof lastExportAt === 'number' && lastExportAt > 0)) return null;
+  return Math.max(0, daysBetween(fromTimestamp(lastExportAt), fromTimestamp(now)));
 }

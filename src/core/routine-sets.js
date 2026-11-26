@@ -81,17 +81,18 @@ export function tonnageStep(t, max) {
 
 /**
  * Legend of tonnageStep in kg for a workout whose largest muscle has `max`: 'Over 1 725 kg',
- * 'Over 1 150 kg', 'Over 575 kg', 'Up to 575 kg', 'None'.
+ * 'Over 1 150 kg', 'Over 575 kg', 'Up to 575 kg', 'None'. Labels are catalogue keys + params
+ * (workout.band.over / workout.band.upTo {value}, workout.band.none); the UI translates them.
  * @param {number} max @param {(kg: number) => string} fmt display rule for kg (fmtTonnage in the UI)
- * @returns {{step: number, label: string}[]}
+ * @returns {{step: number, key: string, params?: {value: string}}[]}
  */
 export function tonnageBands(max, fmt = (v) => `${Math.round(v)} kg`) {
   const [a, b, c] = TONNAGE_FRACTIONS.map((f) => fmt(f * max));
   return [
-    { step: 4, label: `Over ${a}` },
-    { step: 3, label: `Over ${b}` },
-    { step: 2, label: `Over ${c}` },
-    { step: 1, label: `Up to ${c}` },
-    { step: 0, label: 'None' },
+    { step: 4, key: 'workout.band.over', params: { value: a } },
+    { step: 3, key: 'workout.band.over', params: { value: b } },
+    { step: 2, key: 'workout.band.over', params: { value: c } },
+    { step: 1, key: 'workout.band.upTo', params: { value: c } },
+    { step: 0, key: 'workout.band.none' },
   ];
 }

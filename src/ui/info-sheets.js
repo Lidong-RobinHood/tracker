@@ -1,7 +1,8 @@
-// The texts behind every info button (ⓘ), in one place. Edit wording here only.
+// The texts behind every info button (ⓘ). Wording lives in the 'info' catalogues (src/i18n/<lang>/info.js);
+// this file maps sheet ids to keys and fills in the values from the code's constants.
 // Source: the copy audit of 2026-11-19, section 5 (23 sheets). Pure data, no DOM (tests import it).
 //
-// Each sheet: { title, text(values) → paragraphs[] , defaults? }. Numbers that come from the code's own
+// Each sheet: { titleKey, text(values) → paragraphs[] , defaults? }. Numbers that come from the code's own
 // constants are rendered from them, so a sheet cannot drift from the logic. A caller may pass current
 // user values, e.g. infoButton('sets', { values: { primary: 1, secondary: 0.5, dropset: 0 } }).
 // Style: ≤ ~60 words, plain words, glossary terms (sets, direct / partial, tonnage, target, goal,
@@ -11,6 +12,7 @@ import { RECOVERY_CONFIG, CHECKIN_CONFIG } from '../core/recovery.js';
 import { DEFAULT_VOLUME } from '../core/volume.js';
 import { KCAL_PER_KG, GOAL_RATE_MIN, GOAL_RATE_MAX, ADAPTIVE_DEFAULTS } from '../core/adaptive.js';
 import { BACKUP_DUE_DAYS } from '../core/backup-reminder.js';
+import { t } from '../i18n/index.js';
 
 /** 7700 → '7 700' (narrow no-break space), 0.5 → '0.5'. */
 export function fmtInfoNumber(n) {
@@ -26,7 +28,7 @@ const PHOTO_LONG_EDGE = 1568; // src/food/photo-image.js LONG_EDGE (not imported
 
 /**
  * @typedef {object} InfoSheet
- * @property {string} title
+ * @property {string} titleKey catalogue key of the title (namespace 'info')
  * @property {(v: Record<string, any>) => string[]} text paragraphs
  * @property {Record<string, any>} [defaults] values used when the caller passes none
  */
@@ -34,205 +36,168 @@ const PHOTO_LONG_EDGE = 1568; // src/food/photo-image.js LONG_EDGE (not imported
 /** @type {Readonly<Record<string, InfoSheet>>} */
 export const INFO_SHEETS = Object.freeze({
   recovery: {
-    title: 'Muscle recovery',
+    titleKey: 'info.recovery.title',
     text: () => [
-      'An estimate, not a measurement. Ranges start as a rule of thumb: hard-trained muscles usually get 48–72 h, smaller ones less, legs more.',
-      `Recovering = before the range · likely ready = inside · recovered = past it. Tap a muscle to check in; after about ${C.minPoints} check-ins the range is yours. Pace only scales the rule of thumb.`,
+      t('info.recovery.p1'),
+      t('info.recovery.p2', { minPoints: C.minPoints }),
     ],
   },
   'recovery-math': {
-    title: 'How sets scale the window',
+    titleKey: 'info.recoveryMath.title',
     text: () => [
-      `Sets count like weekly sets. Ranges are for ${R.referenceDose} hard sets: 1 set × ${n(doseAt(1))}, 8 sets × ${n(doseAt(8))}, 9 or more × ${n(R.doseFactorMax)}. Under ${R.minDose} counted set does not restart the clock.`,
-      `Training again inside the window carries the leftover load over. Rule-of-thumb ranges stay within ${R.capMin}–${R.capMax} h, yours within ${R.custom.min}–${R.custom.max} h. Only the last ${R.lookbackDays} days count.`,
+      t('info.recoveryMath.p1', { ref: R.referenceDose, f1: n(doseAt(1)), f8: n(doseAt(8)), fMax: n(R.doseFactorMax), minDose: R.minDose }),
+      t('info.recoveryMath.p2', { capMin: R.capMin, capMax: R.capMax, customMin: R.custom.min, customMax: R.custom.max, days: R.lookbackDays }),
     ],
   },
   'recovery-yours': {
-    title: 'Your ranges',
+    titleKey: 'info.recoveryYours.title',
     text: () => [
-      `Still sore means recovery took longer; recovered means shorter. Answers are scaled to ${R.referenceDose} sets, recent workouts count more, and contradicting answers within one workout are left out.`,
-      `After ${C.minPoints} useful check-ins from ${C.minBouts} workouts, with both answers, the range becomes yours: the middle of your answers, wider while they are few. A hand-set range still wins.`,
+      t('info.recoveryYours.p1', { ref: R.referenceDose }),
+      t('info.recoveryYours.p2', { minPoints: C.minPoints, minBouts: C.minBouts }),
     ],
   },
   sets: {
-    title: 'Weekly sets',
+    titleKey: 'info.sets.title',
     defaults: { ...DEFAULT_VOLUME },
     text: (v) => [
-      `Done normal sets per muscle, Monday to Sunday. Direct (the muscle is a main mover) counts × ${n(v.primary)}; partial (it assists) × ${n(v.secondary)}; dropsets × ${n(v.dropset)}.`,
-      'Change the factors in Settings › Set weighting. With a target, a row shows done / target and the bar fills at 100 %.',
+      t('info.sets.p1', { primary: n(v.primary), secondary: n(v.secondary), dropset: n(v.dropset) }),
+      t('info.sets.p2'),
     ],
   },
   'sets-workout': {
-    title: 'Sets per muscle',
+    titleKey: 'info.setsWorkout.title',
     defaults: { ...DEFAULT_VOLUME },
     text: (v) => [
-      `Done normal sets of this workout per muscle. Direct (the muscle is a main mover) counts × ${n(v.primary)}; partial (it assists) × ${n(v.secondary)}; dropsets × ${n(v.dropset)}.`,
-      'They add to the weekly sets of that week.',
+      t('info.setsWorkout.p1', { primary: n(v.primary), secondary: n(v.secondary), dropset: n(v.dropset) }),
+      t('info.setsWorkout.p2'),
     ],
   },
   tonnage: {
-    title: 'Tonnage',
+    titleKey: 'info.tonnage.title',
     text: () => [
-      `Weight × reps of done normal sets, in kg; from ${n(10000)} kg in t (1 t = ${n(1000)} kg). Single sets and exercises always in kg. Dropsets are shown separately; bodyweight sets count 0 kg.`,
-      'By muscle: each exercise’s tonnage goes to its direct muscles, split equally. Routine charts show the last 8 sessions; % = change vs the session before.',
+      t('info.tonnage.p1', { tFrom: n(10000), tKg: n(1000) }),
+      t('info.tonnage.p2'),
     ],
   },
   records: {
-    title: 'Records',
-    text: () => [
-      'A record beats every earlier session of that exercise: heaviest set, tonnage set, est. 1RM, session tonnage, or reps for bodyweight. Only done normal sets count. The first session sets the mark.',
-      'This month compares with the same days last month; the starting point and unfinished workouts are not counted.',
-    ],
+    titleKey: 'info.records.title',
+    text: () => [t('info.records.p1'), t('info.records.p2')],
   },
   metrics: {
-    title: 'Progress metrics',
-    text: () => [
-      'Top set: heaviest done set; more reps wins a tie. Est. 1RM (Epley): weight × (1 + reps / 30). Tonnage: weight × reps of done sets.',
-      'Best reps: most reps in one set. Total reps: all done sets. Dropsets never count. Bodyweight exercises progress by reps. Highlighted points are records.',
-    ],
+    titleKey: 'info.metrics.title',
+    text: () => [t('info.metrics.p1'), t('info.metrics.p2')],
   },
   'top-exercises': {
-    title: 'Top exercises',
-    text: () => [
-      'Exercises with the most sessions in the last 8 weeks. Value = latest session’s best est. 1RM, or most reps in a set for bodyweight. % = change vs the first session in those 8 weeks.',
-    ],
+    titleKey: 'info.topExercises.title',
+    text: () => [t('info.topExercises.p1')],
   },
   progression: {
-    title: 'Weight suggestions',
-    // v.reason: the session's own reason (first line), e.g. from the chip's ⓘ in a workout
+    titleKey: 'info.progression.title',
+    // v.reason: the session's own reason (first line, already translated), e.g. from the chip's ⓘ in a workout
     text: (v) => [
       ...(v.reason ? [v.reason] : []),
-      'All target sets at your top weight must reach the target reps (the top of a range like 3 × 6–8); then a chip suggests that weight + the weight step. Lighter warm-up and back-off sets are ignored, dropsets never count, and the starting point never triggers it.',
-      'Nothing changes until you tap the chip. Weight step 0 = no suggestions.',
+      t('info.progression.p1'),
+      t('info.progression.p2'),
     ],
   },
   starting: {
-    title: 'Starting point',
-    text: () => [
-      'Your current working weight × reps × sets per exercise, plus your best set if it differs. Pre-fills sessions and counts for records.',
-      'It is never a workout and never triggers a weight suggestion; that needs a real session.',
-    ],
+    titleKey: 'info.starting.title',
+    text: () => [t('info.starting.p1'), t('info.starting.p2')],
   },
   photo: {
-    title: 'Meal photo estimates',
+    titleKey: 'info.photo.title',
     text: () => [
-      'An AI model estimates foods, grams, calories and macros from the photo. These are estimates: check them before adding.',
-      `Each analysis is billed to your own provider account; a cancelled request may still be billed. Only the photo (max ${n(PHOTO_LONG_EDGE)} px) and your hint are sent.`,
-      'Some providers block browser calls; zero-data-retention organisations cannot call Anthropic from a browser.',
+      t('info.photo.p1'),
+      t('info.photo.p2', { px: n(PHOTO_LONG_EDGE) }),
+      t('info.photo.p3'),
     ],
   },
   camera: {
-    title: 'Allow the camera',
-    text: () => [
-      'iPhone: Settings › Safari › Camera, or the aA menu in the address bar. Android: lock icon in the address bar › Permissions. Then tap Scan again.',
-    ],
+    titleKey: 'info.camera.title',
+    text: () => [t('info.camera.p1')],
   },
   expenditure: {
-    title: 'Expenditure',
+    titleKey: 'info.expenditure.title',
     text: () => [
-      'Average kcal / day you burn, including training. From your data: estimated from logged food and the weight trend.',
-      `It needs, in the last ${A.windowDays} days, ${A.minWeighIns} weigh-ins and ${A.minLoggedDays} complete days, plus ${A.minSpanDays} days of history and a weigh-in in the last ${A.maxStaleDays} days. Until then: formula (Mifflin-St Jeor × activity) from your profile. Skipped days make it too low.`,
+      t('info.expenditure.p1'),
+      t('info.expenditure.p2', { windowDays: A.windowDays, minWeighIns: A.minWeighIns, minLoggedDays: A.minLoggedDays, minSpanDays: A.minSpanDays, maxStaleDays: A.maxStaleDays }),
     ],
   },
   checkin: {
-    title: 'Weekly check-in',
+    titleKey: 'info.checkin.title',
     text: () => [
-      'Each Monday, Trends proposes calorie targets for the week from your expenditure and goal. Accept applies them; Keep current changes nothing.',
-      `Changes are capped at ${A.maxWeeklyChange} kcal / week and never go below the calorie floor.`,
+      t('info.checkin.p1'),
+      t('info.checkin.p2', { maxChange: A.maxWeeklyChange }),
     ],
   },
   complete: {
-    title: 'Complete days',
+    titleKey: 'info.complete.title',
     text: () => [
-      `Today never counts. A logged day under half of your usual intake (median of logged days within ± ${A.medianDays / 7} weeks) is incomplete, probably not fully logged.`,
-      'Incomplete days are left out of averages, on-target days, highest and lowest day, totals and the expenditure estimate. On target = a complete day within ± 10 % of the calorie target.',
+      t('info.complete.p1', { weeks: A.medianDays / 7 }),
+      t('info.complete.p2'),
     ],
   },
   trend: {
-    title: 'Weight trend',
-    text: () => [
-      'A moving average that smooths out day-to-day water swings. Watch the trend, not single days. Weigh in each morning, after the toilet and before eating.',
-      'The trend starts with the second weigh-in. Weekly change compares with the trend at the end of the previous Sunday.',
-    ],
+    titleKey: 'info.trend.title',
+    text: () => [t('info.trend.p1'), t('info.trend.p2')],
   },
   report: {
-    title: 'Weekly report',
-    text: () => [
-      'Weeks run Monday to Sunday; only weeks with something logged are listed. Change = (this − last) / last; – when last week has no value.',
-      'Targets come from that week’s check-in. Manual target changes are not recorded, so past weeks may show other targets than you used.',
-    ],
+    titleKey: 'info.report.title',
+    text: () => [t('info.report.p1'), t('info.report.p2')],
   },
   macros: {
-    title: 'Macro percentages',
-    text: () => [
-      'Protein and carbs 4 kcal / g, fat 9 kcal / g. Grams are rounded to whole numbers.',
-      'Weekly report splits use complete days only.',
-    ],
+    titleKey: 'info.macros.title',
+    text: () => [t('info.macros.p1'), t('info.macros.p2')],
   },
   'adaptive-macros': {
-    title: 'Adaptive macros',
+    titleKey: 'info.adaptiveMacros.title',
     text: () => [
-      'Protein and fat are set in g / kg of trend weight; carbs fill the rest.',
-      `Calorie floor: the lowest target ever proposed. Empty = ${n(A.floors.female)} kcal female, ${n(A.floors.male)} male, ${n(A.floors.unknown)} otherwise.`,
-      'With a percentage split, check-ins change calories only and these values are not used.',
+      t('info.adaptiveMacros.p1'),
+      t('info.adaptiveMacros.p2', { female: n(A.floors.female), male: n(A.floors.male), unknown: n(A.floors.unknown) }),
+      t('info.adaptiveMacros.p3'),
     ],
   },
   goal: {
-    title: 'Weight goal',
+    titleKey: 'info.goal.title',
     text: () => [
-      `Lose up to ${n(-GOAL_RATE_MIN)} kg or gain up to ${n(GOAL_RATE_MAX)} kg / week. The kcal figure is the daily gap to your expenditure this rate needs, at ${n(KCAL_PER_KG)} kcal / kg.`,
-      'The weekly check-in uses it to propose targets.',
+      t('info.goal.p1', { lose: n(-GOAL_RATE_MIN), gain: n(GOAL_RATE_MAX), kcalPerKg: n(KCAL_PER_KG) }),
+      t('info.goal.p2'),
     ],
   },
   backup: {
-    title: 'Backup',
+    titleKey: 'info.backup.title',
     text: () => [
-      'All data lives only in this browser on this device: no account, no cloud, no sync. Export backup regularly and keep the file elsewhere, such as a cloud drive or an e-mail to yourself.',
-      `New phone: Export backup here, then Import backup there; it replaces everything. API keys are not in the backup. The app reminds you after ${BACKUP_DUE_DAYS} days.`,
+      t('info.backup.p1'),
+      t('info.backup.p2', { days: BACKUP_DUE_DAYS }),
     ],
   },
   storage: {
-    title: 'Storage protection',
-    text: () => [
-      'Protected: the browser will not delete the data on its own; clearing site data or removing the app still does.',
-      'Not protected: the browser may delete the data when space runs low. Installing the app and keeping backups help.',
-    ],
+    titleKey: 'info.storage.title',
+    text: () => [t('info.storage.p1'), t('info.storage.p2')],
   },
   'import-weights': {
-    title: 'Weight file format',
-    text: () => [
-      'Dates like 12.11.2026, 2026-11-12, 12/11/26 or Mon 12 Nov. Weights like 82,5 or 82.5, in kg; pounds are not supported.',
-      'Columns separated by tab, semicolon, comma or space, in either order. A header row is fine.',
-    ],
+    titleKey: 'info.importWeights.title',
+    text: () => [t('info.importWeights.p1'), t('info.importWeights.p2')],
   },
   'import-workouts': {
-    title: 'Workout paste format',
-    text: () => [
-      'Exercise name on its own line, then 3 × 6 (sets × reps); 3 x 6 also works. Then one line per set: kg, reps. Dropset 5x 80 = 5 reps at 80 kg. A single number = bodyweight reps.',
-      'A date line starts a new workout; a line like Push names it. Side-by-side sheets: copy one column group at a time.',
-    ],
+    titleKey: 'info.importWorkouts.title',
+    text: () => [t('info.importWorkouts.p1'), t('info.importWorkouts.p2')],
   },
   // Split library (src/splits/, docs/SPLITS.md): wording from the split-library research, 2026-11-19.
   'split-choose': {
-    title: 'Choosing a split',
-    text: () => [
-      'Pick the number of days you can keep for months. With the same weekly sets, studies find full body, upper / lower and other splits give similar results.',
-      'Fewer days: full body. Four: upper / lower. Five or six: hybrid or push / pull / legs. Each muscle about twice a week is a simple default.',
-    ],
+    titleKey: 'info.splitChoose.title',
+    text: () => [t('info.splitChoose.p1'), t('info.splitChoose.p2')],
   },
   'split-run': {
-    title: 'Running a split',
-    text: () => [
-      'Do the sessions in order; Next up shows the one due. Rest a day before training the same muscles again.',
-      'All sets at the top of the rep range? Add weight next time; otherwise add a rep. Swap an exercise for one with the same main muscle. Stalled? Take an easy week with half the sets.',
-    ],
+    titleKey: 'info.splitRun.title',
+    text: () => [t('info.splitRun.p1'), t('info.splitRun.p2')],
   },
   'split-sets': {
-    title: 'Weekly sets',
+    titleKey: 'info.splitSets.title',
     defaults: { ...DEFAULT_VOLUME },
     text: (v) => [
-      `Planned sets per muscle in a week. Direct (main mover) counts × ${n(v.primary)}, partial (assists) × ${n(v.secondary)}, as in your log.`,
-      'Weekly sets matter most; more tends to add a little more, with shrinking returns. Ranges are general guides, not prescriptions. Add sets only if you recover and keep progressing.',
+      t('info.splitSets.p1', { primary: n(v.primary), secondary: n(v.secondary) }),
+      t('info.splitSets.p2'),
     ],
   },
 });
@@ -249,5 +214,5 @@ export function infoSheet(id, values = {}) {
   const s = Object.prototype.hasOwnProperty.call(INFO_SHEETS, id) ? INFO_SHEETS[id] : null;
   if (!s) return null;
   const v = { ...(s.defaults || {}), ...values };
-  return { title: s.title, paragraphs: s.text(v) };
+  return { title: t(s.titleKey), paragraphs: s.text(v) };
 }

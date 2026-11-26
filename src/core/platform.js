@@ -13,6 +13,7 @@
 //   - anything else: a computer; the app is made for phones.
 
 /** UA fragments of apps that open links in their own embedded browser. Order: most specific first. */
+// i18n-ignore-start (app brand names, not translated)
 const IN_APP = [
   ['Instagram', /Instagram/i],
   ['Facebook Messenger', /Messenger|FBAN\/Messenger|MessengerForiOS/i],
@@ -30,6 +31,7 @@ const IN_APP = [
   ['Discord', /Discord/i],
   ['Google app', /\bGSA\//],
 ];
+// i18n-ignore-end
 
 /**
  * Whether the page runs as an installed app.
@@ -73,7 +75,8 @@ export function detectPlatform(ua, { standalone = false, maxTouchPoints = 0 } = 
     browser = /Edg\//.test(s) ? 'edge' : /Firefox\//.test(s) ? 'firefox' : /OPR\//.test(s) ? 'opera'
       : /Chrome\//.test(s) ? 'chrome' : /Safari\//.test(s) ? 'safari' : 'other';
   }
-  const inApp = app ? app[0] : (browser === 'webview' ? 'another app' : null);
+  // 'another app' is a sentinel for an unnamed embedded browser; the UI words it (core.platform.anotherApp).
+  const inApp = app ? app[0] : (browser === 'webview' ? 'another app' : null); // i18n-ignore (sentinel value, see core.platform.anotherApp)
 
   let install;
   if (standalone) install = 'standalone';

@@ -1,10 +1,15 @@
 // Shared pieces of the import screens: CSS, worker-based parsing, file reading, batched writes,
 // run bookkeeping and undo. Imported text is untrusted: it is only ever put into the DOM as text.
 import * as db from '../db/db.js';
-import { el, fmtDate, icon } from '../ui/index.js';
+import { el, icon } from '../ui/index.js';
 import { parseDate } from '../core/dates.js';
 import { chunk } from '../core/import-common.js';
 import { RUNS_KEY, EXERCISE_MAP_KEY, newRun, upsertRun, ownedBy, removableExercises, pruneMappings } from '../core/import-runs.js';
+import { t } from '../i18n/index.js';
+import { dateLabel } from '../i18n/dates.js';
+import { msgText } from './messages.js';
+
+export { msgText };
 
 export const BATCH = 200;
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
@@ -23,14 +28,13 @@ let workerBroken = false;
 let seq = 0;
 const pending = new Map();
 
-const PARSER_LOAD_ERROR = 'Import tool did not load. Reload while online.';
 
 function fallback(fn, args) {
   // Main thread, after letting the UI paint the "Reading…" state.
   return new Promise((r) => setTimeout(r, 30))
     .then(() => import('./parsers.js').catch((err) => {
       console.error(err);
-      throw new Error(PARSER_LOAD_ERROR);
+      throw new Error(t('import.parserLoad'));
     }))
     .then(({ PARSERS }) => PARSERS[fn](...args));
 }
@@ -91,7 +95,7 @@ export function runParser(fn, ...args) {
 
 /** Text of a picked file: UTF-8, or Windows-1252 when UTF-8 does not fit (old Excel CSVs). */
 export async function readFileText(file) {
-  if (file.size > MAX_FILE_BYTES) throw new Error('This file is larger than 20 MB. Export a shorter date range.');
+  if (file.size > MAX_FILE_BYTES) throw new Error(t('import.fileTooLarge', { mb: MAX_FILE_BYTES / 1024 / 1024 }));
   const buf = await file.arrayBuffer();
   let text = new TextDecoder('utf-8').decode(buf);
   if (text.includes('�')) {
@@ -101,7 +105,7 @@ export async function readFileText(file) {
 }
 
 /** A file button (label + hidden input) that calls onText(text, file). */
-export function filePicker({ label = 'Choose a file', accept = '.txt,.csv,.tsv,text/plain,text/csv,text/tab-separated-values', onText, onError }) {
+export function filePicker({ label = t('import.chooseFile'), accept = '.txt,.csv,.tsv,text/plain,text/csv,text/tab-separated-values', onText, onError }) {
   const input = el('input', {
     type: 'file', accept, class: 'imp-file-input',
     onChange: async () => {
@@ -126,7 +130,8 @@ export function exampleBox(title, sample, note = null) {
 
 /**
  * Line-numbered list of problems.
- * @param {{line: number, text?: string, message: string, level?: string}[]} issues
+ * @param {{line: number, text?: string, message?: string|object, reason?: string|object, level?: string}[]} issues
+ *   message / reason: text or an importer message ({key, params}, see messages.js)
  * @param {{title: string, limit?: number}} opts
  */
 export function issueList(issues, { title, limit = 200 }) {
@@ -137,10 +142,10 @@ export function issueList(issues, { title, limit = 200 }) {
     el('div', { class: 'imp-card-head' }, icon(errors ? 'triangle-exclamation-point' : 'info', { size: 18 }), el('h3', { class: 'card-title' }, title)),
     el('ul', { class: 'imp-issue-list' }, shown.map((i) => el('li', { class: ['imp-issue', `lvl-${i.level || 'error'}`] },
       el('div', { class: 'imp-issue-head' },
-        el('span', { class: 'imp-line num' }, `Line ${i.line}`),
-        el('span', { class: 'imp-msg' }, i.message || i.reason || '')),
+        el('span', { class: 'imp-line num' }, t('import.line', { n: i.line })),
+        el('span', { class: 'imp-msg' }, msgText(i.message || i.reason || ''))),
       i.text !== undefined && i.text !== '' ? el('code', { class: 'imp-src' }, String(i.text).slice(0, 200)) : null))),
-    issues.length > limit ? el('p', { class: 't-sub muted' }, `…and ${issues.length - limit} more.`) : null);
+    issues.length > limit ? el('p', { class: 't-sub muted' }, t('import.more', { count: issues.length - limit })) : null);
 }
 
 /** <input type=date> limited to today. */
@@ -149,15 +154,41 @@ export function dateInput(value, max, onChange) {
   return i;
 }
 
-/** 'Thu 12 Nov 2026': always with the year, exactly once (fmtDate adds it only for other years). */
-export const dateY = (d) => (d ? `${fmtDate(d, parseDate(d))} ${d.slice(0, 4)}` : '–');
+/** 'Thu 12 Nov 2026' (de 'Do. 12. Nov. 2026', zh '2026年11月12日周四'): always with the year. */
+export const dateY = (d) => (d ? dateLabel(parseDate(d), { year: true }) : '–');
 
-/** Summary of an earlier import run. Runs saved by 0.5.0 and older can say "1 Dec 2025 2025". */
-export const runSummary = (r) => String(r.summary || '').replace(/ (\d{4}) \1\b/g, ' $1')
-  // One day: '12 Nov 2026 – 12 Nov 2026' → '12 Nov 2026'.
-  .replace(/(\w{3} \d{1,2} \w{3} \d{4}) – \1/g, '$1');
+/** '12 Nov 2026 – 19 Nov 2026', or one date when both are the same day. */
+export const dateRangeY = (from, to) => (from === to ? dateY(from) : t('import.range', { from: dateY(from), to: dateY(to) }));
 
-export const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+/** '3 workouts' in the app language: import.count.<noun>_one / _other. */
+export const countOf = (noun, n) => t(`import.count.${noun}`, { count: n });
+
+/**
+ * Text of an import run's counts and dates, in the current language when the run carries `info`
+ * (runs from this version on); older runs show their stored English `summary`.
+ * @param {object} r run @param {{source?: boolean}} [opts] source: food runs start with "CSV: "
+ */
+export function runSummary(r, { source = true } = {}) {
+  const i = r.info;
+  if (!i) return legacySummary(r);
+  const range = i.from ? dateRangeY(i.from, i.to) : '';
+  if (r.type === 'workouts') {
+    const p = { workouts: countOf('workouts', i.workouts), sets: countOf('sets', i.sets), newEx: countOf('newExercises', i.newExercises || 0), range };
+    return t(i.newExercises ? 'import.run.workoutsNew' : 'import.run.workouts', p);
+  }
+  if (r.type === 'weights') {
+    return t(i.replaced ? 'import.run.weightsReplaced' : 'import.run.weights', { weighIns: countOf('weighIns', i.weighIns), count: i.replaced || 0, range });
+  }
+  const body = t('import.run.food', { entries: countOf('entries', i.entries), days: countOf('days', i.days), range });
+  return source && i.source ? t('import.run.withSource', { source: i.source, text: body }) : body;
+}
+
+/** Stored English summary of a run saved before 0.9 (0.5.0 and older can say "1 Dec 2025 2025"). */
+function legacySummary(r) {
+  return String(r.summary || '').replace(/ (\d{4}) \1\b/g, ' $1')
+    // One day: '12 Nov 2026 – 12 Nov 2026' → '12 Nov 2026'.
+    .replace(/(\w{3} \d{1,2} \w{3} \d{4}) – \1/g, '$1');
+}
 
 // ---------------------------------------------------------------- runs
 
@@ -177,14 +208,14 @@ async function saveRunState(run) {
 /**
  * Write an import: first the run entry (so even a half-finished write can be undone), then the
  * records in batched transactions, then mark the run done.
- * @param {{id: string, type: string, summary: string, counts: Record<string, number>,
+ * @param {{id: string, type: string, summary?: string, info?: object, counts: Record<string, number>,
  *   writes: {store: string, records: object[]}[], replaced?: Record<string, object[]>}} a
  * @param {(done: number, total: number) => void} [onProgress]
  */
-export async function commitRun({ id, type, summary, counts, writes, replaced = {} }, onProgress = () => {}) {
+export async function commitRun({ id, type, summary = null, info = null, counts, writes, replaced = {} }, onProgress = () => {}) {
   const keys = {};
   for (const w of writes) keys[w.store] = [...(keys[w.store] || []), ...w.records.map((r) => r[db.STORES[w.store]])];
-  const run = newRun({ id, type, now: Date.now(), summary, counts, keys, replaced });
+  const run = newRun({ id, type, now: Date.now(), summary, info, counts, keys, replaced });
   await saveRunState(run);
   const total = writes.reduce((n, w) => n + w.records.length, 0);
   let done = 0;
@@ -213,7 +244,7 @@ export async function commitRun({ id, type, summary, counts, writes, replaced = 
 export async function undoRun(runId) {
   const runs = await loadRuns();
   const run = runs.find((r) => r.id === runId);
-  if (!run) throw new Error('This import is not recorded any more.');
+  if (!run) throw new Error(t('import.runMissing'));
   if (run.status === 'undone') return { removed: {}, restored: 0, keptExercises: 0 };
   const removed = {};
   let restored = 0;

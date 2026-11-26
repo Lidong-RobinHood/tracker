@@ -9,7 +9,7 @@
 //   ISC License, Copyright (c) 2026 Lucide Icons and Contributors.
 //   Icons used under ISC:
 //     activity, book-open, bookmark, camera, chart-line, circle-check, circle-play, cloud-off, copy,
-//     droplet, eye, eye-off, file-chart-column, file-text, flame, funnel, grip-vertical, heart-pulse,
+//     droplet, eye, eye-off, file-chart-column, file-text, flame, funnel, globe, grip-vertical, heart-pulse,
 //     image, key-round, list, pause, pencil, play, refresh-cw, repeat, rotate-ccw, rotate-ccw-clock,
 //     ruler, save, scale, scan-barcode, settings, shield, skip-forward, sliders-horizontal, star, timer,
 //     trending-down, trending-up, trophy, undo-2, user, utensils, zap
@@ -27,6 +27,9 @@
 // Lucide's LICENSE) and vendor/icons/LICENSE-tabler-icons.txt. Listed in THIRD-PARTY-NOTICES.md and
 // on Settings › Licences and data sources.
 //
+// globe (2026-11-26, Settings › Language) was added without network access, from Lucide's published
+// icons/globe.svg markup as known; compare it with the file the next time icons are fetched.
+//
 // Adding an icon: fetch https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/<name>.svg,
 // copy the elements inside <svg> unchanged into ICONS below (keep the list sorted), add the name to
 // the lists above, then run `npm test` (tests/icons.test.js checks every icon('…') in src/ exists).
@@ -34,7 +37,7 @@
 
 const NS = 'http://www.w3.org/2000/svg';
 
-/** @type {Readonly<Record<string, string>>} name -> inner SVG markup (trusted, static) — 77 icons */
+/** @type {Readonly<Record<string, string>>} name -> inner SVG markup (trusted, static) — 78 icons */
 const ICONS = Object.freeze({
   'activity': '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />',
   'arrow-down': '<path d="M12 5v14" /><path d="m19 12-7 7-7-7" />',
@@ -70,6 +73,7 @@ const ICONS = Object.freeze({
   'file-text': '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" />',
   'flame': '<path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4" />',
   'funnel': '<path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" />',
+  'globe': '<circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" />',
   'grip-vertical': '<circle cx="9" cy="12" r="1" /><circle cx="9" cy="5" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="19" r="1" />',
   'heart-pulse': '<path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" /><path d="M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27" />',
   'image': '<rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />',

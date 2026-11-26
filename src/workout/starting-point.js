@@ -8,8 +8,9 @@ import {
   findBaseline, baselineRows, validateBaseline, buildBaseline, defaultBaselineDate,
   DEFAULT_BASELINE_SETS, MAX_BASELINE_SETS, MAX_BASELINE_WEIGHT, MAX_BASELINE_REPS,
 } from '../core/baseline.js';
-import { ensureCss, loadExercises, loadWorkouts, loadRoutines, exName, confirmAction } from './data.js';
+import { ensureCss, loadExercises, loadWorkouts, loadRoutines, exName, confirmAction, exLabel } from './data.js';
 import { pickExercise } from './picker.js';
+import { t } from '../i18n/index.js';
 
 /** Unsaved, invalid edits kept while the app stays open (restored on the next visit). */
 let draft = null;
@@ -30,14 +31,14 @@ export async function mountStartingPoint(container) {
   let saved = false;
 
   const header = pageHeader({
-    title: 'Starting point',
-    subtitle: stored ? `Saved · as of ${fmtDate(stored.date)}` : 'Current working sets',
+    title: t('workout.startingPoint.title'),
+    subtitle: stored ? t('workout.sp.savedAsOf', { date: fmtDate(stored.date) }) : t('workout.sp.subtitle'),
     back: 'workout',
     info: 'starting',
   });
 
   const dateIn = el('input', {
-    class: 'input', type: 'date', value: date, max: now, 'aria-label': 'As of date',
+    class: 'input', type: 'date', value: date, max: now, 'aria-label': t('workout.sp.dateAria'),
     onChange: () => { date = dateIn.value; dirty = true; dateIn.removeAttribute('aria-invalid'); },
   });
 
@@ -51,7 +52,7 @@ export async function mountStartingPoint(container) {
   function render() {
     ctls = [];
     if (!rows.length) {
-      replaceChildren(listEl, el('p', { class: 't-sub muted wk-pad' }, 'No exercises yet.'));
+      replaceChildren(listEl, el('p', { class: 't-sub muted wk-pad' }, t('workout.routine.noExercisesYet')));
       return;
     }
     replaceChildren(listEl, ...rows.map((r, i) => renderRow(r, i)));
@@ -64,21 +65,21 @@ export async function mountStartingPoint(container) {
     const upd = (key) => (v, input) => { r[key] = read(input); dirty = true; };
     const mk = (key, o) => numberInput({ value: r[key], class: 'wk-sp-in', onInput: upd(key), ...o });
     const c = {
-      weight: bw ? null : mk('weight', { min: 0, max: MAX_BASELINE_WEIGHT, decimals: 2, placeholder: 'kg', ariaLabel: `${name}: working weight in kg` }),
-      reps: mk('reps', { min: 1, max: MAX_BASELINE_REPS, integer: true, placeholder: 'reps', ariaLabel: `${name}: reps` }),
-      sets: mk('sets', { min: 1, max: MAX_BASELINE_SETS, integer: true, placeholder: String(DEFAULT_BASELINE_SETS), ariaLabel: `${name}: sets` }),
-      bestWeight: bw ? null : mk('bestWeight', { min: 0, max: MAX_BASELINE_WEIGHT, decimals: 2, placeholder: 'kg', ariaLabel: `${name}: best set weight in kg (optional)` }),
-      bestReps: mk('bestReps', { min: 1, max: MAX_BASELINE_REPS, integer: true, placeholder: 'reps', ariaLabel: `${name}: best set reps (optional)` }),
+      weight: bw ? null : mk('weight', { min: 0, max: MAX_BASELINE_WEIGHT, decimals: 2, placeholder: 'kg', ariaLabel: t('workout.sp.weightAria', { name }) }),
+      reps: mk('reps', { min: 1, max: MAX_BASELINE_REPS, integer: true, placeholder: t('workout.set.repsPlaceholder'), ariaLabel: t('workout.sp.repsAria', { name }) }),
+      sets: mk('sets', { min: 1, max: MAX_BASELINE_SETS, integer: true, placeholder: String(DEFAULT_BASELINE_SETS), ariaLabel: t('workout.sp.setsAria', { name }) }),
+      bestWeight: bw ? null : mk('bestWeight', { min: 0, max: MAX_BASELINE_WEIGHT, decimals: 2, placeholder: 'kg', ariaLabel: t('workout.sp.bestWeightAria', { name }) }),
+      bestReps: mk('bestReps', { min: 1, max: MAX_BASELINE_REPS, integer: true, placeholder: t('workout.set.repsPlaceholder'), ariaLabel: t('workout.sp.bestRepsAria', { name }) }),
     };
     ctls[i] = c;
-    const bwCell = () => el('span', { class: 'wk-sp-bw t-sub muted', 'aria-hidden': 'true' }, 'BW');
+    const bwCell = () => el('span', { class: 'wk-sp-bw t-sub muted', 'aria-hidden': 'true' }, t('workout.format.bw'));
     return el('div', { class: 'wk-sp-item', role: 'group', 'aria-label': name },
       el('div', { class: 'wk-sp-name' },
         el('span', { class: 'grow truncate' }, name),
-        iconButton('x', { label: `Remove ${name}`, onClick: () => remove(i) })),
+        iconButton('x', { label: t('workout.sp.removeAria', { name }), onClick: () => remove(i) })),
       // Column headings sit right above the first exercise's fields (the rows below share the columns).
       i === 0 ? el('div', { class: 'wk-sp-row wk-sp-head t-cap', 'aria-hidden': 'true' },
-        el('span', 'kg'), el('span', 'reps'), el('span', 'sets'), el('span', 'Best set')) : null,
+        el('span', { class: 'no-caps' }, 'kg'), el('span', t('workout.sp.colReps')), el('span', t('workout.sp.colSets')), el('span', t('workout.sp.colBest'))) : null,
       el('div', { class: 'wk-sp-row' },
         c.weight || bwCell(), c.reps, c.sets, c.bestWeight || bwCell(), c.bestReps));
   }
@@ -97,8 +98,8 @@ export async function mountStartingPoint(container) {
     const [removed] = rows.splice(i, 1);
     dirty = true;
     render();
-    toast(`Removed ${exName(exMap, removed.exerciseId)}`, {
-      action: { label: 'Undo', onClick: () => { rows.splice(i, 0, removed); render(); } },
+    toast(t('workout.toast.removed', { name: exName(exMap, removed.exerciseId) }), {
+      action: { label: t('workout.action.undo'), onClick: () => { rows.splice(i, 0, removed); render(); } },
     });
   }
 
@@ -110,9 +111,9 @@ export async function mountStartingPoint(container) {
     const first = rows.length;
     for (let k = 0; k < 50; k++) {
       const added = rows.length - first;
-      const ex = await pickExercise({ title: added ? `Add exercise · ${added} added` : 'Add exercise', exMap, workouts });
+      const ex = await pickExercise({ title: added ? t('workout.sp.pickerAdded', { count: added }) : t('workout.picker.title'), exMap, workouts });
       if (!ex) break;
-      if (has(ex.id)) { toast(`${ex.name} is already in the list`); continue; }
+      if (has(ex.id)) { toast(t('workout.sp.already', { name: exLabel(ex) })); continue; }
       rows.push(newRow(ex.id));
       dirty = true;
       render();
@@ -130,10 +131,10 @@ export async function mountStartingPoint(container) {
       }
     }
     const n = rows.length - first;
-    if (!n) { toast('All routine exercises are already in the list'); return; }
+    if (!n) { toast(t('workout.sp.allAlready')); return; }
     dirty = true;
     render();
-    toast(`Added ${n} exercise${n === 1 ? '' : 's'}`);
+    toast(t('workout.sp.added', { count: n }));
     focusRow(first);
   }
 
@@ -154,7 +155,7 @@ export async function mountStartingPoint(container) {
     const v = validateBaseline({ date, rows }, { today: today(), isBodyweight: isBw });
     if (!v.ok) {
       if (leaving) return false;
-      showError(v.error);
+      showError(t(v.error, v.params));
       if (v.field === 'date') { dateIn.setAttribute('aria-invalid', 'true'); dateIn.focus(); return false; }
       const c = ctls[v.row];
       const input = c && (c[v.field] || c.reps);
@@ -165,30 +166,30 @@ export async function mountStartingPoint(container) {
     if (!v.value.rows.length) {
       if (leaving) return true;
       if (stored) { await del(); return true; }
-      toast('Add at least one exercise with weight and reps', { type: 'error' });
+      toast(t('workout.sp.errEmpty'), { type: 'error' });
       return false;
     }
     const rec = buildBaseline(v.value, { id: crypto.randomUUID(), now: Date.now(), existing: stored });
     await db.put('workouts', rec);
     dirty = false;
     saved = true;
-    toast(`Starting point saved · ${v.value.rows.length} exercise${v.value.rows.length === 1 ? '' : 's'}`, { type: 'success' });
+    toast(t('workout.sp.saved', { count: v.value.rows.length }), { type: 'success' });
     if (!leaving) navigate('workout', { replace: true });
     return true;
   }
 
   async function del() {
     const ok = await confirmAction({
-      title: 'Delete starting point?',
-      message: 'Sessions are then pre-filled only from real workouts.',
-      confirmLabel: 'Delete', danger: true,
+      title: t('workout.sp.deleteTitle'),
+      message: t('workout.sp.deleteMessage'),
+      confirmLabel: t('workout.action.delete'), danger: true,
     });
     if (!ok) return;
     await db.remove('workouts', stored.id);
     dirty = false;
     saved = true;
-    toast('Starting point deleted', {
-      action: { label: 'Undo', onClick: () => db.put('workouts', stored).then(() => toast('Starting point restored', { type: 'success' })) },
+    toast(t('workout.sp.deleted'), {
+      action: { label: t('workout.action.undo'), onClick: () => db.put('workouts', stored).then(() => toast(t('workout.sp.restored'), { type: 'success' })) },
     });
     navigate('workout', { replace: true });
   }
@@ -196,17 +197,17 @@ export async function mountStartingPoint(container) {
   render();
   const routineCount = new Set(routines.flatMap((r) => (r.items || []).map((i) => i.exerciseId))).size;
   append(container, ...[header,
-    el('p', { class: 'field-hint wk-pad-x' }, 'Pre-fills sessions. Never counted as a workout.'),
-    restored ? el('p', { class: 't-sub text-warning wk-pad-x' }, 'Unsaved changes restored.') : null,
-    el('label', { class: 'field' }, el('span', { class: 'field-label' }, 'As of'), dateIn),
+    el('p', { class: 'field-hint wk-pad-x' }, t('workout.sp.hint')),
+    restored ? el('p', { class: 't-sub text-warning wk-pad-x' }, t('workout.sp.restoredDraft')) : null,
+    el('label', { class: 'field' }, el('span', { class: 'field-label' }, t('workout.sp.asOf')), dateIn),
     listEl,
     errorEl,
     el('div', { class: ['wk-sp-add', routineCount && 'has-2'] },
-      el('button', { type: 'button', class: 'btn', onClick: addExercises }, icon('plus'), 'Add exercises'),
-      routineCount ? el('button', { type: 'button', class: 'btn', onClick: addFromRoutines }, 'From routines') : null),
+      el('button', { type: 'button', class: 'btn', onClick: addExercises }, icon('plus'), t('workout.sp.addExercises')),
+      routineCount ? el('button', { type: 'button', class: 'btn', onClick: addFromRoutines }, t('workout.sp.fromRoutines')) : null),
     // the one Save: sticky above the tab bar
-    el('div', { class: 'wk-sp-save' }, el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: () => save() }, 'Save')),
-    stored ? el('button', { type: 'button', class: 'btn btn-ghost btn-block text-danger', onClick: del }, 'Delete starting point') : null,
+    el('div', { class: 'wk-sp-save' }, el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: () => save() }, t('workout.action.save'))),
+    stored ? el('button', { type: 'button', class: 'btn btn-ghost btn-block text-danger', onClick: del }, t('workout.sp.delete')) : null,
   ].filter(Boolean));
 
   // Leaving with valid changes saves them; invalid ones stay as a draft for this app session.

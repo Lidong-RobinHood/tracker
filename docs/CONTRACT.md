@@ -31,6 +31,8 @@ export const routes = [
 - `path`: segments separated by `/`, no leading `#/`. `:name` captures one segment (URI-decoded).
   All segments must match; when several routes match, the one with more static segments wins.
 - `tab` (optional): tab to highlight; default is the first path segment. Tabs: `diary workout trends settings`.
+- `titleKey` (preferred over `title`): catalogue key of the document title, e.g. `'settings.title'`. All user-facing
+  text goes through `t(key, params)` from `src/i18n/index.js`; never call `t()` at module top level. See `docs/I18N.md`.
 - `#/` redirects to `#/diary`. Unknown paths show a "not found" page.
 - Query strings are allowed: `#/diary/2026-11-18?meal=lunch` → `ctx.query.meal === 'lunch'`.
 
@@ -92,7 +94,7 @@ export const routes = [
 | `muscleIcon(muscleId, { size = 36, state, label })` | square crop of one muscle, highlighted in accent (no `state`), red `'recovering'`, amber `'ready'`, or `'neutral'` (recovered: only subtly emphasised in `--map-idle`, as on the map; `'fresh'` = green, legacy, not used for recovery); decorative unless `label` |
 | `fmtNum(n, maxDecimals = 1)` | `'12.5'`, `null` → `'–'` |
 | `fmtKcal`, `fmtGrams`, `fmtKg`, `fmtAmount(n, basis)` | `'524 kcal'`, `'12.5 g'`, `'102.5 kg'`, `'250 ml'` |
-| `fmtDate('2026-11-18')`, `fmtDay(date)` | `'Wed 18 Nov'`; `'Today'`/`'Yesterday'`/`'Tomorrow'` else fmtDate |
+| `fmtDate('2026-11-18')`, `fmtDay(date)` | `'Wed 18 Nov'`; `'Today'`/`'Yesterday'`/`'Tomorrow'` else fmtDate — in the app language (de `'Mi. 18. Nov.'`, zh `'11月18日周三'`); more date helpers in `src/i18n/dates.js` |
 | `fmtTime(ms)`, `fmtDuration(ms)`, `fmtBytes(b)` | `'07:03'`, `'1 h 05 min'`, `'1.2 MB'` |
 | `fmtGrouped(n, maxDecimals = 0)`, `fmtSigned(n, maxDecimals = 0)` | display numbers: `'1 310'` (narrow no-break space U+202F), `'−0.5'` (true minus U+2212); `fmtSigned` adds `+` (`'+50'`, `'−50'`, `'0'`). For numbers a user reads, not for input values |
 | `fmtTonnage(kg, { kg })` (`src/ui/format.js`) | the one tonnage rule: whole kg, grouped, below 10 000 kg (`'2 340 kg'`), tonnes with two decimals from 10 000 kg (`'12.48 t'`; rounded kg decide, so 9 999.6 → `'10.00 t'`); `{ kg: true }` = always kg, for single-set and per-exercise tonnage (`'12 480 kg'`); `null` → `'–'`. Every tonnage on screen goes through it |
@@ -315,4 +317,10 @@ only while `meta.seedVersion < SEED_VERSION`, adding missing ids and never overw
 - Exercise alternatives (split library swap list, `alternatives()` in `src/core/splits.js`): movement-pattern data in
   `src/data/exercises.js` — `EXERCISE_PATTERN` (seed id → pattern, not stored in the db) and `RELATED_PATTERNS` (second choices).
   Same pattern first, then related patterns; custom exercises (no pattern) fall back to the same-primary-muscle rule.
+- Languages (`docs/I18N.md`, glossary `docs/I18N-GLOSSARY.md`): every user-facing text is a catalogue key in
+  `src/i18n/<lang>/<namespace>.js` (en, de, zh; all three complete, enforced by `tests/i18n.test.js`, which also
+  runs `tools/i18n-scan.mjs` over all of `src/`). Show built-in names through the helpers (`src/i18n/names.js`,
+  `src/food/names.js`, `src/workout/data.js`: `exerciseName`, `mealName`, `foodName`, `fmtSets`, `workoutTitle` …),
+  never the stored English name; store ids and English seed names, never translated text. Dates via `fmtDate` /
+  `src/i18n/dates.js`; numbers keep `.` as the decimal mark in every language. `<html lang>` follows the language.
 - Body-map artwork: `docs/AUTHORSHIP.md`; third-party notices: `THIRD-PARTY-NOTICES.md` (keep the Licences screen in step).

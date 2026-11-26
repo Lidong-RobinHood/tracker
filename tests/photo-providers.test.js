@@ -45,10 +45,12 @@ test('network failures: custom says the service may block browser calls', () => 
   const c = networkError('custom', { baseUrl: 'https://api.example.com/v1' });
   assert.equal(c.kind, 'network');
   assert.equal(c.retry, true);
-  assert.match(c.message, /api\.example\.com/);
-  assert.match(c.message, /CORS/);
-  assert.match(networkError('openai').message, /OpenAI/);
-  assert.match(networkError('anthropic').message, /Anthropic/);
+  assert.equal(c.key, 'food.photoError.networkCustom');
+  assert.equal(c.params.p, 'api.example.com');
+  assert.equal(networkError('openai').key, 'food.photoError.network');
+  assert.equal(networkError('openai').params.p, 'OpenAI');
+  assert.equal(networkError('anthropic').params.p, 'Anthropic');
+  assert.equal(networkError('custom', { baseUrl: 'bad' }).params.p, null);
 });
 
 // ================================================================ Anthropic
@@ -107,7 +109,7 @@ test('Anthropic: HTTP errors', () => {
   const br = classifyAnthropicError(400, e('invalid_request_error', 'messages: roles must alternate between "user" and "assistant"'));
   assert.equal(br.kind, 'bad_request');
   assert.match(br.detail, /roles must alternate/);
-  assert.match(classifyAnthropicError(401, null).message, /Anthropic/);
+  assert.equal(classifyAnthropicError(401, null).params.p, 'Anthropic');
   assert.equal(anthropicKeyLooksValid('sk-ant-api03-abcdefghijklmnopqrstuvwxyz'), true);
   assert.equal(anthropicKeyLooksValid('hello'), false);
 });
@@ -171,7 +173,7 @@ test('Gemini: documented error shapes', () => {
   assert.equal(classifyGeminiError(402, g(402, 'RESOURCE_EXHAUSTED', 'Your Prepay credit balance is depleted.')).kind, 'billing');
   const rl = classifyGeminiError(429, g(429, 'RESOURCE_EXHAUSTED', 'You exceeded your current quota.'));
   assert.equal(rl.kind, 'rate_limit');
-  assert.match(rl.message, /quota reached \(429\)/);
+  assert.equal(rl.key, 'food.photoError.geminiQuota');
   assert.equal(classifyGeminiError(429, g(429, 'RESOURCE_EXHAUSTED', 'You exceeded your current quota, please check your plan and billing details.')).kind, 'rate_limit');
   assert.equal(classifyGeminiError(404, g(404, 'NOT_FOUND', 'models/gemini-x is not found')).kind, 'model');
   assert.equal(classifyGeminiError(503, g(503, 'UNAVAILABLE', 'The model is overloaded.')).kind, 'overloaded');
@@ -246,7 +248,7 @@ test('custom: base URL validation', () => {
     'https://api.example.com/v1?key=abc', 'https://api.example.com/v1#x', 'not a url', 'https://intranet/v1', `https://x.com/${'a'.repeat(400)}`, 'javascript:alert(1)']) {
     const r = validateBaseUrl(bad);
     assert.equal(r.ok, false, bad);
-    assert.equal(typeof r.error, 'string');
+    assert.match(r.errorKey, /^food\.baseUrl\.[a-zA-Z]+$/);
   }
 });
 
@@ -270,7 +272,7 @@ test('custom: tolerant errors and answers (numeric codes, content parts, code fe
   const ctx = { baseUrl: 'https://openrouter.ai/api/v1' };
   const auth = classifyCustomError(401, { error: { code: 401, message: 'No auth credentials found' } }, ctx);
   assert.equal(auth.kind, 'auth');
-  assert.match(auth.message, /openrouter\.ai/);
+  assert.equal(auth.params.p, 'openrouter.ai');
   assert.equal(classifyCustomError(402, { error: { code: 402, message: 'Insufficient credits' } }, ctx).kind, 'billing');
   assert.equal(classifyCustomError(429, { error: { message: 'Rate limit exceeded' } }, ctx).kind, 'rate_limit');
   assert.equal(classifyCustomError(422, { detail: 'model does not support images' }, ctx).detail, 'model does not support images');

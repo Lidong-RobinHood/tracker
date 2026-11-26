@@ -3,16 +3,17 @@
 // Constants in the methods table come from src/core so the screen cannot drift from the code.
 import { el, pageHeader, sectionHeader, icon } from '../ui/index.js';
 import { ensureCss } from './css.js';
+import { t } from '../i18n/index.js';
 import { KJ_PER_KCAL } from '../core/nutrition.js';
 import { ACTIVITY_LEVELS, KCAL_PER_KG } from '../core/adaptive.js';
 import { RECOVERY_CONFIG } from '../core/recovery.js';
-import { SPLIT_SOURCES, SPLIT_BASIS, SPLIT_DISCLAIMER } from '../data/splits.js';
+import { SPLIT_SOURCES, SPLIT_BASIS } from '../data/splits.js';
 
 const ext = (url, text) => el('a', { class: 'lic-link', href: url, target: '_blank', rel: 'noopener noreferrer' }, text, icon('external-link', { size: 14, class: 'lic-ext' }));
 /** Licence file in this repo, relative to the app root (works under a sub-path). */
 const file = (path, text) => el('a', { class: 'lic-link', href: path, target: '_blank', rel: 'noopener' }, text);
 const p = (...c) => el('p', { class: 'lic-text' }, ...c);
-const b = (t) => el('strong', null, t);
+const b = (text) => el('strong', null, text);
 
 function section(title, ...children) {
   return el('section', { class: 'section' }, sectionHeader(title), el('div', { class: 'card lic-card' }, children));
@@ -26,18 +27,19 @@ function methodsTable() {
   const ranges = Object.values(RECOVERY_CONFIG.base);
   const lo = Math.min(...ranges.map((r) => r[0]));
   const hi = Math.max(...ranges.map((r) => r[1]));
+  // [label, how, source]; method and author names (Mifflin-St Jeor …) stay as published.
   const rows = [
-    ['Energy from macros', '4 kcal per g protein and carbohydrate, 9 kcal per g fat', 'Atwater factors'],
-    ['kJ to kcal', `kJ ÷ ${KJ_PER_KCAL}`, null],
-    ['Salt', 'sodium × 2.5', 'Standard conversion'],
-    ['Estimated 1RM', 'weight × (1 + reps ÷ 30); 1 rep = the weight', 'Epley formula'],
-    ['Resting energy', '10 × kg + 6.25 × cm − 5 × age, then +5 (male), −161 (female), −78 (other)', 'Mifflin-St Jeor (Mifflin et al., 1990)'],
-    ['Daily energy (formula)', `resting energy × ${factors} (by activity level)`, 'Common activity factors'],
-    ['Body-weight change', `${KCAL_PER_KG.toLocaleString('en-GB').replace(',', ' ')} kcal per kg`, 'Common approximation'],
-    ['Recovery', `${lo}–${hi} h per muscle by size, scaled by sets`, 'Rule of thumb, not a measurement'],
+    [t('settings.lic.m.macros'), t('settings.lic.m.macrosHow'), t('settings.lic.m.macrosSrc')],
+    [t('settings.lic.m.kj'), `kJ ÷ ${KJ_PER_KCAL}`, null],
+    [t('settings.lic.m.salt'), t('settings.lic.m.saltHow'), t('settings.lic.m.saltSrc')],
+    [t('settings.lic.m.e1rm'), t('settings.lic.m.e1rmHow'), t('settings.lic.m.e1rmSrc')],
+    [t('settings.lic.m.resting'), t('settings.lic.m.restingHow'), 'Mifflin-St Jeor (Mifflin et al., 1990)'], // i18n-ignore (citation)
+    [t('settings.lic.m.daily'), t('settings.lic.m.dailyHow', { factors }), t('settings.lic.m.dailySrc')],
+    [t('settings.lic.m.weight'), t('settings.lic.m.weightHow', { kcal: thousands(KCAL_PER_KG) }), t('settings.lic.m.weightSrc')],
+    [t('settings.lic.m.recovery'), t('settings.lic.m.recoveryHow', { lo, hi }), t('settings.lic.m.recoverySrc')],
   ];
   return el('table', { class: 'lic-table' },
-    el('thead', null, el('tr', null, el('th', { scope: 'col' }, 'Value'), el('th', { scope: 'col' }, 'How'))),
+    el('thead', null, el('tr', null, el('th', { scope: 'col' }, t('settings.lic.value')), el('th', { scope: 'col' }, t('settings.lic.how')))),
     el('tbody', null, rows.map(([what, how, src]) => el('tr', null,
       el('th', { scope: 'row' }, what),
       el('td', null, how, src ? el('div', { class: 'muted lic-src' }, src) : null)))));
@@ -46,41 +48,51 @@ function methodsTable() {
 /** Split library: what it rests on and its verified sources (docs/SPLITS.md › Evidence). */
 function trainingSection() {
   return el('section', { class: 'section', id: 'split-sources' },
-    sectionHeader('Training guidance'),
+    sectionHeader(t('settings.lic.training')),
     el('div', { class: 'card lic-card' },
-      SPLIT_BASIS.map((t) => p(t)),
-      el('ul', { class: 'lic-sources', style: { margin: 0, paddingLeft: 'var(--s4)', display: 'flex', flexDirection: 'column', gap: 'var(--s2)' } }, SPLIT_SOURCES.map((x) => el('li', { class: 'lic-text' },
+      SPLIT_BASIS.map((_, i) => p(t(`data.splitGuide.basis${i + 1}`))),
+      el('ul', { class: 'lic-sources', style: { margin: 0, paddingLeft: 'var(--s4)', display: 'flex', flexDirection: 'column', gap: 'var(--s2)' } }, SPLIT_SOURCES.map((x) => el('li', { class: 'lic-text' }, // i18n-ignore (CSS values)
         `${x.cite}. `, x.title ? `${x.title} ` : null, `${x.ref}. `, ext(x.url, x.id)))),
-      p(SPLIT_DISCLAIMER)));
+      p(t('data.splitGuide.disclaimer'))));
 }
 
 export function mountLicences(container, params, ctx) {
   ensureCss();
   container.classList.add('settings-view');
+  // Third-party names, licence names and required attribution lines stay verbatim in English (legal texts);
+  // headings and our own wording are translated.
   container.append(
-    pageHeader({ title: 'Licences and data sources', back: 'settings' }),
-    section('Food data',
-      p(b('Generic foods: '), ext('https://fdc.nal.usda.gov', 'USDA FoodData Central'), ' (SR Legacy), public domain (CC0). U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.'),
-      p(b('Packaged products: '), 'Contains data from ', ext('https://world.openfoodfacts.org', 'Open Food Facts'),
-        ', available under the ', ext('https://opendatacommons.org/licenses/odbl/1-0/', 'Open Database License'), '. Data can contain errors; check the label.')),
-    section('Barcode scanner',
+    pageHeader({ title: t('settings.about.licences'), back: 'settings' }),
+    section(t('settings.lic.food'),
+      // i18n-ignore-start (USDA attribution and licence name, verbatim)
+      p(b(t('settings.lic.generic')), ' ', ext('https://fdc.nal.usda.gov', 'USDA FoodData Central'), ' (SR Legacy), public domain (CC0). U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.'),
+      // i18n-ignore-end
+      p(b(t('settings.lic.packaged')), ' ',
+        // i18n-ignore-start (Open Food Facts / ODbL attribution notice, verbatim)
+        'Contains data from ', ext('https://world.openfoodfacts.org', 'Open Food Facts'),
+        ', available under the ', ext('https://opendatacommons.org/licenses/odbl/1-0/', 'Open Database License'), '. ',
+        // i18n-ignore-end
+        t('settings.lic.dataErrors'))),
+    section(t('settings.lic.barcode'),
+      // i18n-ignore-start (project and licence names)
       p('barcode-detector 3.2.4 (', file('vendor/barcode-detector/LICENSE-barcode-detector.txt', 'MIT'), '), zxing-wasm 3.1.7 (',
         file('vendor/barcode-detector/LICENSE-zxing-wasm.txt', 'MIT'), '), ', ext('https://github.com/zxing-cpp/zxing-cpp', 'zxing-cpp'), ' (',
         file('vendor/barcode-detector/LICENSE-zxing-cpp.txt', 'Apache License 2.0'), ').')),
-    section('Icons',
+    section(t('settings.lic.icons'),
       p(ext('https://lucide.dev', 'Lucide'), ' (', file('vendor/icons/LICENSE-lucide.txt', 'ISC License'),
-        '; icons derived from Feather: MIT License, same file). ', ext('https://tabler.io/icons', 'Tabler Icons'),
-        ', barbell icon (', file('vendor/icons/LICENSE-tabler-icons.txt', 'MIT License'), ').')),
-    section('Exercise tutorials',
-      p('Videos are on YouTube and belong to their creators. Links open YouTube.')),
-    section('Meal photos (optional)',
-      p('With your own API key, the photo and hint go directly to the AI provider you chose, under its terms.')),
+        // i18n-ignore-end
+        `; ${t('settings.lic.feather')}). `, ext('https://tabler.io/icons', 'Tabler Icons'), // i18n-ignore (brand name)
+        `, ${t('settings.lic.barbell')} (`, file('vendor/icons/LICENSE-tabler-icons.txt', 'MIT License'), ').')), // i18n-ignore (licence name)
+    section(t('settings.lic.tutorials'),
+      p(t('settings.lic.tutorialsText'))),
+    section(t('settings.lic.photos'),
+      p(t('settings.lic.photosText'))),
     el('section', { class: 'section', id: 'methods' },
-      sectionHeader('How the numbers are calculated'),
+      sectionHeader(t('settings.lic.methods')),
       el('div', { class: 'card lic-card' }, methodsTable(),
-        p('All figures are estimates. This app is not a medical device and does not replace professional advice.'))),
+        p(t('settings.lic.estimates')))),
     trainingSection(),
-    el('p', { class: 't-sub muted lic-foot' }, 'Other product names are trademarks of their owners. This app is not affiliated with them.'),
+    el('p', { class: 't-sub muted lic-foot' }, t('settings.lic.trademarks')),
   );
   // #/licences?section=split-sources (split detail › Methods and sources) jumps to that section.
   const target = ctx && ctx.query && ctx.query.section ? container.querySelector(`#${CSS.escape(ctx.query.section)}`) : null;

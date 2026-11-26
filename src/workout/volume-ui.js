@@ -2,6 +2,7 @@
 // Numbers come from muscleVolumeBreakdown in src/core/volume.js. The explanation of the words lives in
 // the 'sets' info sheet.
 import { el, fmtNum, infoButton } from '../ui/index.js';
+import { t } from '../i18n/index.js';
 
 /**
  * '6 direct + 3 partial × 0.5 + 2 drop (1)'. Multipliers are shown when they are not 1; dropsets
@@ -10,22 +11,23 @@ import { el, fmtNum, infoButton } from '../ui/index.js';
  * @param {{primary: number, secondary: number, dropset: number}} weights
  */
 export function breakdownText(b, weights) {
-  if (!b) return 'none this week';
+  if (!b) return t('analysis.vol.none');
   const parts = [];
-  const x = (w) => (w === 1 ? '' : ` × ${fmtNum(w, 2)}`);
-  if (b.direct.sets) parts.push(`${b.direct.sets} direct${x(weights.primary)}`);
-  if (b.partial.sets) parts.push(`${b.partial.sets} partial${x(weights.secondary)}`);
-  if (weights.dropset && b.drop.sets) parts.push(`${b.drop.sets} drop (${fmtNum(b.drop.value, 2)})`);
-  return parts.length ? parts.join(' + ') : 'none this week';
+  const part = (key, n, w) => (w === 1 ? t(`analysis.vol.${key}`, { n }) : t(`analysis.vol.${key}Times`, { n, x: fmtNum(w, 2) }));
+  if (b.direct.sets) parts.push(part('direct', b.direct.sets, weights.primary));
+  if (b.partial.sets) parts.push(part('partial', b.partial.sets, weights.secondary));
+  if (weights.dropset && b.drop.sets) parts.push(t('analysis.vol.drop', { n: b.drop.sets, value: fmtNum(b.drop.value, 2) }));
+  return parts.length ? parts.join(' + ') : t('analysis.vol.none');
 }
 
 /** Words for a screen reader: '6 direct sets, 3 partial sets counted as 1.5'. */
 export function breakdownAria(b, weights) {
-  if (!b) return 'no sets this week';
-  const out = [`${b.direct.sets} direct set${b.direct.sets === 1 ? '' : 's'}${weights.primary === 1 ? '' : ` counted as ${fmtNum(b.direct.value, 2)}`}`];
-  if (b.partial.sets) out.push(`${b.partial.sets} partial set${b.partial.sets === 1 ? '' : 's'} counted as ${fmtNum(b.partial.value, 2)}`);
-  if (weights.dropset && b.drop.sets) out.push(`${b.drop.sets} dropset${b.drop.sets === 1 ? '' : 's'} counted as ${fmtNum(b.drop.value, 2)}`);
-  return out.join(', ');
+  if (!b) return t('analysis.vol.ariaNone');
+  const out = [weights.primary === 1 ? t('analysis.vol.ariaDirect', { count: b.direct.sets })
+    : t('analysis.vol.ariaDirectCounted', { count: b.direct.sets, value: fmtNum(b.direct.value, 2) })];
+  if (b.partial.sets) out.push(t('analysis.vol.ariaPartial', { count: b.partial.sets, value: fmtNum(b.partial.value, 2) }));
+  if (weights.dropset && b.drop.sets) out.push(t('analysis.vol.ariaDrop', { count: b.drop.sets, value: fmtNum(b.drop.value, 2) }));
+  return out.join(t('analysis.listSep'));
 }
 
 /**
@@ -46,9 +48,9 @@ export function setsBar(b, fraction, { target = false } = {}) {
 /** Legend line under a sets card title: Direct · Partial (· Target). */
 export function setsLegend({ target = false } = {}) {
   return el('ul', { class: 'legend legend-row wk-sets-legend' },
-    el('li', el('span', { class: 'swatch is-accent' }), 'Direct'),
-    el('li', el('span', { class: 'swatch is-partial' }), 'Partial'),
-    target ? el('li', el('span', { class: 'wk-tick-swatch' }), 'Target') : null);
+    el('li', el('span', { class: 'swatch is-accent' }), t('analysis.legend.direct')),
+    el('li', el('span', { class: 'swatch is-partial' }), t('analysis.legend.partial')),
+    target ? el('li', el('span', { class: 'wk-tick-swatch' }), t('analysis.legend.target')) : null);
 }
 
 /**

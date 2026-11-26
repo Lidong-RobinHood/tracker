@@ -1,8 +1,13 @@
 // Portions and serving sizes. Pure, no DOM.
 import { parseDecimal, round } from './numbers.js';
 
-/** Label of the serving chip for a whole pack (never used as the default amount). */
-export const PACK_LABEL = 'Whole pack';
+/** Label of the serving chip for a whole pack (never used as the default amount). Stored in food records. */
+export const PACK_LABEL = 'Whole pack'; // i18n-ignore (stored marker, translated at display time)
+/** Label of a serving without a name of its own. Stored in food records. */
+export const SERVING_LABEL = 'Serving'; // i18n-ignore (stored marker, translated at display time)
+/** Label of one unit of a multipack ('1 of 6'). Stored in food records; matched by MULTIPACK_RE for display. */
+export const multipackLabel = (count) => `1 of ${count}`; // i18n-ignore (stored marker, translated at display time)
+export const MULTIPACK_RE = /^1 of (\d+)$/;
 
 /** Units we understand in serving/quantity text, converted to g or ml. */
 const UNITS = {
@@ -78,7 +83,7 @@ export function servingFromText(text, quantity = null) {
   if (amount === null) return null;
   let label = String(text ?? '').replace(/\([^)]*\)/g, '').replace(UNIT_RE, '').replace(/\s+/g, ' ').trim();
   label = label.replace(/^[\s,.:;-]+|[\s,.:;-]+$/g, '');
-  if (!label || /^\d+([.,]\d+)?$/.test(label)) label = 'Serving';
+  if (!label || /^\d+([.,]\d+)?$/.test(label)) label = SERVING_LABEL;
   if (label.length > 28) label = `${label.slice(0, 27).trim()}…`;
   return { label, amount };
 }
@@ -95,7 +100,7 @@ export function cleanServings(servings) {
     const key = round(s.amount, 1);
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ label: String(s.label || 'Serving').trim() || 'Serving', amount: key });
+    out.push({ label: String(s.label || SERVING_LABEL).trim() || SERVING_LABEL, amount: key });
   }
   return out;
 }

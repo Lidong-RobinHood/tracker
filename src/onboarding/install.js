@@ -1,6 +1,8 @@
 // "Install to the home screen" guidance for the current browser (welcome step and Help).
 import { el, icon } from '../ui/index.js';
 import { detectPlatform, isStandalone } from '../core/platform.js';
+import { t } from '../i18n/index.js';
+import { rich } from './rich.js';
 
 // Chrome/Edge/Samsung on Android fire beforeinstallprompt early; keep it for the Install button.
 let deferredPrompt = null;
@@ -11,7 +13,7 @@ if (typeof window !== 'undefined') {
 }
 
 function displayMode() {
-  for (const m of ['standalone', 'fullscreen', 'minimal-ui']) {
+  for (const m of ['standalone', 'fullscreen', 'minimal-ui']) { // i18n-ignore (display modes)
     if (window.matchMedia && window.matchMedia(`(display-mode: ${m})`).matches) return m;
   }
   return 'browser';
@@ -24,7 +26,10 @@ export function currentPlatform() {
 }
 
 const steps = (...items) => el('ol', { class: 'ob-steps' }, items.map((i) => el('li', null, i)));
-const b = (t) => el('strong', null, t);
+const b = (text) => el('strong', null, text);
+/** A step whose bold words are the menu items as the browser / OS shows them ({x} slots, see rich.js). */
+const step = (key, bold = {}, extra = {}) => rich(`onboarding.install.${key}`,
+  { ...Object.fromEntries(Object.entries(bold).map(([k, v]) => [k, b(t(`onboarding.install.${v}`))])), ...extra });
 
 /**
  * Guidance block for the platform.
@@ -37,40 +42,41 @@ export function installGuide(p, { compact = false } = {}) {
   const node = el('div', { class: 'stack ob-install', dataset: { install: p.install } });
   const box = { append: (...kids) => node.append(...kids.filter(Boolean)) };
   if (p.install === 'standalone' || installed) {
-    box.append(el('p', { class: 'ob-ok' }, icon('circle-check', { size: 18 }), 'Installed.'));
+    box.append(el('p', { class: 'ob-ok' }, icon('circle-check', { size: 18 }), t('onboarding.install.installed')));
     return node;
   }
   if (p.install === 'in-app') {
-    const where = p.os === 'ios' ? 'Safari' : 'Chrome';
+    const where = p.os === 'ios' ? 'Safari' : 'Chrome'; // i18n-ignore (browser names)
+    const app = p.inApp === 'another app' ? t('onboarding.install.anotherApp') : p.inApp;
     box.append(
-      el('p', { class: 'ob-note' }, `Open inside ${p.inApp === 'another app' ? 'another app' : p.inApp}: it cannot install apps and may delete your data.`),
+      el('p', { class: 'ob-note' }, t('onboarding.install.inApp', { app })),
       steps(
-        ['Tap the ', icon('ellipsis', { size: 16, label: 'More', class: 'ob-inline-ic' }), ' or ', b('share'), ' button of that app (usually at the top or bottom).'],
-        ['Choose ', b(`Open in ${where}`), ' (or ', b('Open in browser'), ').'],
-        `Then continue in ${where}.`),
-      el('p', { class: 't-sub muted' }, 'Or copy the link into your browser.'));
+        step('inAppMenu', { share: 'inAppShare' }, { more: icon('ellipsis', { size: 16, label: t('onboarding.install.moreIcon'), class: 'ob-inline-ic' }) }),
+        rich('onboarding.install.inAppOpen', { openIn: b(t('onboarding.install.openIn', { browser: where })), openBrowser: b(t('onboarding.install.openInBrowser')) }),
+        t('onboarding.install.continueIn', { browser: where })),
+      el('p', { class: 't-sub muted' }, t('onboarding.install.copyLink')));
     return node;
   }
   if (p.install === 'ios-safari' || p.install === 'ios-other') {
     const shareWhere = p.install === 'ios-safari'
-      ? ['Tap the ', b('Share'), ' button (square with an arrow, in the toolbar; on newer iOS first tap the ', b('More'), ' button).']
-      : ['Tap the ', b('Share'), ' button (in Chrome and Edge it is in the address bar).'];
+      ? step('iosShareSafari', { share: 'iosShare', more: 'iosMore' })
+      : step('iosShareOther', { share: 'iosShare' });
     box.append(
       steps(
         shareWhere,
-        ['Scroll down and tap ', b('Add to Home Screen'), '.'],
-        ['Tap ', b('Add'), ', then open ', b('Tracker'), ' from your home screen.']),
+        step('iosAddToHome', { add: 'iosAddToHomeLabel' }),
+        step('iosAdd', { add: 'iosAddLabel', app: 'appName' })),
       p.install === 'ios-other'
-        ? el('p', { class: 't-sub muted' }, 'Add to Home Screen missing (older iOS)? Open this page in Safari and do it there.')
+        ? el('p', { class: 't-sub muted' }, t('onboarding.install.iosOld'))
         : null,
       compact ? null : el('p', { class: 'ob-note' },
         icon('triangle-exclamation-point', { size: 18 }),
-        el('span', null, b('iPhone and iPad: '), 'the installed app has separate data. Install first, then set up inside it.')));
+        el('span', null, b(t('onboarding.install.iosDataLead')), ' ', t('onboarding.install.iosData'))));
     return node;
   }
   if (p.install === 'android') {
     if (deferredPrompt) {
-      const btn = el('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Install app');
+      const btn = el('button', { class: 'btn btn-primary btn-block', type: 'button' }, t('onboarding.install.installApp'));
       btn.addEventListener('click', async () => {
         const ev = deferredPrompt;
         if (!ev) return;
@@ -78,21 +84,22 @@ export function installGuide(p, { compact = false } = {}) {
         ev.prompt();
         const choice = await ev.userChoice.catch(() => null);
         btn.replaceWith(el('p', null, choice && choice.outcome === 'accepted'
-          ? 'Installed. Open Tracker from your home screen.'
-          : 'Not installed. Install later from the browser menu.'));
+          ? t('onboarding.install.installedOpen')
+          : t('onboarding.install.notInstalled')));
       });
       // The welcome step already says why above the guide; Help (compact) has no such intro.
-      box.append(compact ? el('p', null, 'Works offline, and the browser is less likely to clear data.') : null, btn);
+      box.append(compact ? el('p', null, t('onboarding.install.why')) : null, btn);
       return node;
     }
-    const menu = p.browser === 'samsung' ? [['Tap the menu (three lines) at the bottom.'], ['Tap ', b('Add page to'), ' → ', b('Home screen'), '.']]
-      : p.browser === 'firefox' ? [['Tap the menu ', icon('ellipsis-vertical', { size: 16, label: 'three dots', class: 'ob-inline-ic' }), '.'], ['Tap ', b('Install'), ' (or ', b('Add to Home screen'), ').']]
-        : [['Tap the browser menu ', icon('ellipsis-vertical', { size: 16, label: 'three dots', class: 'ob-inline-ic' }), ' (top right).'], ['Tap ', b('Install app'), ' (or ', b('Add to Home screen'), ').']];
-    box.append(steps(...menu, ['Confirm, then open ', b('Tracker'), ' from your home screen.']));
+    const dots = () => icon('ellipsis-vertical', { size: 16, label: t('onboarding.install.threeDots'), class: 'ob-inline-ic' });
+    const menu = p.browser === 'samsung' ? [t('onboarding.install.samsungMenu'), step('samsungAdd', { addTo: 'samsungAddPage', home: 'samsungHome' })]
+      : p.browser === 'firefox' ? [step('firefoxMenu', {}, { dots: dots() }), step('firefoxInstall', { install: 'firefoxInstallLabel', add: 'firefoxAddLabel' })]
+        : [step('chromeMenu', {}, { dots: dots() }), step('chromeInstall', { install: 'chromeInstallLabel', add: 'chromeAddLabel' })];
+    box.append(steps(...menu, step('androidConfirm', { app: 'appName' })));
     return node;
   }
   box.append(
-    el('p', null, 'Tracker is made for phones. Open this link on your phone.'),
-    el('p', { class: 't-sub muted' }, 'A computer and a phone never share data.'));
+    el('p', null, t('onboarding.install.desktop')),
+    el('p', { class: 't-sub muted' }, t('onboarding.install.desktopNote')));
   return node;
 }

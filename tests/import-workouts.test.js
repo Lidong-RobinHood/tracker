@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { msgText as txt } from '../src/import/messages.js'; // importer messages are {key, params}; English text
 import { parseWorkoutText, classifyLine, exerciseNames, buildWorkoutRecords, plausibleTimes } from '../src/core/import-workouts.js';
 import { matchExercise, nameKey, normaliseName, ALIASES, similarity } from '../src/core/import-exercise-match.js';
 import { SEED_EXERCISES } from '../src/data/exercises.js';
@@ -80,7 +81,7 @@ test('wrong column order shows up as line errors (decimal reps)', () => {
   assert.equal(r.workouts.length, 0);
   const err = r.issues.find((i) => i.line === 3);
   assert.equal(err.level, 'error');
-  assert.match(err.message, /whole number/);
+  assert.match(txt(err.message), /whole number/);
 });
 
 test('date formats as workout separators, with names on the date line', () => {
@@ -104,7 +105,7 @@ test('side-by-side column groups are refused with line numbers and nothing is pa
   const text = ['Benchpress\t\tSquat\t', '3 x 6\t\t3 x 5\t', '100\t7\t140\t5', '100\t8\t140\t5'].join('\n');
   const r = parse(text);
   assert.equal(r.workouts.length, 0);
-  assert.match(r.fatal, /side by side.*lines 1, 2, 3, 4/);
+  assert.match(txt(r.fatal), /side by side.*lines 1, 2, 3, 4/);
   assert.deepEqual(r.issues.map((i) => i.line), [1, 2, 3, 4]);
 });
 
@@ -121,13 +122,13 @@ test('space-aligned columns (3+ spaces) with two exercise names are refused', ()
 test('malformed lines are listed by line number and left out', () => {
   const r = parse('100 7\nBench\n3x6\n100 7 kg reps??\n100 0\n-\n100 8\nDropset 5\n31.02.2026\nfoo\n2026-12-01\nRow\n50 10');
   const byLine = Object.fromEntries(r.issues.map((i) => [i.line, i]));
-  assert.match(byLine[1].message, /without an exercise/);
-  assert.match(byLine[4].message, /Could not read/);
-  assert.match(byLine[5].message, /Reps 0/);
-  assert.match(byLine[6].message, /Could not read/);
-  assert.match(byLine[8].message, /Dropset needs reps and weight/);
-  assert.match(byLine[9].message, /not a valid date/);
-  assert.match(byLine[11].message, /future/);
+  assert.match(txt(byLine[1].message), /without an exercise/);
+  assert.match(txt(byLine[4].message), /Could not read/);
+  assert.match(txt(byLine[5].message), /Reps 0/);
+  assert.match(txt(byLine[6].message), /Could not read/);
+  assert.match(txt(byLine[8].message), /Dropset needs reps and weight/);
+  assert.match(txt(byLine[9].message), /not a valid date/);
+  assert.match(txt(byLine[11].message), /future/);
   assert.deepEqual(sets(r.workouts[0].exercises[0]), [[100, 8, 'normal']]);
 });
 
@@ -272,14 +273,14 @@ test('item 3: an explicit kg / reps unit decides which number is the weight', ()
   assert.deepEqual(sets(o.workouts[0].exercises[0]), [[100, 7, 'normal'], [80, 5, 'dropset']]);
   // two kg units: an error, not a guess
   const k = parse('Bench\n3x6\n80 kg x 8 kg\n100 7');
-  assert.match(k.issues.find((i) => i.line === 3).message, /kg/);
+  assert.match(txt(k.issues.find((i) => i.line === 3).message), /kg/);
 });
 
 test('item 3: a single number after weighted sets is flagged "weight without reps?"', () => {
   const r = parse('Bench\n3x6\n100 7\n100 6\n100');
   assert.deepEqual(sets(r.workouts[0].exercises[0]), [[100, 7, 'normal'], [100, 6, 'normal']]);
   const issue = r.issues.find((i) => i.line === 5);
-  assert.match(issue.message, /weight without reps\?/i);
+  assert.match(txt(issue.message), /weight without reps\?/i);
   // no weighted sets in the exercise: a single number stays a bodyweight set
   const d = parse('Dips\n3x10\n12\n10');
   assert.deepEqual(sets(d.workouts[0].exercises[0]), [[null, 12, 'normal'], [null, 10, 'normal']]);

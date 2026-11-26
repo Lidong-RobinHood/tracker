@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { msgText as txt } from '../src/import/messages.js'; // importer messages are {key, params}; English text
 import {
   stripBom, splitLines, findDate, parseDateOnly, detectDateOrder, parseNumber, parseDelimited,
   detectDelimiter, detectHeader, detectDecimal, trimTrailingEmpty, median, chunk, stripWeekdays,
@@ -45,7 +46,8 @@ test('findDate: year-less dates pick the most recent past day', () => {
 test('findDate: invalid days, weekday mismatch, ambiguity, no date', () => {
   const bad = findDate('31.02.2026', { today: T });
   assert.equal(bad.date, null);
-  assert.match(bad.error, /not a valid date/);
+  assert.equal(bad.error.key, 'import.date.invalid');
+  assert.match(txt(bad.error), /not a valid date/);
   assert.equal(findDate('Tue 12 Nov 2026', { today: T }).weekdayMismatch, true);
   assert.equal(findDate('Thu 12 Nov 2026', { today: T }).weekdayMismatch, false);
   assert.equal(findDate('05/06/26', { today: T }).ambiguous, true);

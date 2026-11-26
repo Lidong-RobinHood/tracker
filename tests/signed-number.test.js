@@ -64,9 +64,9 @@ test('round trip for every preset', () => {
   assert.deepEqual(GOAL_AMOUNT_MAX, { lose: 1, gain: 0.5 });
 });
 
-test('goalSummary is plain language', () => {
-  assert.equal(goalSummary('lose', 0.5), 'Lose 0.5 kg / week');
-  assert.equal(goalSummary('gain', 0.25), 'Gain 0.25 kg / week');
-  assert.equal(goalSummary('maintain', null), 'Maintain');
-  assert.match(goalSummary('gain', 0.75), /max 0.5/);
+test('goalSummary is plain language (catalogue key + values)', () => {
+  assert.deepEqual(goalSummary('lose', 0.5), { key: 'core.goal.lose', params: { amount: 0.5 } });
+  assert.deepEqual(goalSummary('gain', 0.25), { key: 'core.goal.gain', params: { amount: 0.25 } });
+  assert.deepEqual(goalSummary('maintain', null), { key: 'core.goal.maintain' });
+  assert.deepEqual(goalSummary('gain', 0.75), { key: 'core.goal.gainMax', params: { max: 0.5 } });
 });

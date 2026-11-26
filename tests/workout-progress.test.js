@@ -28,9 +28,10 @@ test('pctChange: sign, 1-decimal rounding, null for missing/zero previous, never
   assert.equal(p.trendOf(null), 'none');
   assert.equal(p.trendOf(0), 'flat');
   assert.equal(p.trendOf(-0.1), 'down');
-  assert.equal(p.formatPct(2.5), '+2.5 %');
-  assert.equal(p.formatPct(-3), '−3 %');
-  assert.equal(p.formatPct(0), '±0 %');
+  // no-break space before % (one form for every percentage: core/numbers.js withPercent)
+  assert.equal(p.formatPct(2.5), '+2.5\u00a0%');
+  assert.equal(p.formatPct(-3), '−3\u00a0%');
+  assert.equal(p.formatPct(0), '±0\u00a0%');
   assert.equal(p.formatPct(null), '–');
 });
 

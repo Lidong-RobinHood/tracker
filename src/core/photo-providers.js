@@ -27,10 +27,6 @@ export function authHeader(providerId, apiKey) {
 /** Network failure (fetch rejected): blocked CORS requests look exactly like this in the browser. */
 export function networkError(providerId, ctx = {}) {
   const a = getAdapter(providerId);
-  if (a.networkMessage) return photoError('network', '', { message: a.networkMessage(ctx) });
-  if (providerId === 'anthropic') return photoError('network', '', { provider: a.name });
-  return photoError('network', '', {
-    provider: a.name,
-    message: `Could not reach ${a.name}. Check your connection and try again.`,
-  });
+  if (a.networkError) { const n = a.networkError(ctx); return photoError('network', '', { key: n.key, provider: n.provider }); }
+  return photoError('network', '', { provider: a.name });
 }

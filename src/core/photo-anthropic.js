@@ -17,13 +17,16 @@ export const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 export const ANTHROPIC_MODELS_URL = 'https://api.anthropic.com/v1/models';
 export const ANTHROPIC_VERSION = '2026-10-21';
 export const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
-const NAME = 'Anthropic';
+const NAME = 'Anthropic'; // i18n-ignore (brand)
 
 /** Documented suggestions (claude-api skill, 2026-11-03). Any other model id can be typed or loaded. */
+// `label`: model name (not translated); `noteKey`: catalogue key of the short note (namespace food) or ''.
+// i18n-ignore-start (model names)
 export const ANTHROPIC_SUGGESTED = Object.freeze([
-  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', note: '' }, // the default: the 'default' badge says so
-  { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', note: 'fastest, lowest cost' },
+  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5', noteKey: '' }, // the default: the 'default' badge says so
+  { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', noteKey: 'food.provider.note.fastestCheapest' },
 ]);
+// i18n-ignore-end
 export const ANTHROPIC_DEFAULT_MODEL = ANTHROPIC_SUGGESTED[0].id;
 
 /** Models that accept the server-side refusal fallback (`fallbacks: "default"`). Others are sent without it. */
@@ -99,7 +102,7 @@ export function classifyAnthropicError(status, body) {
   if (status === 429 || type === 'rate_limit_error') return photoError('rate_limit', '', o);
   if (status === 529 || type === 'overloaded_error') return photoError('overloaded', '', o);
   if (status >= 500) return photoError('server', msg, o);
-  return photoError('bad_request', msg || `HTTP ${status}`, o);
+  return photoError('bad_request', msg || `HTTP ${status}`, o); // i18n-ignore (technical detail)
 }
 
 /**
@@ -127,21 +130,19 @@ export function anthropicKeyLooksValid(key) {
 
 export const anthropic = Object.freeze({
   id: 'anthropic',
-  label: 'Anthropic (Claude)',
+  label: 'Anthropic (Claude)', // i18n-ignore (brand)
   name: NAME,
   auth: { header: 'x-api-key', prefix: '' },
   hosts: ['api.anthropic.com'],
   suggested: ANTHROPIC_SUGGESTED,
   defaultModel: ANTHROPIC_DEFAULT_MODEL,
-  keyPlaceholder: 'sk-ant-…',
-  keyHelp: 'Create one at console.anthropic.com › API keys.',
+  // Texts are catalogue keys (namespace food), translated by the UI.
+  keyPlaceholder: 'sk-ant-…', // i18n-ignore (key format)
+  keyHelpKey: 'food.provider.anthropic.keyHelp',
   keyLooksValid: anthropicKeyLooksValid,
-  keyFormatNote: 'it does not look like an Anthropic key (sk-ant-…)',
+  keyFormatNoteKey: 'food.provider.anthropic.keyFormat',
   pricingUrl: 'https://platform.claude.com/docs/en/about-claude/pricing',
-  notes: [
-    'Each analysis is billed to your Anthropic account.',
-    'Fable, Opus 5.5/5 and Sonnet 5.5 may fall back to another model; that run is billed too.',
-  ],
+  noteKeys: ['food.provider.anthropic.note1', 'food.provider.anthropic.note2'],
   structured: true,
   buildAnalyse: buildAnthropicRequest,
   buildTest: buildAnthropicTest,

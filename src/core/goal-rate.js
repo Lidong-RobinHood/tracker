@@ -40,9 +40,14 @@ export function goalToRate(direction, amount) {
   return direction === 'lose' ? -r2(amount) : r2(amount);
 }
 
-/** Plain-language summary, e.g. 'Lose 0.5 kg / week'. */
+/**
+ * Plain-language summary as a catalogue key: 'Lose 0.5 kg / week' (core.goal.lose {amount}),
+ * 'Gain: max 0.5 kg / week' (core.goal.gainMax {max}), 'Maintain' (core.goal.maintain).
+ * @returns {{key: string, params?: Record<string, number>}}
+ */
 export function goalSummary(direction, amount) {
-  if (direction === 'maintain') return 'Maintain';
-  const verb = direction === 'lose' ? 'Lose' : 'Gain';
-  return amountValid(direction, amount) ? `${verb} ${r2(amount)} kg / week` : `${verb}: max ${GOAL_AMOUNT_MAX[direction]} kg / week`;
+  if (direction === 'maintain') return { key: 'core.goal.maintain' };
+  const dir = direction === 'lose' ? 'lose' : 'gain';
+  return amountValid(direction, amount) ? { key: `core.goal.${dir}`, params: { amount: r2(amount) } }
+    : { key: `core.goal.${dir}Max`, params: { max: GOAL_AMOUNT_MAX[direction] } };
 }

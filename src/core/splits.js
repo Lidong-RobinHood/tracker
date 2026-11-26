@@ -146,7 +146,7 @@ export function coverageStep(total) {
 }
 
 /**
- * Legend of coverageStep (highest first): '12+', '8–11.5', '4–7.5', 'Under 4', 'None' (see bandLegend).
+ * Legend of coverageStep (highest first): '12+', '8–11.5', '4–7.5', 'Under 4', 'None' as catalogue keys + params (see bandLegend).
  * @param {{primary?: number, secondary?: number}} [weights] settings.volume
  */
 export function coverageBands(weights) {
@@ -432,6 +432,12 @@ export function isCustomSplitId(id) {
 const isPerWeek = (n) => Number.isInteger(n) && n >= MIN_PER_WEEK && n <= MAX_PER_WEEK;
 
 /**
+ * Stored default name of a custom split (a language-neutral marker, shown translated by splitName in
+ * src/i18n/names.js). A split copied from the library stores `<English library name> (custom)` (customFromLibrary).
+ */
+export const DEFAULT_SPLIT_NAME = 'My split'; // i18n-ignore: stored marker, translated at display time
+
+/**
  * Validate one stored custom split. Invalid records → null; fixable fields are fixed: name trimmed (empty →
  * 'My split', ≤ MAX_NAME), sessionsPerWeek outside 1–7 → null, non-string session ids dropped, rotation
  * capped at MAX_ROTATION, timestamps default 0.
@@ -439,7 +445,7 @@ const isPerWeek = (n) => Number.isInteger(n) && n >= MIN_PER_WEEK && n <= MAX_PE
  */
 export function cleanCustomSplit(v) {
   if (!v || typeof v !== 'object' || !isCustomSplitId(v.id)) return null;
-  const name = (typeof v.name === 'string' ? v.name.trim() : '').slice(0, MAX_NAME) || 'My split';
+  const name = (typeof v.name === 'string' ? v.name.trim() : '').slice(0, MAX_NAME) || DEFAULT_SPLIT_NAME;
   const sessions = (Array.isArray(v.sessions) ? v.sessions : []).filter((id) => typeof id === 'string' && id).slice(0, MAX_ROTATION);
   const out = {
     id: v.id,
@@ -552,6 +558,9 @@ export function coverageNotes(coverage) {
   };
 }
 
+/** Stored default name of a copy of a library split: '<English name> (custom)', shown translated (splitName). */
+export const copyNameOf = (split) => `${split.name} (custom)`; // i18n-ignore: stored marker, translated at display time
+
 /**
  * A custom split copied from a library split: rotation = its sessions (the routines created for them,
  * in order), sessions per week = its days, so the coverage is the library split's.
@@ -560,7 +569,7 @@ export function coverageNotes(coverage) {
  */
 export function customFromLibrary(split, { id, routineIds, now, name }) {
   return cleanCustomSplit({
-    id, name: name || `${split.name} (custom)`, sessionsPerWeek: split.days,
+    id, name: name || copyNameOf(split), sessionsPerWeek: split.days,
     sessions: routineIds, createdAt: now, updatedAt: now, sourceSplitId: split.id,
   });
 }

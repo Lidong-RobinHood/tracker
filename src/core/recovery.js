@@ -79,17 +79,21 @@ const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 /**
- * Check a user's base range for one muscle.
+ * Check a user's base range for one muscle. Errors are codes (the UI words them):
+ * 'missing' (enter both hours), 'whole' (whole hours), 'minLow' (shortest ≥ params.hours),
+ * 'maxHigh' (longest ≤ params.hours), 'gap' (longest ≥ shortest + params.hours).
  * @param {any} min hours @param {any} max hours
- * @returns {{ok: true, value: [number, number]} | {ok: false, error: string}}
+ * @returns {{ok: true, value: [number, number]} | {ok: false, error: 'missing'|'whole'|'minLow'|'maxHigh'|'gap', params: {hours?: number}}}
  */
 export function validateRange(min, max, cfg = RECOVERY_CONFIG) {
+  // i18n-ignore-start: error codes, worded by the UI (src/workout/recovery.js)
   const c = cfg.custom;
-  if (!isNum(min) || !isNum(max)) return { ok: false, error: 'Enter both hours.' };
-  if (!Number.isInteger(min) || !Number.isInteger(max)) return { ok: false, error: 'Use whole hours.' };
-  if (min < c.min) return { ok: false, error: `Shortest is at least ${c.min} h.` };
-  if (max > c.max) return { ok: false, error: `Longest is at most ${c.max} h.` };
-  if (max < min + c.minGap) return { ok: false, error: `Longest must be at least ${c.minGap} h more than shortest.` };
+  if (!isNum(min) || !isNum(max)) return { ok: false, error: 'missing', params: {} };
+  if (!Number.isInteger(min) || !Number.isInteger(max)) return { ok: false, error: 'whole', params: {} };
+  if (min < c.min) return { ok: false, error: 'minLow', params: { hours: c.min } };
+  if (max > c.max) return { ok: false, error: 'maxHigh', params: { hours: c.max } };
+  if (max < min + c.minGap) return { ok: false, error: 'gap', params: { hours: c.minGap } };
+  // i18n-ignore-end
   return { ok: true, value: [min, max] };
 }
 
@@ -135,7 +139,7 @@ export function withBase(value, muscle, range) {
   const base = { ...(s.base || {}) };
   if (range) {
     const v = validateRange(range[0], range[1]);
-    if (!v.ok) throw new Error(v.error);
+    if (!v.ok) throw new Error(`withBase: invalid range (${v.error})`);
     base[muscle] = v.value;
   } else delete base[muscle];
   return recoverySettings({ ...s, base });
@@ -218,6 +222,7 @@ export function lookbackFrom(now, cfg = RECOVERY_CONFIG) {
  *   base: the user's hand-set base ranges (recoverySettings(...).base); learned: base ranges learned
  *   from check-ins (learnedBase); checkins: the stored check-ins (only the current bout's latest counts).
  *   Every row also has source 'rule'|'yours'|'set', modelStatus and said (see applyCheckin).
+ *   Session `name` is the workout's own name (null when it has none; the UI shows a generic word).
  * @returns {Array<{
  *   muscle: string, name: string, status: 'fresh'|'recovering'|'likely-ready', trained: boolean,
  *   lastAt: number|null, hoursSince: number|null, lastDose: number, dose: number,
@@ -253,7 +258,7 @@ export function muscleRecovery(workouts, exercises, weights, { now, factor = 1, 
       if (ep && gapH < ep.max) carried = round(ep.dose * (1 - Math.max(0, gapH) / ep.max), 2);
       const dose = round(d + carried, 2);
       const [min, max] = recoveryWindow(m.id, dose, f, cfg, own);
-      const item = { workoutId: s.w.id, name: s.w.name || 'Workout', date: s.w.date, at: s.at, dose: d, finished: isNum(s.w.finishedAt), carried };
+      const item = { workoutId: s.w.id, name: s.w.name || null, routineId: s.w.routineId || null, date: s.w.date, at: s.at, dose: d, finished: isNum(s.w.finishedAt), carried };
       ep = { at: s.at, dose, lastDose: d, min, max, list: carried > 0 && ep ? [...ep.list, item] : [item] };
     }
     if (!ep) {
@@ -284,46 +289,56 @@ export function sortByRecovery(rows) {
     || a.progress - b.progress || (b.lastAt || 0) - (a.lastAt || 0));
 }
 
-/** '10 h', '1.5 days' (hours below 48 h, else days to 0.5) */
-export function fmtSpan(hours) {
+// Durations and status are returned as data; the UI words them per language (plural forms, word order).
+
+/**
+ * A duration for display: whole hours below 48 h (at least 1), else days to 0.5.
+ * @param {number} hours @returns {{unit: 'h'|'days', value: number}}  10 → {h, 10}; 60 → {days, 2.5}
+ */
+export function span(hours) {
   const h = Math.max(0, hours);
-  if (h < 48) return `${Math.max(1, Math.round(h))} h`;
-  return `${round(Math.round((h / 24) * 2) / 2, 1)} days`;
+  if (h < 48) return { unit: 'h', value: Math.max(1, Math.round(h)) };
+  return { unit: 'days', value: round(Math.round((h / 24) * 2) / 2, 1) };
 }
 
-/** '10–34 h' or '2–3.5 days' (one unit for both ends) */
-export function fmtSpanRange(a, b) {
+/**
+ * A range of durations in one unit for both ends (hours while the upper end is below 48 h).
+ * @returns {{unit: 'h'|'days', lo: number, hi: number}} lo === hi when both round the same
+ *   (10, 34) → {h, 10, 34}; (24, 48) → {days, 1, 2}; (60, 96) → {days, 2.5, 4}
+ */
+export function spanRange(a, b) {
   const lo = Math.max(0, a);
   const hi = Math.max(lo, b);
   if (hi < 48) {
     const l = Math.max(1, Math.round(lo));
-    const r = Math.max(l, Math.round(hi));
-    return l === r ? `${r} h` : `${l}–${r} h`;
+    return { unit: 'h', lo: l, hi: Math.max(l, Math.round(hi)) };
   }
   const l = Math.max(0.5, Math.round((lo / 24) * 2) / 2);
-  const r = Math.max(l, Math.round((hi / 24) * 2) / 2);
-  return l === r ? `${r} days` : `${l}–${r} days`;
+  return { unit: 'days', lo: l, hi: Math.max(l, Math.round((hi / 24) * 2) / 2) };
+}
+
+/** Time since something, for "… ago": null below 1 h ("just now"), else span(hours). */
+export function agoSpan(hours) {
+  if (!isNum(hours) || hours < 1) return null;
+  return span(hours);
 }
 
 /**
- * Plain-words range for a row: 'ready in about 10–34 h', 'likely ready — full recovery in up to 12 h', 'recovered'.
+ * What to say about a row, as data:
+ *   {kind: 'untrained'}                                   no recent training
+ *   {kind: 'said', answer: 'recovered'|'sore', ago}      the user's check-in decides (ago = agoSpan, null = just now)
+ *   {kind: 'fresh'}                                       recovered
+ *   {kind: 'recovering', range}                           ready in about range (spanRange)
+ *   {kind: 'likely-ready', upTo}                          likely ready, full recovery in up to upTo (span)
  * @param {ReturnType<typeof muscleRecovery>[number]} r
  */
-export function recoveryWords(r) {
-  if (!r.trained) return 'no recent training';
-  if (r.said && r.said.shown) return `you said ${r.said.answer === 'sore' ? 'still sore' : 'recovered'} · ${fmtAgo(r.said.hoursAgo)}`;
-  if (r.status === 'fresh') return 'recovered';
+export function recoveryState(r) {
+  if (!r.trained) return { kind: 'untrained' };
+  if (r.said && r.said.shown) return { kind: 'said', answer: r.said.answer, ago: agoSpan(r.said.hoursAgo) };
+  if (r.status === 'fresh') return { kind: 'fresh' };
   const h = r.hoursSince;
-  if (r.status === 'recovering') return `ready in about ${fmtSpanRange(r.minHours - h, r.maxHours - h)}`;
-  return `likely ready — full recovery in up to ${fmtSpan(r.maxHours - h)}`;
-}
-
-export const STATUS_LABEL = Object.freeze({ recovering: 'Recovering', 'likely-ready': 'Likely ready', fresh: 'Recovered' });
-
-/** '6 h ago', 'just now', '2 days ago' */
-export function fmtAgo(hours) {
-  if (!isNum(hours) || hours < 1) return 'just now';
-  return `${fmtSpan(hours)} ago`;
+  if (r.status === 'recovering') return { kind: 'recovering', range: spanRange(r.minHours - h, r.maxHours - h) };
+  return { kind: 'likely-ready', upTo: span(r.maxHours - h) };
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -342,7 +357,7 @@ export function fmtAgo(hours) {
 // Effect on the current estimate (applyCheckin; only the latest answer of the current bout counts):
 //   recovered → 'fresh' for the rest of the bout.
 //   sore at s hours → at least 'recovering' until s + w and at least 'likely-ready' until s + 2w,
-//     w = max(12, maxHours − minHours). Shown as "you said still sore · 6 h ago", never as a new time.
+//     w = max(12, maxHours − minHours). Shown as the user's answer ("still sore · 6 h ago"), never as a new time.
 //
 // Learning (learnRange), per muscle, an interval-censored estimate of the user's base range:
 //   1. Normalise: u = hours / doseFactor(dose) — hours scaled to the reference dose (4 sets), the
@@ -426,8 +441,8 @@ const SEVERITY = { recovering: 0, 'likely-ready': 1, fresh: 2 };
 
 /**
  * Apply the latest check-in of the row's current bout (rule 9). Returns a new row; `said` =
- * { answer, at, hours, hoursAgo, shown } where shown = the answer decides the status (the words then
- * say "you said …"). Rows without a matching check-in are returned unchanged.
+ * { answer, at, hours, hoursAgo, shown } where shown = the answer decides the status (recoveryState
+ * then reports kind 'said'). Rows without a matching check-in are returned unchanged.
  */
 export function applyCheckin(row, checkins, now, ccfg = CHECKIN_CONFIG) {
   if (!row.trained || !Array.isArray(checkins)) return row;

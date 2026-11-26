@@ -176,6 +176,10 @@ button, input, select, textarea { font: inherit; color: inherit; font-variant-nu
 .t-body { font-size: var(--fs-body); line-height: var(--lh-body); font-weight: var(--fw-regular); }
 .t-sub { font-size: var(--fs-sub); line-height: var(--lh-sub); font-weight: var(--fw-regular); }
 .t-cap { font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: var(--fw-semibold); text-transform: uppercase; letter-spacing: .04em; }
+/* unit symbols inside capitalised headers stay as written ("kg", not "KG") */
+.no-caps { text-transform: none; }
+/* Chinese has no letter case: capitalised captions would only turn unit symbols into "KG" */
+:lang(zh) .t-cap, :lang(zh) .tile-label { text-transform: none; }
 .muted { color: var(--ink-2); }
 .faint { color: var(--ink-3); }
 .strong { font-weight: var(--fw-semibold); }
@@ -212,7 +216,7 @@ button, input, select, textarea { font: inherit; color: inherit; font-variant-nu
 .page-title-wrap { flex: 1 1 auto; min-width: 0; padding: 0 var(--s2); }
 .page-header.has-back .page-title-wrap { padding-left: 0; }
 .page-title-line { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
-.page-title { font-size: var(--fs-title); line-height: var(--lh-title); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.page-title { font-size: var(--fs-title); line-height: var(--lh-title); font-weight: var(--fw-semibold); overflow-wrap: anywhere; -webkit-hyphens: auto; hyphens: auto; }
 .page-subtitle { font-size: var(--fs-sub); line-height: var(--lh-sub); color: var(--ink-2); }
 .page-actions { display: flex; align-items: center; gap: var(--s1); flex: none; }
 
@@ -418,7 +422,7 @@ button.chip::after, a.chip::after { content: ""; position: absolute; inset: -4px
   color: var(--ink-2); font-size: var(--fs-cap); line-height: var(--lh-cap); font-weight: var(--fw-semibold);
   cursor: pointer;
 }
-.icon-tabs > button > span { max-width: 100%; text-align: center; overflow-wrap: break-word; }
+.icon-tabs > button > span { max-width: 100%; text-align: center; overflow-wrap: break-word; -webkit-hyphens: auto; hyphens: auto; }
 .icon-tabs > button .ic { width: 24px; height: 24px; }
 .icon-tabs > [aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
 
@@ -545,6 +549,7 @@ button.ring { cursor: pointer; }
   -webkit-tap-highlight-color: transparent;
 }
 .tab .ic { width: 24px; height: 24px; }
+.tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* long labels (de 'Einstellungen') never spill into the next tab */
 .tab[aria-current="page"] { color: var(--accent); }
 .tab:focus-visible { outline-offset: -2px; border-radius: var(--r-md); }
 

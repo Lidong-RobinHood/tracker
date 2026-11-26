@@ -34,15 +34,15 @@ export function upcEtoA(e) {
  * Normalise a decoded value to the code we look up.
  * @param {string} rawValue decoded text
  * @param {string} [format] BarcodeDetector format, e.g. 'ean_13', 'upc_e'
- * @returns {{code: string, note: string} | null} null if unusable
+ * @returns {{code: string, upcE: string|null} | null} null if unusable; upcE: the scanned UPC-E code it was expanded from
  */
 export function normaliseScan(rawValue, format) {
   const v = String(rawValue ?? '').trim();
   if (format === 'upc_e' && v.length === 8) {
     const a = upcEtoA(v);
-    if (a && checkDigitOk(a)) return { code: a, note: `UPC-E ${v} expanded` };
+    if (a && checkDigitOk(a)) return { code: a, upcE: v };
     return null;
   }
   if (!checkDigitOk(v)) return null;
-  return { code: v, note: '' };
+  return { code: v, upcE: null };
 }

@@ -55,10 +55,23 @@ test('interprets product lookup responses', () => {
   assert.equal(interpretProductResponse(200, { status: 0 }).outcome, 'not_found');
   const rl = interpretProductResponse(429, null);
   assert.equal(rl.outcome, 'error');
-  assert.match(rl.error, /429/);
-  assert.match(interpretProductResponse(503, null).error, /busy/);
-  assert.match(interpretProductResponse(500, null).error, /HTTP 500/);
+  assert.deepEqual(rl.error, { key: 'food.off.busy', params: { status: 429 } });
+  assert.deepEqual(interpretProductResponse(503, null).error, { key: 'food.off.busy', params: { status: 503 } });
+  assert.deepEqual(interpretProductResponse(500, null).error, { key: 'food.off.httpError', params: { status: 500 } });
   assert.equal(interpretProductResponse(200, null).outcome, 'error');
+  assert.deepEqual(interpretProductResponse(200, null).error, { key: 'food.off.unexpected', params: { status: 200 } });
+});
+
+test('product name: app language preferred for de/zh, unchanged order for en', () => {
+  const p = { code: '1', product_name: 'Milk', product_name_de: 'Milch', product_name_zh: '牛奶', nutriments: {} };
+  assert.equal(offProductToFood(p).food.name, 'Milk');
+  assert.equal(offProductToFood(p, { lang: 'en' }).food.name, 'Milk');
+  assert.equal(offProductToFood(p, { lang: 'de' }).food.name, 'Milch');
+  assert.equal(offProductToFood(p, { lang: 'zh' }).food.name, '牛奶');
+  assert.equal(offProductToFood({ ...p, product_name_zh: ' ' }, { lang: 'zh' }).food.name, 'Milk');
+  assert.equal(parseSearchResponse({ products: [p] }, { lang: 'de' })[0].food.name, 'Milch');
+  assert.equal(interpretProductResponse(200, { status: 1, product: p }, { lang: 'zh' }).food.name, '牛奶');
+  assert.match(productUrl('1'), /product_name_zh/);
 });
 
 test('parses search responses, drops nameless and duplicate products', () => {

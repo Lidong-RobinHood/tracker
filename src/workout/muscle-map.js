@@ -13,13 +13,14 @@
 //   setsMapRow(map, bands, label)  map + band legend side by side (legend under the map below 360 px)
 //   setsRow(name, c, opts)      one muscle as a list row: swatch, name, 'x direct · y partial', total
 import { el, replaceChildren, bodyMap, setBodyMapValues, muscleIcon, openSheet, fmtNum } from '../ui/index.js';
-import { muscleName } from '../core/muscles.js';
-import { ensureCss } from './data.js';
+import { t } from '../i18n/index.js';
+import { muscleName } from '../i18n/names.js';
+import { ensureCss, exLabel, joinList } from './data.js';
 import { workoutSets, mapSteps } from '../core/routine-sets.js';
 
 // ---------------------------------------------------------------- exercise muscles
 
-const names = (ids) => (ids || []).map(muscleName).join(', ');
+const names = (ids) => joinList((ids || []).map(muscleName));
 
 /** Body-map values: direct muscles in the accent, partial ones in the second accent step. */
 export function exerciseMapValues(primary = [], secondary = []) {
@@ -33,7 +34,8 @@ export function exerciseMapValues(primary = [], secondary = []) {
 export function musclesLabel(primary = [], secondary = []) {
   const p = names(primary);
   const s = names(secondary);
-  return `Muscles. Direct: ${p || 'none'}${s ? `. Partial: ${s}` : ''}`;
+  const direct = p || t('workout.muscles.none');
+  return s ? t('workout.muscles.ariaBoth', { direct, partial: s }) : t('workout.muscles.aria', { direct });
 }
 
 /**
@@ -50,7 +52,7 @@ export function musclesBlock({ primary = [], secondary = [], small = false } = {
     el('span', { class: 'wk-mus-item' }, el('span', { class: 'wk-mus-term' }, term), namesEl));
   const node = el('div', { class: ['wk-mus', small && 'is-small'] }, map,
     el('ul', { class: 'legend wk-mus-legend', 'aria-hidden': 'true' },
-      item('is-accent', 'Direct', direct), item('is-partial', 'Partial', partial)));
+      item('is-accent', t('workout.muscles.direct'), direct), item('is-partial', t('workout.muscles.partial'), partial)));
   const update = (p, s) => {
     setBodyMapValues(map, exerciseMapValues(p, s));
     map.setAttribute('aria-label', musclesLabel(p, s));
@@ -64,7 +66,7 @@ export function musclesBlock({ primary = [], secondary = [], small = false } = {
 /** Sheet with the muscles of one exercise (no navigation away from the session). */
 export function openMusclesSheet(ex) {
   const block = musclesBlock({ primary: ex.primary, secondary: ex.secondary });
-  return openSheet({ title: ex.name, content: block.node, className: 'wk-mus-sheet' });
+  return openSheet({ title: exLabel(ex), content: block.node, className: 'wk-mus-sheet' });
 }
 
 // One muscleIcon per muscle and size, cloned per row: a list of 100+ rows builds 12 icons at most.
@@ -83,10 +85,10 @@ export function rowMuscleIcon(id, size = 36) {
   return svg;
 }
 
-/** Muscle filter chip with the muscle's icon (library, picker). */
+/** Muscle filter chip with the muscle's icon (library, picker). @param {{id: string}} m */
 export function muscleChip(m, pressed, onClick) {
   return el('button', { type: 'button', class: 'chip wk-mchip-f', 'aria-pressed': pressed ? 'true' : 'false', onClick },
-    rowMuscleIcon(m.id, 24), m.name);
+    rowMuscleIcon(m.id, 24), muscleName(m.id));
 }
 
 /** Direct muscles, then the partial ones (quieter): for a row's sub line. */
@@ -114,9 +116,15 @@ export function setsMap(cls) {
   return bodyMap({ view: 'both', class: ['wk-ramp', cls].filter(Boolean).join(' ') });
 }
 
+/** Text of a legend band: core bands carry a catalogue key + params (set-bands.js), others a ready label. */
+export function bandText(b) {
+  return b.key ? t(b.key, b.params) : b.label;
+}
+
 /**
  * The map with its band legend beside it (under it below 360 px).
- * @param {SVGSVGElement} map @param {{step: number, label: string}[]} bands @param {string} label legend name
+ * @param {SVGSVGElement} map @param {{step: number, key?: string, params?: object, label?: string}[]} bands
+ * @param {string} label legend name
  * @param {{caption?: string|null}} [opts] caption: a caps line above the bands (what they count)
  */
 export function setsMapRow(map, bands, label, { caption = null } = {}) {
@@ -124,7 +132,7 @@ export function setsMapRow(map, bands, label, { caption = null } = {}) {
   return el('div', { class: 'wk-map-row' }, map,
     el('ul', { class: 'legend wk-map-legend wk-ramp', 'aria-label': label },
       caption ? el('li', { class: 't-cap muted wk-legend-cap', 'aria-hidden': 'true' }, caption) : null,
-      bands.map((b) => el('li', el('span', { class: ['swatch', b.step ? `is-${b.step}` : null] }), b.label))));
+      bands.map((b) => el('li', el('span', { class: ['swatch', b.step ? `is-${b.step}` : null] }), bandText(b)))));
 }
 
 /**
@@ -136,7 +144,7 @@ export function setsMapRow(map, bands, label, { caption = null } = {}) {
  */
 export function setsRow(name, c, { step, extra = [], target = null }) {
   ensureCss();
-  const parts = [`${fmtNum(c.direct, 1)} direct`, `${fmtNum(c.partial, 1)} partial`, ...extra];
+  const parts = [t('workout.muscles.nDirect', { n: fmtNum(c.direct, 1) }), t('workout.muscles.nPartial', { n: fmtNum(c.partial, 1) }), ...extra];
   return el('div', { class: 'list-item wk-sets-row' },
     el('span', { class: ['swatch', `is-${step}`] }),
     el('div', { class: 'li-main' },

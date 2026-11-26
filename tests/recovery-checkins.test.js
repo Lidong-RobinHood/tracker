@@ -3,9 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  muscleRecovery, recoveryWords, doseFactor, recoveryWindow, RECOVERY_CONFIG, CHECKIN_CONFIG,
+  muscleRecovery, recoveryState, doseFactor, recoveryWindow, RECOVERY_CONFIG, CHECKIN_CONFIG,
   makeCheckin, addCheckin, removeCheckin, sanitiseCheckins, applyCheckin, checkinBouts, learnRange, learnRanges,
-  learnedBase, recoverySettings, withBase, withRule, validateRange, fmtAgo,
+  learnedBase, recoverySettings, withBase, withRule, validateRange, agoSpan,
 } from '../src/core/recovery.js';
 
 const H = 3600000;
@@ -68,7 +68,7 @@ test('"recovered" shows the muscle recovered for the rest of the bout, marked as
   assert.equal(r.modelStatus, 'recovering');
   assert.equal(r.status, 'fresh');
   assert.equal(r.progress, 100);
-  assert.equal(recoveryWords(r), 'you said recovered · 6 h ago');
+  assert.deepEqual(recoveryState(r), { kind: 'said', answer: 'recovered', ago: { unit: 'h', value: 6 } });
   // Training again starts a new bout: the old answer no longer applies.
   const r2 = get(run([...ws, W(2, { bench: S(4) }, 'again')], { checkins: [c] }), 'chest');
   assert.equal(r2.said, null);
@@ -83,7 +83,7 @@ test('"still sore" after the predicted max keeps the muscle recovering, labelled
   assert.equal(r.modelStatus, 'fresh');
   assert.equal(r.status, 'recovering');
   assert.equal(r.said.shown, true);
-  assert.equal(recoveryWords(r), 'you said still sore · 6 h ago');
+  assert.deepEqual(recoveryState(r), { kind: 'said', answer: 'sore', ago: { unit: 'h', value: 6 } });
   assert.deepEqual([r.minHours, r.maxHours], [48, 72]); // the estimate itself is not rewritten
   // Held w = max(12, 72 − 48) = 24 h recovering, then 24 h likely ready, then the model again.
   const at = (h) => get(run(ws, { checkins: [c] }, bout + h * H), 'chest').status;
@@ -99,11 +99,11 @@ test('"still sore" inside the window turns likely ready into recovering; before 
   const r = get(run(ws, { checkins: [ck('chest', 'sore', 58, { boutAt: bout })] }), 'chest');
   assert.equal(r.modelStatus, 'likely-ready');
   assert.equal(r.status, 'recovering');
-  assert.match(recoveryWords(r), /^you said still sore · 2 h ago$/);
+  assert.deepEqual(recoveryState(r), { kind: 'said', answer: 'sore', ago: { unit: 'h', value: 2 } });
   const early = get(run([W(20, { bench: S(4) })], { checkins: [ck('chest', 'sore', 18, { boutAt: NOW - 20 * H })] }), 'chest');
   assert.equal(early.status, 'recovering');
   assert.equal(early.said.shown, false); // agrees with the model: the model's words stay
-  assert.match(recoveryWords(early), /^ready in about/);
+  assert.equal(recoveryState(early).kind, 'recovering');
 });
 
 test('the latest answer of the bout wins; future check-ins are ignored', () => {
@@ -123,8 +123,8 @@ test('no check-ins: identical rows to the model without them (existing users)', 
   const b = run(ws, { factor: 1.25, checkins: [], learned: null });
   assert.deepEqual(a, b);
   for (const r of a) assert.equal(r.source, 'rule');
-  assert.equal(fmtAgo(0.2), 'just now');
-  assert.equal(fmtAgo(50), '2 days ago');
+  assert.equal(agoSpan(0.2), null); // just now
+  assert.deepEqual(agoSpan(50), { unit: 'days', value: 2 });
 });
 
 // ---------------------------------------------------------------- learning

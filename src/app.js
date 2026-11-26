@@ -2,7 +2,7 @@
 import { el, closeAllOverlays, icon } from './ui/index.js';
 import { _dropStaleOverlayEntry } from './ui/overlay.js';
 import { _noteNavigation } from './ui/nav.js';
-import { openDb, seedExercises } from './db/db.js';
+import { openDb, seedExercises, getSetting, setSetting } from './db/db.js';
 import { SEED_EXERCISES, SEED_VERSION } from './data/exercises.js';
 import { routes as foodRoutes } from './food/index.js';
 import { routes as workoutRoutes } from './workout/index.js';
@@ -11,14 +11,19 @@ import { routes as settingsRoutes } from './settings/index.js';
 import { routes as importRoutes } from './import/index.js';
 import { routes as onboardingRoutes, startAppServices } from './onboarding/index.js';
 import { routes as splitRoutes } from './splits/index.js';
+import { initI18n, t, readStoredChoice, setLanguage, isChoice, SETTING_KEY } from './i18n/index.js';
 
-/** Tabs in the bottom bar. A route belongs to the tab named by its `tab` field, else its first path segment. */
+/**
+ * Tabs in the bottom bar. A route belongs to the tab named by its `tab` field, else its first path segment.
+ * Labels are catalogue keys: t() runs when the bar is built, after the language is loaded.
+ */
 const TABS = [
-  { id: 'diary', label: 'Diary', icon: 'utensils' },
-  { id: 'workout', label: 'Workout', icon: 'barbell' },
-  { id: 'trends', label: 'Trends', icon: 'chart-line' },
-  { id: 'settings', label: 'Settings', icon: 'settings' },
+  { id: 'diary', label: 'app.tab.diary', icon: 'utensils' },
+  { id: 'workout', label: 'app.tab.workout', icon: 'barbell' },
+  { id: 'trends', label: 'app.tab.trends', icon: 'chart-line' },
+  { id: 'settings', label: 'app.tab.settings', icon: 'settings' },
 ];
+const APP_NAME = 'Tracker'; // i18n-ignore (product name, never translated)
 const DEFAULT_PATH = 'diary';
 
 const ROUTES = [...foodRoutes, ...workoutRoutes, ...trendsRoutes, ...settingsRoutes, ...importRoutes, ...onboardingRoutes, ...splitRoutes].map(compile);
@@ -61,9 +66,10 @@ const tabbar = document.getElementById('tabbar');
 const tabLinks = new Map();
 
 function buildTabbar() {
-  for (const t of TABS) {
-    const a = el('a', { class: 'tab', href: `#/${t.id}` }, icon(t.icon, { size: 24 }), el('span', t.label));
-    tabLinks.set(t.id, a);
+  tabbar.setAttribute('aria-label', t('app.tabbar.label'));
+  for (const tab of TABS) {
+    const a = el('a', { class: 'tab', href: `#/${tab.id}` }, icon(tab.icon, { size: 24 }), el('span', t(tab.label)));
+    tabLinks.set(tab.id, a);
     tabbar.appendChild(a);
   }
 }
@@ -98,14 +104,15 @@ async function render() {
 
   if (!found) {
     setActiveTab(path.split('/')[0]);
-    document.title = 'Not found · Tracker';
+    document.title = `${t('app.notFound.title')} · ${APP_NAME}`;
     container.append(el('div', { class: 'empty' },
-      el('p', `No page at "#/${path}".`), el('a', { class: 'btn', href: `#/${DEFAULT_PATH}` }, 'Go to diary')));
+      el('p', t('app.notFound.text', { path })), el('a', { class: 'btn', href: `#/${DEFAULT_PATH}` }, t('app.notFound.action'))));
     return;
   }
   const { route, params } = found;
   setActiveTab(route.tab || route.segs[0]);
-  document.title = route.title ? `${route.title} · Tracker` : 'Tracker';
+  const title = route.titleKey ? t(route.titleKey) : route.title;
+  document.title = title ? `${title} · ${APP_NAME}` : APP_NAME;
 
   try {
     const result = await route.mount(container, params, { path, query });
@@ -117,7 +124,7 @@ async function render() {
     console.error(`Route "${route.path}" failed to mount`, err);
     if (token === navToken) {
       container.replaceChildren(el('div', { class: 'card error-card' },
-        el('h2', 'Something went wrong'), el('p', { class: 'muted' }, String(err && err.message || err))));
+        el('h2', t('app.error.title')), el('p', { class: 'muted' }, String(err && err.message || err))));
     }
   }
 }
@@ -137,21 +144,39 @@ window.addEventListener('pagehide', (e) => { if (!e.persisted) runCleanup(); });
 
 // ---------------------------------------------------------------- boot
 
+/**
+ * The language choice lives in localStorage (read synchronously, so the catalogue loads in parallel
+ * with the database) and in settings key 'language' (so backups carry it). After a backup import the
+ * settings value differs: it wins and is copied back to localStorage. A device choice that is not in
+ * the settings yet (old backup imported, storage cleared) is written there.
+ */
+async function syncLanguageSetting() {
+  const local = readStoredChoice();
+  const stored = await getSetting(SETTING_KEY);
+  if (isChoice(stored) && stored !== local) await setLanguage(stored);
+  else if (!isChoice(stored) && local !== 'auto') await setSetting(SETTING_KEY, local);
+}
+
 async function boot() {
-  buildTabbar();
+  const language = initI18n(); // catalogues load while the database opens; awaited before anything renders
   _dropStaleOverlayEntry(); // reloaded while a sheet was open: step back to the page's own entry
-  window.addEventListener('hashchange', render);
   try {
     await openDb();
     const added = await seedExercises(SEED_EXERCISES, SEED_VERSION);
     if (added) console.info(`Seeded ${added} exercises`);
   } catch (err) {
     console.error('Database setup failed', err);
+    await language;
+    buildTabbar();
     main.replaceChildren(el('div', { class: 'card error-card' },
-      el('h2', 'Storage unavailable'),
-      el('p', 'This browser blocked local storage (private mode?). Data cannot be saved.')));
+      el('h2', t('app.storage.title')),
+      el('p', t('app.storage.text'))));
     return;
   }
+  await language;
+  await syncLanguageSetting().catch((err) => console.error('Language setting sync failed', err));
+  buildTabbar();
+  window.addEventListener('hashchange', render);
   await render();
 
   let reg = null;

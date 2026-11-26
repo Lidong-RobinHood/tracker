@@ -3,15 +3,16 @@
 // button and a running session shows neither. Shared segmented control; tapping the current section
 // does nothing (no duplicate history entry).
 import { segmented, navigate } from '../ui/index.js';
+import { t } from '../i18n/index.js';
 
-const ITEMS = [['train', 'workout', 'Train'], ['analysis', 'workout/analysis', 'Analysis'], ['history', 'workout/history', 'History']];
+const ITEMS = [['train', 'workout', 'workout.nav.train'], ['analysis', 'workout/analysis', 'workout.nav.analysis'], ['history', 'workout/history', 'workout.nav.history']];
 
 /** @param {'train'|'analysis'|'history'} current */
 export function workoutNav(current) {
   const seg = segmented({
-    options: ITEMS.map(([value, , label]) => ({ value, label })),
+    options: ITEMS.map(([value, , key]) => ({ value, label: t(key) })),
     value: current,
-    ariaLabel: 'Workout sections',
+    ariaLabel: t('workout.nav.aria'),
     onChange: (v) => {
       const item = ITEMS.find(([key]) => key === v);
       if (item) navigate(item[1]);

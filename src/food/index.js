@@ -2,6 +2,7 @@
 import { el, pageHeader } from '../ui/index.js';
 import { isValidDate, today } from '../core/dates.js';
 import { isMeal, mealForTime } from '../core/food-diary.js';
+import { t } from '../i18n/index.js';
 import { mountDiary } from './diary-view.js';
 import { mountAdd } from './add-view.js';
 import { mountPhotoSettings } from './photo-settings-view.js';
@@ -14,14 +15,14 @@ function mountAddChecked(container, params, ctx) {
 }
 
 function mountBadDate(container, params) {
-  container.append(pageHeader({ title: 'Diary', back: 'diary' }),
-    el('div', { class: 'card' }, el('p', `“${params.date}” is not a valid date.`)));
+  container.append(pageHeader({ title: t('food.diary.title'), back: 'diary' }),
+    el('div', { class: 'card' }, el('p', t('food.diary.badDate', { date: params.date }))));
 }
 
 /** @type {import('../types.js').Route[]} */
 export const routes = [
-  { path: 'diary', title: 'Diary', mount: mountDiary },
-  { path: 'diary/:date', title: 'Diary', mount: (c, p, ctx) => (isValidDate(p.date) ? mountDiary(c, p, ctx) : mountBadDate(c, p)) },
-  { path: 'food/add/:date/:meal', title: 'Add food', tab: 'diary', mount: mountAddChecked },
-  { path: 'food/photo-settings', title: 'Meal photos', tab: 'settings', mount: mountPhotoSettings },
+  { path: 'diary', titleKey: 'food.diary.title', mount: mountDiary },
+  { path: 'diary/:date', titleKey: 'food.diary.title', mount: (c, p, ctx) => (isValidDate(p.date) ? mountDiary(c, p, ctx) : mountBadDate(c, p)) },
+  { path: 'food/add/:date/:meal', titleKey: 'food.portion.title', tab: 'diary', mount: mountAddChecked },
+  { path: 'food/photo-settings', titleKey: 'food.photoSettings.title', tab: 'settings', mount: mountPhotoSettings },
 ];

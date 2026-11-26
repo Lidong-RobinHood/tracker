@@ -15,7 +15,8 @@ import { isValidDate, parseDate, addDays } from './dates.js';
 import { round } from './numbers.js';
 
 export const BASELINE_KIND = 'baseline';
-export const BASELINE_NAME = 'Starting point';
+/** Stored record name (data, not UI: screens show workout.startingPoint.title for isBaseline records). */
+export const BASELINE_NAME = 'Starting point'; // i18n-ignore: stored sentinel name
 export const DEFAULT_BASELINE_SETS = 3;
 export const MAX_BASELINE_SETS = 10;
 export const MAX_BASELINE_WEIGHT = 1000;
@@ -93,12 +94,12 @@ export function baselineRows(workout) {
  * Check editor input. Rows that are completely empty (no weight, reps or best) are dropped.
  * @param {{date: string, rows: object[]}} input
  * @param {{today: string, isBodyweight?: (exerciseId: string) => boolean}} ctx
- * @returns {{ok: true, value: {date: string, rows: object[]}} | {ok: false, error: string, row?: number, field?: string}}
- *   row = index into input.rows
+ * @returns {{ok: true, value: {date: string, rows: object[]}} | {ok: false, error: string, params?: object, row?: number, field?: string}}
+ *   row = index into input.rows; error = catalogue key (workout.baseline.err*) with optional params, translated by the UI
  */
 export function validateBaseline({ date, rows }, { today, isBodyweight = () => false }) {
-  if (!isValidDate(date)) return { ok: false, error: 'Pick the date.', field: 'date' };
-  if (date > today) return { ok: false, error: 'The date cannot be in the future.', field: 'date' };
+  if (!isValidDate(date)) return { ok: false, error: 'workout.baseline.errDate', field: 'date' };
+  if (date > today) return { ok: false, error: 'workout.baseline.errFuture', field: 'date' };
   const out = [];
   const seen = new Set();
   for (let i = 0; i < (rows || []).length; i++) {
@@ -109,19 +110,19 @@ export function validateBaseline({ date, rows }, { today, isBodyweight = () => f
     const bestWeight = bw ? null : r.bestWeight;
     const empty = [weight, r.reps, bestWeight, r.bestReps].every((v) => v === null || v === undefined);
     if (empty) continue;
-    if (seen.has(r.exerciseId)) return { ok: false, error: 'This exercise is listed twice.', row: i };
+    if (seen.has(r.exerciseId)) return { ok: false, error: 'workout.baseline.errTwice', row: i };
     seen.add(r.exerciseId);
     const bad = (v, max, int) => !isNum(v) || v <= 0 || v > max || (int && !Number.isInteger(v));
-    if (!bw && bad(weight, MAX_BASELINE_WEIGHT)) return { ok: false, error: 'Enter the working weight in kg.', row: i, field: 'weight' };
-    if (bad(r.reps, MAX_BASELINE_REPS, true)) return { ok: false, error: 'Enter the reps.', row: i, field: 'reps' };
+    if (!bw && bad(weight, MAX_BASELINE_WEIGHT)) return { ok: false, error: 'workout.baseline.errWeight', row: i, field: 'weight' };
+    if (bad(r.reps, MAX_BASELINE_REPS, true)) return { ok: false, error: 'workout.baseline.errReps', row: i, field: 'reps' };
     const sets = r.sets === null || r.sets === undefined ? DEFAULT_BASELINE_SETS : r.sets;
-    if (bad(sets, MAX_BASELINE_SETS, true)) return { ok: false, error: `Sets must be 1–${MAX_BASELINE_SETS}.`, row: i, field: 'sets' };
+    if (bad(sets, MAX_BASELINE_SETS, true)) return { ok: false, error: 'workout.baseline.errSets', params: { max: MAX_BASELINE_SETS }, row: i, field: 'sets' };
     let best = null;
     const hasBestW = bestWeight !== null && bestWeight !== undefined;
     const hasBestR = r.bestReps !== null && r.bestReps !== undefined;
     if (hasBestW || hasBestR) {
-      if (!bw && bad(bestWeight, MAX_BASELINE_WEIGHT)) return { ok: false, error: 'Enter the best set’s weight, or clear it.', row: i, field: 'bestWeight' };
-      if (bad(r.bestReps, MAX_BASELINE_REPS, true)) return { ok: false, error: 'Enter the best set’s reps, or clear it.', row: i, field: 'bestReps' };
+      if (!bw && bad(bestWeight, MAX_BASELINE_WEIGHT)) return { ok: false, error: 'workout.baseline.errBestWeight', row: i, field: 'bestWeight' };
+      if (bad(r.bestReps, MAX_BASELINE_REPS, true)) return { ok: false, error: 'workout.baseline.errBestReps', row: i, field: 'bestReps' };
       const bwt = bw ? null : round(bestWeight, 2);
       if (!(bwt === (bw ? null : round(weight, 2)) && r.bestReps === r.reps)) best = { weight: bwt, reps: r.bestReps };
     }

@@ -19,9 +19,11 @@
 //     also be a second column (body fat), so it is reported as a guess in the preview (notes +
 //     a warning on the line).
 //   ISO timestamps ("2026-11-12T07:30", optional seconds and zone) use their local date.
-import { splitLines, findDate, detectDateOrder, parseNumber, stripWeekdays } from './import-common.js';
+import { splitLines, findDate, detectDateOrder, parseNumber, stripWeekdays, msg } from './import-common.js';
 
 import { MIN_KG, MAX_KG, isPlausibleKg } from './body-weight.js';
+
+/** @typedef {import('./import-common.js').ImportMsg} ImportMsg */
 
 export { MIN_KG, MAX_KG }; // shared range (src/core/body-weight.js)
 
@@ -31,13 +33,13 @@ const LB_RE = /\b(lbs?|pounds?|pfund)\b/i;
  * Read the weight part of a line (date already removed).
  * @param {string} rest
  * @param {{commaColumns?: boolean}} [opts] commaColumns: commas are column separators (from the header)
- * @returns {{kg: number|null, extra: boolean, error: string|null, guess?: string|null}} guess: the text
+ * @returns {{kg: number|null, extra: boolean, error: import('./import-common.js').ImportMsg|null, guess?: string|null}} guess: the text
  *   when a comma with two digits after it was read as a decimal comma ("82,18")
  */
 export function readWeightRest(rest, { commaColumns = false } = {}) {
   let s = String(rest ?? '').replace(/\b\d{1,2}:\d{2}(:\d{2})?\s*(am|pm)?\b/i, ' ').replace(/kg\b/gi, ' ').trim();
   s = s.replace(/^[\s,;|]+|[\s,;|]+$/g, '');
-  if (!s) return { kg: null, extra: false, error: 'No weight on this line' };
+  if (!s) return { kg: null, extra: false, error: msg('import.weights.noWeight') };
   if (!commaColumns) {
     const one = parseNumber(s.replace(/\s+/g, ''), 'auto');
     if (one !== null && !/\s/.test(s)) return { kg: one, extra: false, error: null, guess: /^\d+,\d{2}$/.test(s) ? s : null };
@@ -46,12 +48,12 @@ export function readWeightRest(rest, { commaColumns = false } = {}) {
   if (tokens.length === 1 && tokens[0].includes(',')) {
     // Only commas: "82,5" handled above; "82.5,18.2" / "82,18" are columns.
     tokens = tokens[0].split(',').filter(Boolean);
-    if (tokens.length > 1 && tokens.every((t) => /^\d+$/.test(t))) return { kg: null, extra: false, error: `"${s}" is ambiguous. Use a semicolon or tab between columns, or a dot as decimal mark` };
+    if (tokens.length > 1 && tokens.every((t) => /^\d+$/.test(t))) return { kg: null, extra: false, error: msg('import.weights.ambiguous', { text: s }) };
   }
   const nums = tokens.map((t) => parseNumber(t, 'auto'));
   const firstIdx = nums.findIndex((n) => n !== null);
-  if (firstIdx < 0) return { kg: null, extra: false, error: `Could not read a weight in "${s}"` };
-  if (tokens.some((t, i) => nums[i] === null && /\p{L}/u.test(t))) return { kg: null, extra: false, error: `Unexpected text "${s}"` };
+  if (firstIdx < 0) return { kg: null, extra: false, error: msg('import.weights.noNumber', { text: s }) };
+  if (tokens.some((t, i) => nums[i] === null && /\p{L}/u.test(t))) return { kg: null, extra: false, error: msg('import.weights.unexpectedText', { text: s }) };
   return { kg: nums[firstIdx], extra: nums.filter((n) => n !== null).length > 1, error: null };
 }
 
@@ -59,8 +61,9 @@ export function readWeightRest(rest, { commaColumns = false } = {}) {
  * Parse a weight paste or file.
  * @param {string} text
  * @param {{today: string, dateOrder?: 'auto'|'dmy'|'mdy'}} opts
- * @returns {{rows: {line: number, date: string, kg: number}[], issues: {line: number, text: string, message: string, level: 'error'|'warning'|'info'}[],
- *   fatal: string|null, dateOrder: 'dmy'|'mdy', dateOrderAmbiguous: boolean, notes: string[]}}
+ * @returns {{rows: {line: number, date: string, kg: number}[], issues: {line: number, text: string, message: ImportMsg, level: 'error'|'warning'|'info'}[],
+ *   fatal: ImportMsg|null, dateOrder: 'dmy'|'mdy', dateOrderAmbiguous: boolean, notes: ImportMsg[]}}
+ *   (ImportMsg: {key, params} from import-common.msg; the UI translates)
  *   notes: file-level remarks for the preview (how commas were read, guesses)
  */
 export function parseWeightText(text, { today, dateOrder = 'auto' } = {}) {
@@ -87,11 +90,11 @@ export function parseWeightText(text, { today, dateOrder = 'auto' } = {}) {
     if (LB_RE.test(line)) { lbLines.push(i + 1); return; }
     const d = findDate(line, { order: det.order, today });
     if (!d) {
-      if (!seenData && /\p{L}/u.test(line)) { issue(i, 'Header row, ignored', 'info'); return; }
-      issue(i, 'No date found on this line');
+      if (!seenData && /\p{L}/u.test(line)) { issue(i, msg('import.weights.headerIgnored'), 'info'); return; }
+      issue(i, msg('import.weights.noDate'));
       return;
     }
-    if (!d.date) { issue(i, d.error || 'Not a valid date'); return; }
+    if (!d.date) { issue(i, d.error || msg('import.date.notValid')); return; }
     seenData = true;
     const iso = isoTime(line, d);
     const date = iso ? iso.date : d.date;
@@ -101,26 +104,29 @@ export function parseWeightText(text, { today, dateOrder = 'auto' } = {}) {
     if (columnMode && !/[;\t|]/.test(line)) {
       const fields = (line.slice(0, d.start) + 'D' + after).split(',').length;
       if (fields > headerCols.length) {
-        issue(i, `"${line}": comma is ambiguous. Use a decimal dot, or ; or tab between columns`);
+        issue(i, msg('import.weights.lineAmbiguous', { text: line }));
         return;
       }
       if (fields === headerCols.length) { commaColumns = true; columnLines++; }
     }
     const w = readWeightRest(stripWeekdays(rest), { commaColumns });
     if (w.error) { issue(i, w.error); return; }
-    if (w.extra) issue(i, 'More than one number after the date; the first one is used as kg, the rest is ignored', 'warning');
-    if (w.guess) { guesses.push(w.guess); issue(i, `"${w.guess}" read as ${parseNumber(w.guess, 'comma')} kg (decimal comma). If the part after the comma is a second column, add a header row`, 'warning'); }
+    if (w.extra) issue(i, msg('import.weights.extraNumbers'), 'warning');
+    if (w.guess) { guesses.push(w.guess); issue(i, msg('import.weights.guessLine', { text: w.guess, kg: parseNumber(w.guess, 'comma') }), 'warning'); }
     rows.push({ line: i + 1, date, kg: Math.round(w.kg * 100) / 100 });
   });
   if (columnLines) {
     const ignored = headerCols.filter((h) => !/date|datum|day|tag|time|zeit|uhr/i.test(h)).slice(1).filter(Boolean);
-    notes.push(`Commas are read as column separators (the header has ${headerCols.length} columns: ${headerCols.join(', ')}). The first number after the date is the weight in kg${ignored.length ? `; ${ignored.map((h) => `"${h}"`).join(', ')} ${ignored.length === 1 ? 'is' : 'are'} ignored` : ''}.`);
+    notes.push(ignored.length
+      ? msg('import.weights.noteColumnsIgnored', { cols: headerCols.length, names: headerCols, count: ignored.length, ignored })
+      : msg('import.weights.noteColumns', { cols: headerCols.length, names: headerCols }));
   }
   if (guesses.length) {
-    notes.push(`Guess: read "${guesses[0]}" as ${parseNumber(guesses[0], 'comma')} kg (decimal comma)${guesses.length > 1 ? `, and ${guesses.length - 1} more like it` : ''}. Two columns? Add a header row or use ; or tab.`);
+    const g = { text: guesses[0], kg: parseNumber(guesses[0], 'comma') };
+    notes.push(guesses.length > 1 ? msg('import.weights.guessNoteMore', { ...g, count: guesses.length - 1 }) : msg('import.weights.guessNote', g));
   }
   const fatal = lbLines.length
-    ? `Line${lbLines.length > 1 ? 's' : ''} ${lbLines.slice(0, 8).join(', ')} mention pounds (lb). Only kilograms are supported; convert the column to kg first (kg = lb × 0.4536).`
+    ? msg('import.weights.pounds', { count: lbLines.length, lines: lbLines.slice(0, 8) })
     : null;
   return { rows: fatal ? [] : rows, issues, fatal, dateOrder: det.order, dateOrderAmbiguous: det.ambiguous, notes };
 }
@@ -155,10 +161,10 @@ export function analyseWeights(rows, { today, existing }) {
   const flagged = [];
   const byDate = new Map();
   for (const r of rows) {
-    if (!isPlausibleKg(r.kg)) { flagged.push({ ...r, reason: `${r.kg} kg is outside ${MIN_KG}–${MAX_KG} kg` }); continue; }
-    if (r.date > today) { flagged.push({ ...r, reason: 'Date is in the future' }); continue; }
+    if (!isPlausibleKg(r.kg)) { flagged.push({ ...r, reason: msg('import.weights.outside', { kg: r.kg, min: MIN_KG, max: MAX_KG }) }); continue; }
+    if (r.date > today) { flagged.push({ ...r, reason: msg('import.weights.future') }); continue; }
     const prev = byDate.get(r.date);
-    if (prev) flagged.push({ ...prev, reason: `Same day again on line ${r.line}; that line is used` });
+    if (prev) flagged.push({ ...prev, reason: msg('import.weights.sameDay', { line: r.line }) });
     byDate.set(r.date, r);
   }
   const valid = [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));

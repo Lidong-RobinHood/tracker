@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { msgText as txt } from '../src/import/messages.js'; // importer messages are {key, params}; English text
 import { parseWeightText, readWeightRest, analyseWeights, planWeights } from '../src/core/import-weights.js';
 
 const T = '2026-11-19';
@@ -21,9 +22,9 @@ test('readWeightRest: commas as decimal mark vs column separator', () => {
   assert.equal(readWeightRest('82,5;').kg, 82.5);
   const two = readWeightRest(',82.5,18.2');
   assert.deepEqual([two.kg, two.extra], [82.5, true]);
-  assert.match(readWeightRest(',82,18,5').error, /ambiguous/);
-  assert.match(readWeightRest('').error, /No weight/);
-  assert.match(readWeightRest('heavy').error, /weight|Unexpected/);
+  assert.match(txt(readWeightRest(',82,18,5').error), /ambiguous/);
+  assert.match(txt(readWeightRest('').error), /No weight/);
+  assert.match(txt(readWeightRest('heavy').error), /weight|Unexpected/);
 });
 
 test('header rows are skipped, CRLF/BOM handled, blank lines ignored', () => {
@@ -34,9 +35,9 @@ test('header rows are skipped, CRLF/BOM handled, blank lines ignored', () => {
 
 test('pounds are refused with the line numbers', () => {
   const r = parse('Date,Weight (lbs)\n2026-11-12,182');
-  assert.match(r.fatal, /pounds/);
+  assert.match(txt(r.fatal), /pounds/);
   assert.deepEqual(r.rows, []);
-  assert.match(parse('12.11.2026 182 lb').fatal, /Line 1/);
+  assert.match(txt(parse('12.11.2026 182 lb').fatal), /Line 1 mentions/);
 });
 
 test('line errors are numbered', () => {
@@ -58,9 +59,9 @@ test('analyseWeights: implausible, future, duplicates, conflicts, summary', () =
   assert.equal(a.count, 3);
   assert.deepEqual(a.valid.map((x) => [x.date, x.kg]), [['2026-11-12', 82.5], ['2026-11-14', 82.0], ['2026-11-15', 81.8]]);
   assert.deepEqual(a.flagged.map((f) => f.line), [2, 3, 5]);
-  assert.match(a.flagged[0].reason, /outside 30–300/);
-  assert.match(a.flagged[1].reason, /line 4/);
-  assert.match(a.flagged[2].reason, /future/);
+  assert.match(txt(a.flagged[0].reason), /outside 30–300/);
+  assert.match(txt(a.flagged[1].reason), /line 4/);
+  assert.match(txt(a.flagged[2].reason), /future/);
   assert.deepEqual(a.conflicts.map((c) => [c.date, c.existingKg]), [['2026-11-15', 81]]);
   assert.deepEqual([a.from, a.to, a.min, a.max], ['2026-11-12', '2026-11-15', 81.8, 82.5]);
 });
@@ -100,14 +101,14 @@ test('a year of daily weights stays fast', () => {
 test('item 2: comma file with an extra integer column is read by its header, never merged', () => {
   const r = parse('Date,Weight,BodyFat\n10.11.2026,82,18\n11.11.2026,81,17');
   assert.deepEqual(r.rows.map((x) => [x.date, x.kg]), [['2026-11-10', 82], ['2026-11-11', 81]]);
-  assert.ok(r.notes.some((n) => /column/i.test(n) && /BodyFat/.test(n)), JSON.stringify(r.notes));
-  assert.ok(r.issues.some((i) => i.line === 2 && /ignored|first one/i.test(i.message)));
+  assert.ok(r.notes.map(txt).some((n) => /column/i.test(n) && /BodyFat/.test(n)), JSON.stringify(r.notes));
+  assert.ok(r.issues.some((i) => i.line === 2 && /ignored|first one/i.test(txt(i.message))));
   // a header with two columns: the comma inside the value is a decimal comma
   assert.deepEqual(rows('Datum,Gewicht\n12.11.2026,82,5\n13.11.2026,82,1'), [['2026-11-12', 82.5], ['2026-11-13', 82.1]]);
   // header says 3 columns but a line has 4 comma fields: explicit ambiguity, not a guess
   const m = parse('Date,Weight,BodyFat\n10.11.2026,82,5,18\n11.11.2026,81,17');
   assert.deepEqual(m.rows.map((x) => x.kg), [81]);
-  assert.match(m.issues.find((i) => i.line === 2).message, /ambiguous/);
+  assert.match(txt(m.issues.find((i) => i.line === 2).message), /ambiguous/);
 });
 
 test('item 2: without a header — documented single lines keep working, a two-digit decimal is a flagged guess', () => {
@@ -115,7 +116,7 @@ test('item 2: without a header — documented single lines keep working, a two-d
   assert.deepEqual(rows('12.11.2026,82,5'), [['2026-11-12', 82.5]]);
   const g = parse('12.11.2026,82,18');
   assert.deepEqual(g.rows.map((x) => x.kg), [82.18]);
-  assert.ok(g.notes.some((n) => /82,18/.test(n) && /guess/i.test(n)), JSON.stringify(g.notes));
+  assert.ok(g.notes.map(txt).some((n) => /82,18/.test(n) && /guess/i.test(n)), JSON.stringify(g.notes));
   assert.deepEqual(parse('12.11.2026,82,5').notes, []);
 });
 

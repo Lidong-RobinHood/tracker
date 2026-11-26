@@ -2,6 +2,7 @@
 // one result line), daily targets in grams or percent, how targets are set, profile, adaptive macros.
 // Writes exactly what the single Settings screen wrote before (same records, same rules).
 import { el, append, pageHeader, numberInput, toast, fmtNum, fmtGrouped, sectionHeader, segmented, iconButton, field } from '../ui/index.js';
+import { withPercent } from '../core/numbers.js';
 import * as db from '../db/db.js';
 import { macroKcal } from '../core/nutrition.js';
 import { MACROS, SPLIT_PRESETS, targetMode, validateSplit, macroGrams, gramsFromPct, pctFromGrams, pctOfKcal, carbsRest } from '../core/macro-split.js';
@@ -10,8 +11,12 @@ import { rateToGoal, goalToRate, amountValid, GOAL_AMOUNT_MAX, GOAL_DEFAULT_AMOU
 import { buildTargets } from '../core/setup.js';
 import { goalSign, signedAmount, signedRateSpeech, signedGoalSummary, goalAmountError, parseGoalAmount } from '../core/goal-display.js';
 import { ensureCss } from './css.js';
+import { t } from '../i18n/index.js';
 
-const MACRO_LABEL = { protein: 'Protein', carbs: 'Carbs', fat: 'Fat' };
+/** Macro label: settings.goal.macro.<key> (Protein / Carbs / Fat). */
+const macroLabel = (k) => t(`settings.goal.macro.${k}`);
+/** Core goal message {key, params} → text. */
+const say = (m) => (m ? t(m.key, m.params) : '');
 const SWATCH = { protein: 'is-protein', carbs: 'is-carbs', fat: 'is-fat' };
 
 /** @param {HTMLElement} container */
@@ -22,9 +27,9 @@ export async function mountGoal(container) {
     db.getSetting('profile'), db.getSetting('adaptive')]);
   const rest = goalSection(targets, goal, profile, adaptive || {});
   container.append(
-    pageHeader({ title: 'Goal and targets', back: 'settings' }),
-    el('section', { class: 'section' }, sectionHeader('Goal', { info: 'goal' }), el('div', { class: 'card set-card' }, rest.rate)),
-    targetsSection(targets, (t) => rest.updateSplitNote(t)),
+    pageHeader({ title: t('settings.goal.title'), back: 'settings' }),
+    el('section', { class: 'section' }, sectionHeader(t('settings.goal.section'), { info: 'goal' }), el('div', { class: 'card set-card' }, rest.rate)),
+    targetsSection(targets, (tg) => rest.updateSplitNote(tg)),
     ...rest.sections);
 }
 
@@ -45,15 +50,15 @@ const withUnit = (input, unit) => { el('div', { class: 'input-unit set-in' }, in
 /** Targets as grams (always stored) or as a percentage split of calories (mode 'percent', see core/macro-split.js). */
 function targetsSection(targets, onSaved) {
   let mode = targetMode(targets);
-  const kcalInput = withUnit(numberInput({ value: targets.kcal, min: 0, max: 20000, decimals: 0, ariaLabel: 'Calories target' }), 'kcal');
+  const kcalInput = withUnit(numberInput({ value: targets.kcal, min: 0, max: 20000, decimals: 0, ariaLabel: t('settings.goal.kcalAria') }), 'kcal');
   const grams = {
-    protein: withUnit(numberInput({ value: targets.protein, min: 0, max: 1000, decimals: 0, ariaLabel: 'Protein target in grams' }), 'g'),
-    carbs: withUnit(numberInput({ value: targets.carbs, min: 0, max: 2000, decimals: 0, ariaLabel: 'Carbohydrates target in grams' }), 'g'),
-    fat: withUnit(numberInput({ value: targets.fat, min: 0, max: 1000, decimals: 0, ariaLabel: 'Fat target in grams' }), 'g'),
+    protein: withUnit(numberInput({ value: targets.protein, min: 0, max: 1000, decimals: 0, ariaLabel: t('settings.goal.proteinAria') }), 'g'),
+    carbs: withUnit(numberInput({ value: targets.carbs, min: 0, max: 2000, decimals: 0, ariaLabel: t('settings.goal.carbsAria') }), 'g'),
+    fat: withUnit(numberInput({ value: targets.fat, min: 0, max: 1000, decimals: 0, ariaLabel: t('settings.goal.fatAria') }), 'g'),
   };
   const storedPct = mode === 'percent' && targets.pct ? targets.pct : {};
   const pct = Object.fromEntries(MACROS.map((k) => [k, withUnit(numberInput({ value: storedPct[k] ?? null, min: 0, max: 100, decimals: 1,
-    ariaLabel: `${MACRO_LABEL[k]} share of calories in percent` }), '%')]));
+    ariaLabel: t('settings.goal.pctAria', { macro: macroLabel(k) }) }), '%')]));
   // Percent fields: whole numbers or one decimal only.
   const readPct = (k) => {
     const n = pct[k].getNumber();
@@ -66,22 +71,22 @@ function targetsSection(targets, onSaved) {
   const pctHints = Object.fromEntries(MACROS.map((k) => [k, el('span', { class: 'set-row-alt', 'aria-live': 'polite' })]));
   const macrosHint = el('p', { class: 'field-hint set-card-foot' });
   const sumLine = el('p', { class: 't-sub', 'aria-live': 'polite' });
-  const restBtn = el('button', { class: 'btn btn-sm', type: 'button' }, 'Set carbs to the rest');
+  const restBtn = el('button', { class: 'btn btn-sm', type: 'button' }, t('settings.goal.carbsRest'));
   const presetChips = SPLIT_PRESETS.map((p) => el('button', { class: 'chip', type: 'button', 'aria-pressed': 'false',
-    'aria-label': `${p.pct.protein} % protein, ${p.pct.carbs} % carbs, ${p.pct.fat} % fat`,
+    'aria-label': t('settings.goal.presetAria', { protein: p.pct.protein, carbs: p.pct.carbs, fat: p.pct.fat }),
     onClick: () => { for (const k of MACROS) pct[k].setNumber(p.pct[k]); update(); } }, p.label.replace(/\//g, ' / ')));
-  const saveBtn = el('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save targets');
+  const saveBtn = el('button', { class: 'btn btn-primary btn-block', type: 'button' }, t('settings.goal.saveTargets'));
 
   const gramsPanel = el('div', { class: 'set-rows' },
-    MACROS.map((k) => row(MACRO_LABEL[k], grams[k], { swatch: SWATCH[k], alt: gramHints[k] })),
+    MACROS.map((k) => row(macroLabel(k), grams[k], { swatch: SWATCH[k], alt: gramHints[k] })),
     macrosHint);
   const pctPanel = el('div', { class: 'set-rows' },
-    el('div', { class: 'chips set-chips', role: 'group', 'aria-label': 'Preset splits' }, presetChips),
-    MACROS.map((k) => row(MACRO_LABEL[k], pct[k], { swatch: SWATCH[k], alt: pctHints[k] })),
+    el('div', { class: 'chips set-chips', role: 'group', 'aria-label': t('settings.goal.presetsAria') }, presetChips),
+    MACROS.map((k) => row(macroLabel(k), pct[k], { swatch: SWATCH[k], alt: pctHints[k] })),
     el('div', { class: 'row-between set-card-foot set-sum' }, sumLine, restBtn));
 
-  const tabs = segmented({ ariaLabel: 'Enter macros as', value: mode,
-    options: [{ value: 'grams', label: 'Grams' }, { value: 'percent', label: 'Percent' }], onChange: (m) => switchMode(m) });
+  const tabs = segmented({ ariaLabel: t('settings.goal.modeAria'), value: mode,
+    options: [{ value: 'grams', label: t('settings.goal.grams') }, { value: 'percent', label: t('settings.goal.percent') }], onChange: (m) => switchMode(m) });
 
   function update() {
     const kcal = kcalInput.getNumber();
@@ -92,9 +97,9 @@ function targetsSection(targets, onSaved) {
       const g = gramValues();
       for (const k of MACROS) {
         const share = pctOfKcal(kcal, g[k], k);
-        gramHints[k].textContent = share === null ? '' : `${fmtNum(share, 0)} %`;
+        gramHints[k].textContent = share === null ? '' : withPercent(fmtNum(share, 0));
       }
-      macrosHint.textContent = `Macros = ${fmtGrouped(macroKcal(g))} kcal`;
+      macrosHint.textContent = t('settings.goal.macrosKcal', { kcal: fmtGrouped(macroKcal(g)) });
       saveBtn.disabled = false;
       return;
     }
@@ -110,15 +115,16 @@ function targetsSection(targets, onSaved) {
     const allValid = MACROS.every((k) => p[k] !== null);
     sumLine.className = `t-sub ${v.ok ? 'text-success' : 'text-warning'}`;
     const badInput = MACROS.some((k) => pct[k].value.trim() && p[k] === null);
-    sumLine.textContent = badInput ? 'Use 0–100 with at most one decimal.'
-      : !allValid ? `Total ${fmtNum(v.sum)} % · enter all three`
-      : v.ok ? `Total ${fmtNum(v.sum)} %`
-        : v.diff < 0 ? `Total ${fmtNum(v.sum)} % · ${fmtNum(-v.diff)} % left`
-          : `Total ${fmtNum(v.sum)} % · ${fmtNum(v.diff)} % too much`;
+    const sum = fmtNum(v.sum);
+    sumLine.textContent = badInput ? t('settings.goal.pctInvalid')
+      : !allValid ? t('settings.goal.totalEnterAll', { sum })
+      : v.ok ? t('settings.goal.total', { sum })
+        : v.diff < 0 ? t('settings.goal.totalLeft', { sum, diff: fmtNum(-v.diff) })
+          : t('settings.goal.totalTooMuch', { sum, diff: fmtNum(v.diff) });
     const restPct = carbsRest(p);
     restBtn.hidden = v.ok && allValid; // already 100 %: nothing to fill in
     restBtn.disabled = restPct === null || (v.ok && p.carbs === restPct);
-    restBtn.textContent = restPct === null ? 'Carbs = rest' : `Carbs = rest (${fmtNum(restPct)} %)`;
+    restBtn.textContent = restPct === null ? t('settings.goal.carbsRestShort') : t('settings.goal.carbsRestPct', { pct: fmtNum(restPct) });
     for (const [i, preset] of SPLIT_PRESETS.entries()) {
       presetChips[i].setAttribute('aria-pressed', String(MACROS.every((k) => p[k] === preset.pct[k])));
     }
@@ -161,13 +167,13 @@ function targetsSection(targets, onSaved) {
 
   saveBtn.addEventListener('click', async () => {
     const kcal = kcalInput.getNumber();
-    if (kcal === null) { kcalInput.focus(); toast('Enter a valid calories target.', { type: 'error' }); return; }
+    if (kcal === null) { kcalInput.focus(); toast(t('core.setup.errorKcal'), { type: 'error' }); return; }
     const current = await db.getSetting('targets');
     // Same rules as the first-run setup (core/setup.js buildTargets).
     const r = buildTargets(current, mode === 'grams' ? { mode, kcal, ...gramValues() } : { mode, kcal, pct: pctValues() });
     if (!r.ok) {
       if (grams[r.field]) grams[r.field].focus();
-      toast(r.error, { type: 'error' });
+      toast(t(r.errorKey), { type: 'error' });
       return;
     }
     let next = r.targets;
@@ -177,15 +183,15 @@ function targetsSection(targets, onSaved) {
     await db.setSetting('targets', next);
     memo = { kcal, grams: { protein: next.protein, carbs: next.carbs, fat: next.fat }, pct: next.pct || pctValues() };
     if (mode === 'percent') for (const k of MACROS) grams[k].setNumber(next[k]);
-    toast(mode === 'percent' ? `Targets saved: ${next.protein} g protein, ${next.carbs} g carbs, ${next.fat} g fat` : 'Targets saved', { type: 'success' });
+    toast(mode === 'percent' ? t('settings.goal.savedGrams', { protein: next.protein, carbs: next.carbs, fat: next.fat }) : t('settings.goal.saved'), { type: 'success' });
     if (onSaved) onSaved(next);
   });
 
   update();
-  return el('section', { class: 'section' }, sectionHeader('Daily targets', { info: 'macros' }),
+  return el('section', { class: 'section' }, sectionHeader(t('settings.goal.dailyTargets'), { info: 'macros' }),
     el('div', { class: 'card set-card' },
       el('div', { class: 'set-card-top' }, tabs),
-      el('div', { class: 'set-rows' }, row('Calories', kcalInput)),
+      el('div', { class: 'set-rows' }, row(t('settings.goal.calories'), kcalInput)),
       gramsPanel,
       pctPanel,
       el('div', { class: 'set-card-foot' }, saveBtn)));
@@ -197,38 +203,40 @@ function goalSection(targets, goal, profile, adaptive) {
   const select = (value, options, ariaLabel) => el('select', { class: 'select', 'aria-label': ariaLabel },
     options.map(([v, label]) => el('option', { value: v, selected: v === (value ?? '') }, label)));
   const mode = select(targets.source === 'adaptive' ? 'adaptive' : 'manual',
-    [['manual', 'Manual'], ['adaptive', 'Adaptive']], 'How targets are set');
+    [['manual', t('settings.goal.manual')], ['adaptive', t('settings.goal.adaptive')]], t('settings.goal.setByAria'));
   const rate = goalRateControl(goal.rateKgPerWeek);
-  const sex = select(profile.sex, [['', 'Not set'], ['female', 'Female'], ['male', 'Male'], ['other', 'Other / prefer not to say']], 'Sex');
-  const birthYear = numberInput({ value: profile.birthYear, integer: true, min: 1900, max: new Date().getFullYear() - 10, ariaLabel: 'Birth year' });
-  const height = withUnit(numberInput({ value: profile.heightCm, min: 100, max: 250, decimals: 1, ariaLabel: 'Height' }), 'cm');
+  const sex = select(profile.sex, [['', t('settings.goal.notSet')], ['female', t('settings.goal.female')], ['male', t('settings.goal.male')],
+    ['other', t('settings.goal.otherSex')]], t('settings.goal.sex'));
+  const birthYear = numberInput({ value: profile.birthYear, integer: true, min: 1900, max: new Date().getFullYear() - 10, ariaLabel: t('settings.goal.birthYear') });
+  const height = withUnit(numberInput({ value: profile.heightCm, min: 100, max: 250, decimals: 1, ariaLabel: t('settings.goal.height') }), 'cm');
   // Short labels so the chosen one is always readable; its detail is the one helper line below.
-  const activity = select(profile.activity, [['', 'Not set'], ...ACTIVITY_LEVELS.map((a) => [a.id, a.label])], 'Activity level');
+  const activity = select(profile.activity, [['', t('settings.goal.notSet')], ...ACTIVITY_LEVELS.map((a) => [a.id, t(`core.activity.${a.id}`)])],
+    t('settings.goal.activity'));
   const activityHint = el('div', { class: 'field-hint' });
   const paintActivityHint = () => {
     const a = ACTIVITY_LEVELS.find((x) => x.id === activity.value);
-    activityHint.textContent = a ? a.hint.charAt(0).toUpperCase() + a.hint.slice(1) : '';
+    activityHint.textContent = a ? t(`core.activity.${a.id}.hint`) : '';
     activityHint.hidden = !a;
   };
   activity.addEventListener('change', paintActivityHint);
   paintActivityHint();
-  const protein = withUnit(numberInput({ value: adaptive.proteinPerKg ?? ADAPTIVE_DEFAULTS.proteinPerKg, min: 0.8, max: 3.5, decimals: 2, ariaLabel: 'Protein per kg' }), 'g / kg');
-  const fat = withUnit(numberInput({ value: adaptive.fatPerKg ?? ADAPTIVE_DEFAULTS.fatPerKg, min: 0.3, max: 2, decimals: 2, ariaLabel: 'Fat per kg' }), 'g / kg');
-  const floor = withUnit(numberInput({ value: adaptive.kcalFloor ?? null, integer: true, min: 800, max: 4000, placeholder: 'auto', ariaLabel: 'Calorie floor' }), 'kcal');
+  const protein = withUnit(numberInput({ value: adaptive.proteinPerKg ?? ADAPTIVE_DEFAULTS.proteinPerKg, min: 0.8, max: 3.5, decimals: 2, ariaLabel: t('settings.goal.proteinPerKgAria') }), 'g / kg');
+  const fat = withUnit(numberInput({ value: adaptive.fatPerKg ?? ADAPTIVE_DEFAULTS.fatPerKg, min: 0.3, max: 2, decimals: 2, ariaLabel: t('settings.goal.fatPerKgAria') }), 'g / kg');
+  const floor = withUnit(numberInput({ value: adaptive.kcalFloor ?? null, integer: true, min: 800, max: 4000, placeholder: t('settings.goal.auto'), ariaLabel: t('settings.goal.floor') }), 'kcal');
 
   const save = async () => {
     const r = rate.getRate();
     if (r === null) {
       rate.amount.focus();
-      toast(`${rate.getError()}.`, { type: 'error' });
+      toast(t('settings.goal.errorSentence', { error: rate.getError() }), { type: 'error' });
       return;
     }
-    const checks = [[birthYear, 'birth year'], [height, 'height'], [protein, 'protein per kg'], [fat, 'fat per kg'], [floor, 'calorie floor']];
+    const checks = [[birthYear, 'birthYear'], [height, 'height'], [protein, 'proteinPerKg'], [fat, 'fatPerKg'], [floor, 'floor']];
     for (const [input, name] of checks) {
-      if (input.value.trim() && input.getNumber() === null) { input.focus(); toast(`Enter a valid ${name} or leave it empty.`, { type: 'error' }); return; }
+      if (input.value.trim() && input.getNumber() === null) { input.focus(); toast(t(`settings.goal.invalid.${name}`), { type: 'error' }); return; }
     }
-    if (protein.getNumber() === null) { protein.focus(); toast('Enter protein per kg.', { type: 'error' }); return; }
-    if (fat.getNumber() === null) { fat.focus(); toast('Enter fat per kg.', { type: 'error' }); return; }
+    if (protein.getNumber() === null) { protein.focus(); toast(t('settings.goal.enterProtein'), { type: 'error' }); return; }
+    if (fat.getNumber() === null) { fat.focus(); toast(t('settings.goal.enterFat'), { type: 'error' }); return; }
     const current = await db.getSetting('targets');
     await Promise.all([
       db.setSetting('goal', { ...goal, rateKgPerWeek: r }),
@@ -236,31 +244,31 @@ function goalSection(targets, goal, profile, adaptive) {
       db.setSetting('adaptive', { ...adaptive, proteinPerKg: protein.getNumber(), fatPerKg: fat.getNumber(), kcalFloor: floor.getNumber() }),
       db.setSetting('targets', { ...current, source: mode.value }),
     ]);
-    toast('Goal and profile saved', { type: 'success' });
+    toast(t('settings.goal.profileSaved'), { type: 'success' });
   };
 
   const splitNote = el('p', { class: 'field-hint text-warning set-card-foot' });
-  const updateSplitNote = (t) => {
-    splitNote.hidden = targetMode(t) !== 'percent' || !t.pct;
+  const updateSplitNote = (tg) => {
+    splitNote.hidden = targetMode(tg) !== 'percent' || !tg.pct;
     if (!splitNote.hidden) {
-      splitNote.textContent = `Percent split ${fmtNum(t.pct.protein)} / ${fmtNum(t.pct.carbs)} / ${fmtNum(t.pct.fat)} % active: check-ins change calories only; g / kg values unused.`;
+      splitNote.textContent = t('settings.goal.splitNote', { protein: fmtNum(tg.pct.protein), carbs: fmtNum(tg.pct.carbs), fat: fmtNum(tg.pct.fat) });
     }
   };
   updateSplitNote(targets);
   const sections = [
-    el('section', { class: 'section' }, sectionHeader('Targets', { info: 'checkin' }),
+    el('section', { class: 'section' }, sectionHeader(t('settings.goal.targets'), { info: 'checkin' }),
       el('div', { class: 'card set-card' },
-        el('div', { class: 'set-rows' }, row('Set by', mode)),
-        el('p', { class: 'field-hint set-card-foot' }, 'Adaptive: proposed each Monday, applied only if you accept.'))),
-    el('section', { class: 'section' }, sectionHeader('Profile', { info: 'expenditure' }),
+        el('div', { class: 'set-rows' }, row(t('settings.goal.setBy'), mode)),
+        el('p', { class: 'field-hint set-card-foot' }, t('settings.goal.adaptiveHint')))),
+    el('section', { class: 'section' }, sectionHeader(t('settings.goal.profile'), { info: 'expenditure' }),
       el('div', { class: 'card set-card' }, el('div', { class: 'set-rows' },
-        row('Sex', sex), row('Birth year', birthYear), row('Height', height)),
-      el('div', { class: 'set-card-foot' }, append(field('Activity level', activity), activityHint)))),
-    el('section', { class: 'section' }, sectionHeader('Adaptive macros', { info: 'adaptive-macros' }),
+        row(t('settings.goal.sex'), sex), row(t('settings.goal.birthYear'), birthYear), row(t('settings.goal.height'), height)),
+      el('div', { class: 'set-card-foot' }, append(field(t('settings.goal.activity'), activity), activityHint)))),
+    el('section', { class: 'section' }, sectionHeader(t('settings.goal.adaptiveMacros'), { info: 'adaptive-macros' }),
       el('div', { class: 'card set-card' }, el('div', { class: 'set-rows' },
-        row('Protein', protein), row('Fat, minimum', fat), row('Calorie floor', floor)),
+        row(macroLabel('protein'), protein), row(t('settings.goal.fatMin'), fat), row(t('settings.goal.floor'), floor)),
       splitNote)),
-    el('button', { class: 'btn btn-primary btn-block', type: 'button', onClick: save }, 'Save goal & profile'),
+    el('button', { class: 'btn btn-primary btn-block', type: 'button', onClick: save }, t('settings.goal.saveProfile')),
   ];
   return { rate, sections, updateSplitNote };
 }
@@ -290,9 +298,9 @@ export function goalRateControl(storedRate) {
   const summaryText = el('span', { 'aria-hidden': 'true' });
   const summarySpeech = el('span', { class: 'vh' });
   const summary = el('div', { class: 'set-goal-result', 'aria-live': 'polite' }, summaryText, summarySpeech);
-  const DIRS = [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain']];
-  const group = segmented({ ariaLabel: 'Goal direction', value: direction,
-    options: DIRS.map(([value, label]) => ({ value, label })), onChange: (d) => setDirection(d, true) });
+  const DIRS = ['lose', 'maintain', 'gain'];
+  const group = segmented({ ariaLabel: t('settings.goal.directionAria'), value: direction,
+    options: DIRS.map((value) => ({ value, label: t(`settings.goal.dir.${value}`) })), onChange: (d) => setDirection(d, true) });
 
   /** Show the amount as the signed number ('−0.5', '+0.25'); keeps what was typed when it is not a number. */
   const showSigned = () => {
@@ -307,10 +315,10 @@ export function goalRateControl(storedRate) {
     paint();
     amount.dispatchEvent(new Event('input', { bubbles: true }));
   };
-  const less = iconButton('minus', { label: 'Less kg per week', class: 'set-step', onClick: () => step(-1) });
-  const more = iconButton('plus', { label: 'More kg per week', class: 'set-step', onClick: () => step(1) });
+  const less = iconButton('minus', { label: t('settings.goal.lessAria'), class: 'set-step', onClick: () => step(-1) });
+  const more = iconButton('plus', { label: t('settings.goal.moreAria'), class: 'set-step', onClick: () => step(1) });
   const amountRow = el('div', { class: 'set-row set-goal-row' },
-    el('label', { class: 'set-row-label set-goal-label', htmlFor: amount.id }, el('span', null, 'Amount'), el('span', { class: 't-sub muted' }, 'kg / week')),
+    el('label', { class: 'set-row-label set-goal-label', htmlFor: amount.id }, el('span', null, t('settings.goal.amount')), el('span', { class: 't-sub muted' }, t('settings.goal.kgWeek'))),
     el('div', { class: 'set-stepper' }, less, amount, more));
 
   function paint() {
@@ -325,12 +333,13 @@ export function goalRateControl(storedRate) {
     less.disabled = maintain || n === null || n <= STEP;
     more.disabled = maintain || (n !== null && n >= GOAL_AMOUNT_MAX[direction]);
     const kcalDay = valid ? Math.round((n * ADAPTIVE_DEFAULTS.kcalPerKg) / 7 / 10) * 10 : null;
-    const line = signedGoalSummary(direction, n, { kcalDay });
+    const line = say(signedGoalSummary(direction, n, { kcalDay }));
     summary.classList.toggle('is-error', !maintain && !valid);
     if (!maintain && !valid) summary.setAttribute('role', 'alert'); else summary.removeAttribute('role');
     summaryText.textContent = line;
-    summarySpeech.textContent = valid || maintain ? `${signedRateSpeech(direction, n)}${kcalDay ? `, ${kcalDay} kilocalories per day` : ''}` : line;
-    amount.setAttribute('aria-label', direction === 'lose' ? 'Amount to lose, kilograms per week' : 'Amount to gain, kilograms per week');
+    const speech = say(signedRateSpeech(direction, n));
+    summarySpeech.textContent = valid || maintain ? (kcalDay ? t('settings.goal.speechKcal', { rate: speech, kcal: kcalDay }) : speech) : line;
+    amount.setAttribute('aria-label', t(direction === 'lose' ? 'settings.goal.amountLoseAria' : 'settings.goal.amountGainAria'));
   }
   function setDirection(d, byUser) {
     direction = d;
@@ -343,8 +352,8 @@ export function goalRateControl(storedRate) {
   }
   amount.addEventListener('input', () => {
     // The sign belongs to the number from the first digit on ('0.7' → '−0.7'); typing happens at the end.
-    const t = amount.value;
-    if (direction !== 'maintain' && /^[\d.,]/.test(t) && document.activeElement === amount) amount.value = `${goalSign(direction)}${t}`;
+    const typed = amount.value;
+    if (direction !== 'maintain' && /^[\d.,]/.test(typed) && document.activeElement === amount) amount.value = `${goalSign(direction)}${typed}`;
     typedAmount = parseGoalAmount(amount.value);
     paint();
   });
@@ -356,13 +365,13 @@ export function goalRateControl(storedRate) {
     setTimeout(() => { if (document.activeElement === amount) amount.setSelectionRange(0, amount.value.length); }, 0);
   });
 
-  const wrap = /** @type {any} */ (el('div', { class: 'set-goal', role: 'group', 'aria-label': 'Weight goal' },
+  const wrap = /** @type {any} */ (el('div', { class: 'set-goal', role: 'group', 'aria-label': t('settings.goal.weightGoalAria') },
     el('div', { class: 'set-card-top' }, group),
     amountRow,
     summary));
   wrap.getDirection = () => direction;
   wrap.getRate = () => goalToRate(direction, typedAmount);
-  wrap.getError = () => goalAmountError(direction, typedAmount);
+  wrap.getError = () => { const e = goalAmountError(direction, typedAmount); return e ? say(e) : null; };
   wrap.amount = amount;
   setDirection(direction, false);
   return wrap;

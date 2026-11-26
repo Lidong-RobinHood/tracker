@@ -2,7 +2,8 @@
 // colours from shared tokens via wk-an-* classes (light + dark). Labelled directly, no gridlines,
 // no legends. No data ever goes through innerHTML.
 import { el } from '../ui/index.js';
-import { shortDate } from './data.js';
+import { dateShort } from './progress-ui.js';
+import { t } from '../i18n/index.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -40,27 +41,27 @@ export function trendChart({ points, best, format, record, ariaLabel }) {
   if (Number.isFinite(best)) {
     const by = y(best);
     if (best === cur.value) {
-      labels.push(s('text', { class: ['wk-an-ch-val', record && 'is-rec'].filter(Boolean).join(' '), x: lx, y: cy + 4 }, `${format(cur.value)} · best`));
+      labels.push(s('text', { class: ['wk-an-ch-val', record && 'is-rec'].filter(Boolean).join(' '), x: lx, y: cy + 4 }, t('analysis.chart.valueBest', { value: format(cur.value) })));
     } else {
       let ty = by; let vy = cy;
       if (Math.abs(vy - ty) < 13) { ty = Math.min(ty, vy) - 3; vy = ty + 13; }
-      labels.push(s('text', { class: 'wk-an-ch-lab', x: lx, y: ty + 4 }, `best ${format(best)}`));
+      labels.push(s('text', { class: 'wk-an-ch-lab', x: lx, y: ty + 4 }, t('analysis.chart.best', { value: format(best) })));
       labels.push(s('text', { class: 'wk-an-ch-val', x: lx, y: vy + 4 }, format(cur.value)));
     }
   } else {
     labels.push(s('text', { class: 'wk-an-ch-val', x: lx, y: cy + 4 }, format(cur.value)));
   }
 
-  return s('svg', { class: 'wk-an-chart', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': ariaLabel, preserveAspectRatio: 'xMidYMid meet' },
+  return s('svg', { class: 'wk-an-chart', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': ariaLabel, preserveAspectRatio: 'xMidYMid meet' }, // i18n-ignore: SVG attribute
     Number.isFinite(best) ? s('line', { class: 'wk-an-ch-ref', x1: L, x2: x(n - 1), y1: y(best), y2: y(best) }) : null,
     n > 1 ? s('polyline', { class: 'wk-an-ch-line', points: points.map((p, i) => `${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ') }) : null,
     points.map((p, i) => s('circle', {
       class: ['wk-an-ch-dot', p.current && 'is-cur', p.current && record && 'is-rec'].filter(Boolean).join(' '),
       cx: x(i).toFixed(1), cy: y(p.value).toFixed(1), r: p.current ? 4 : 2.5,
-    }, s('title', {}, `${shortDate(p.date)}: ${format(p.value)}`))),
+    }, s('title', {}, `${dateShort(p.date)}: ${format(p.value)}`))),
     labels,
-    s('text', { class: 'wk-an-ch-lab', x: L, y: H - 4, 'text-anchor': 'start' }, shortDate(points[0].date)),
-    n > 1 ? s('text', { class: 'wk-an-ch-lab', x: x(n - 1), y: H - 4, 'text-anchor': 'end' }, shortDate(points[n - 1].date)) : null);
+    s('text', { class: 'wk-an-ch-lab', x: L, y: H - 4, 'text-anchor': 'start' }, dateShort(points[0].date)),
+    n > 1 ? s('text', { class: 'wk-an-ch-lab', x: x(n - 1), y: H - 4, 'text-anchor': 'end' }, dateShort(points[n - 1].date)) : null);
 }
 
 /**
@@ -88,5 +89,5 @@ export function vBars(bars, ariaLabel) {
       el('span', { class: 'wk-an-vbar-val num' }, b.text),
       el('span', { class: 'wk-an-vbar-col' },
         el('span', { class: 'wk-an-vbar-fill', style: { height: `${Math.max(2, (b.value / max) * 100).toFixed(1)}%` } })),
-      el('span', { class: 'wk-an-vbar-date' }, shortDate(b.date).replace(/ \d{4}$/, '')))));
+      el('span', { class: 'wk-an-vbar-date' }, dateShort(b.date, { year: false })))));
 }

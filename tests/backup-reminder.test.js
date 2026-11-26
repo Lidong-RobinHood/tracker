@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { backupReminder, snoozeUntil, lastExportText, userRecordCount, BACKUP_DUE_DAYS, SNOOZE_DAYS, MIN_RECORDS } from '../src/core/backup-reminder.js';
+import { backupReminder, snoozeUntil, exportAgeDays, userRecordCount, BACKUP_DUE_DAYS, SNOOZE_DAYS, MIN_RECORDS } from '../src/core/backup-reminder.js';
 
 const DAY = 86400000;
 const NOW = new Date(2026, 10, 19, 12, 0).getTime(); // 19 Nov 2026, local noon
@@ -52,9 +52,9 @@ test('never during a workout session', () => {
   assert.equal(r.banner, false);
 });
 
-test('lastExportText', () => {
-  assert.equal(lastExportText(null, NOW), 'never');
-  assert.equal(lastExportText(NOW - 60_000, NOW), 'today');
-  assert.equal(lastExportText(NOW - DAY, NOW), 'yesterday');
-  assert.equal(lastExportText(NOW - 5 * DAY, NOW), '5 days ago');
+test('exportAgeDays', () => {
+  assert.equal(exportAgeDays(null, NOW), null);
+  assert.equal(exportAgeDays(NOW - 60_000, NOW), 0);
+  assert.equal(exportAgeDays(NOW - DAY, NOW), 1);
+  assert.equal(exportAgeDays(NOW - 5 * DAY, NOW), 5);
 });

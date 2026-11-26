@@ -2,10 +2,11 @@
 import { el, openSheet, numberInput, toast, fmtNum, fmtDay, fmtAmount, replaceChildren, icon } from '../ui/index.js';
 import { scale, isComplete, missingFields } from '../core/nutrition.js';
 import { defaultAmount, multiplyAmount } from '../core/portion.js';
-import { mealLabel } from '../core/food-diary.js';
+import { t } from '../i18n/index.js';
 import { logFood, saveFood } from './store.js';
 import { openFoodEditor } from './food-editor.js';
-import { mealSelect, dateInput, sourceBadge, per100Text, offCredit, mealDateRow, portionValues } from './widgets.js';
+import { mealSelect, dateInput, sourceBadge, per100Text, offCredit, mealDateRow, portionValues, missingText } from './widgets.js';
+import { foodName, mealName, servingLabel } from './names.js';
 
 /**
  * Edit a food's values (userEdited) and store it. Returns the stored record or null.
@@ -16,11 +17,11 @@ export async function editAndSaveFood(food, opts = {}) {
   if (!r) return null;
   try {
     const saved = await saveFood(r.food, { userEdited: true });
-    toast('Food saved', { type: 'success' });
+    toast(t('food.editor.saved'), { type: 'success' });
     return saved;
   } catch (err) {
     console.error(err);
-    toast(`Could not save the food: ${err.message || err}`, { type: 'error' });
+    toast(t('food.editor.saveFailed', { error: err.message || err }), { type: 'error' });
     return null;
   }
 }
@@ -37,7 +38,7 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
   const titleEl = el('div', { class: 't-head portion-name' });
   const subEl = el('div', { class: 'portion-sub t-sub muted' });
   const creditEl = offCredit();
-  const amount = numberInput({ value: defaultAmount(food), min: 0.1, max: 10000, decimals: 1, ariaLabel: 'Amount', onInput: () => update() });
+  const amount = numberInput({ value: defaultAmount(food), min: 0.1, max: 10000, decimals: 1, ariaLabel: t('food.portion.amount'), onInput: () => update() });
   amount.classList.add('portion-amount');
   const unit = el('span', { class: 'unit' });
   const chips = el('div', { class: 'chips chips-scroll portion-chips' });
@@ -48,28 +49,28 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
   const dateIn = dateInput(date);
 
   const sheet = openSheet({
-    title: 'Add food',
+    title: t('food.portion.title'),
     className: 'portion-sheet',
     content: [
       el('div', { class: 'portion-head' }, titleEl, subEl),
       creditEl,
       el('div', { class: 'field portion-amount-row' },
-        el('label', { class: 'field-label', htmlFor: amount.id = `amt-${Math.random().toString(36).slice(2)}` }, 'Amount'),
+        el('label', { class: 'field-label', htmlFor: amount.id = `amt-${Math.random().toString(36).slice(2)}` }, t('food.portion.amount')),
         el('div', { class: 'input-unit' }, amount, unit)),
       chips,
       valuesEl,
       warn,
-      el('button', { type: 'button', class: 'btn btn-sm btn-ghost edit-values', onClick: editValues }, icon('pencil'), 'Edit values'),
+      el('button', { type: 'button', class: 'btn btn-sm btn-ghost edit-values', onClick: editValues }, icon('pencil'), t('food.portion.editValues')),
       mealDateRow(mealSel, dateIn),
     ],
   });
-  const addBtn = el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: add }, 'Add');
+  const addBtn = el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: add }, t('food.action.add'));
   sheet.footer.append(addBtn);
 
   function renderFood() {
-    titleEl.textContent = current.name || 'Unnamed food';
+    titleEl.textContent = foodName(current);
     replaceChildren(subEl, sourceBadge(current, { long: true }),
-      converted ? el('span', { class: 'badge badge-warning' }, 'kcal from kJ') : null,
+      converted ? el('span', { class: 'badge badge-warning' }, t('food.badge.kcalFromKj')) : null,
       ` ${[current.brand, per100Text(current)].filter(Boolean).join(' · ')}`);
     creditEl.hidden = current.source !== 'off';
     unit.textContent = current.basis || 'g';
@@ -77,9 +78,9 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
       ...(current.servings || []).map((s) => el('button', {
         type: 'button', class: 'chip', dataset: { amount: String(s.amount) },
         onClick: () => { amount.setNumber(s.amount); update(); },
-      }, `${s.label} · ${fmtAmount(s.amount, current.basis)}`)),
-      el('button', { type: 'button', class: 'chip', 'aria-label': 'Half the amount', onClick: () => mult(0.5) }, '×½'),
-      el('button', { type: 'button', class: 'chip', 'aria-label': 'Double the amount', onClick: () => mult(2) }, '×2'),
+      }, `${servingLabel(s.label)} · ${fmtAmount(s.amount, current.basis)}`)),
+      el('button', { type: 'button', class: 'chip', 'aria-label': t('food.portion.half'), onClick: () => mult(0.5) }, '×½'),
+      el('button', { type: 'button', class: 'chip', 'aria-label': t('food.portion.double'), onClick: () => mult(2) }, '×2'),
     );
     update();
   }
@@ -90,15 +91,15 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
   function update() {
     const n = amount.getNumber();
     const v = scale(current.per100, n ?? 0);
-    const extras = [['Sugars', v.sugars], ['Sat. fat', v.satFat], ['Fibre', v.fibre], ['Salt', v.salt]]
-      .filter(([, x]) => x !== null).map(([l, x]) => `${l} ${fmtNum(x, l === 'Salt' ? 2 : 1)} g`);
+    const extras = [['sugars', v.sugars], ['satFatShort', v.satFat], ['fibre', v.fibre], ['salt', v.salt]]
+      .filter(([, x]) => x !== null).map(([k, x]) => t('food.portion.extra', { label: t(`food.nutrient.${k}`), value: fmtNum(x, k === 'salt' ? 2 : 1) }));
     extra.textContent = extras.join(' · ');
     replaceChildren(valuesEl, portionValues(v, extras.length ? extra : null));
     for (const c of chips.querySelectorAll('[data-amount]')) c.classList.toggle('is-active', n !== null && Number(c.dataset.amount) === n);
     const missing = missingFields(current);
-    warn.textContent = missing.length ? `Missing: ${missing.join(', ')}. Tap Edit values.` : '';
+    warn.textContent = missing.length ? t('food.portion.missing', { fields: missingText(missing) }) : '';
     addBtn.disabled = n === null || n <= 0;
-    addBtn.textContent = n === null ? 'Enter an amount' : `Add ${fmtAmount(n, current.basis)} to ${mealLabel(mealSel.value)}`;
+    addBtn.textContent = n === null ? t('food.portion.enterAmount') : t('food.portion.addTo', { amount: fmtAmount(n, current.basis), meal: mealName(mealSel.value) });
   }
   mealSel.addEventListener('change', update);
 
@@ -115,17 +116,18 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
     const n = amount.getNumber();
     const d = dateIn.getValue();
     if (n === null || n <= 0) { amount.focus(); return; }
-    if (!d) { toast('Choose a valid date.', { type: 'error' }); return; }
+    if (!d) { toast(t('food.date.invalid'), { type: 'error' }); return; }
     if (!isComplete(current)) { await editValues(); if (!isComplete(current)) return; }
     if (busy) return;
     busy = true;
     try {
       const r = await logFood(current, { date: d, meal: mealSel.value, amount: n });
       sheet.close(r);
-      toast(`Added ${r.entry.name} to ${mealLabel(r.entry.meal)}${d !== date ? ` (${fmtDay(d)})` : ''}`, { type: 'success' });
+      const params = { name: foodName(r.food), meal: mealName(r.entry.meal), day: fmtDay(d) };
+      toast(d !== date ? t('food.portion.addedDay', params) : t('food.portion.added', params), { type: 'success' });
     } catch (err) {
       console.error(err);
-      toast(`Could not save: ${err.message || err}`, { type: 'error' });
+      toast(t('food.error.save', { error: err.message || err }), { type: 'error' });
     } finally {
       busy = false;
     }

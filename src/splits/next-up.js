@@ -14,9 +14,9 @@ import * as db from '../db/db.js';
 import { el, append, replaceChildren, icon, href, confirmDialog, toast, openSheet } from '../ui/index.js';
 import { nextUp } from '../core/splits.js';
 import { startWorkout } from '../workout/data.js';
+import { t } from '../i18n/index.js';
+import { routineName } from '../i18n/names.js';
 import { loadActiveSplit, stopFollowing, ensureSplitsCss, followedName, splitPath, skipNext, unskipNext } from './store.js';
-
-const plural = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
 /**
  * @param {{onChange?: () => void, showChange?: boolean}} [opts]
@@ -24,7 +24,7 @@ const plural = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
  */
 export async function nextUpCard({ onChange, showChange = true } = {}) {
   ensureSplitsCss();
-  const card = el('section', { class: 'card sp-next', 'aria-label': 'Next up' });
+  const card = el('section', { class: 'card sp-next', 'aria-label': t('splits.next.title') });
   return (await paintNext(card, { onChange, showChange })) ? card : null;
 }
 
@@ -44,58 +44,58 @@ async function paintNext(card, opts) {
   // dataset.routineId: the workout home leaves this routine out of its Start list
   card.dataset.routineId = routine.id;
   const stop = async () => {
-    const ok = await confirmDialog({ title: 'Stop following?', message: 'Your routines stay.', confirmLabel: 'Stop following' });
+    const ok = await confirmDialog({ title: t('splits.stop.title'), message: t('splits.stop.message'), confirmLabel: t('splits.stop.button') });
     if (!ok) return;
-    try { await stopFollowing(); } catch (err) { console.error(err); toast('Could not save.', { type: 'error' }); return; }
+    try { await stopFollowing(); } catch (err) { console.error(err); toast(t('splits.saveFailed'), { type: 'error' }); return; }
     if (onChange) onChange(); else card.remove();
   };
-  const start = async (r) => { try { await startWorkout(r); } catch (err) { console.error(err); toast('Could not start.', { type: 'error' }); } };
+  const start = async (r) => { try { await startWorkout(r); } catch (err) { console.error(err); toast(t('splits.next.startFailed'), { type: 'error' }); } };
   const repaint = () => paintNext(card, opts).then((ok) => { if (!ok) card.remove(); });
 
   // Other session: the rotation in order (tap one to start it today) and Skip for the suggested one.
   const openOther = () => {
-    const sheet = openSheet({ title: 'Sessions', className: 'sp-other' });
+    const sheet = openSheet({ title: t('splits.next.sessions'), className: 'sp-other' });
     append(sheet.body, el('ol', { class: 'list sp-other-list' }, rotation.map((r, i) => el('li', null,
       el('button', {
-        type: 'button', class: 'list-item', 'aria-label': `Start ${r.name} (${i + 1} of ${rotation.length})`,
+        type: 'button', class: 'list-item', 'aria-label': t('splits.next.startAria', { name: routineName(r), i: i + 1, n: rotation.length }),
         onClick: () => { sheet.close(); start(r); },
       },
       el('span', { class: ['sp-day-n', i === next.index ? 'is-next' : null], 'aria-hidden': 'true' }, String(i + 1)),
       el('div', { class: 'li-main' },
-        el('div', { class: 'li-title' }, r.name),
-        i === next.index ? el('div', { class: 'li-sub' }, 'Next up') : null),
-      el('span', { class: 'wk-go sp-go', 'aria-hidden': 'true' }, 'Start'))))));
+        el('div', { class: 'li-title' }, routineName(r)),
+        i === next.index ? el('div', { class: 'li-sub' }, t('splits.next.title')) : null),
+      el('span', { class: 'wk-go sp-go', 'aria-hidden': 'true' }, t('splits.next.start')))))));
     append(sheet.footer, el('button', {
       type: 'button', class: 'btn btn-secondary btn-block',
       onClick: async () => {
-        try { await skipNext(); } catch (err) { console.error(err); toast('Could not save.', { type: 'error' }); return; }
+        try { await skipNext(); } catch (err) { console.error(err); toast(t('splits.saveFailed'), { type: 'error' }); return; }
         sheet.close();
         await repaint();
-        toast(`Skipped ${routine.name}`, { action: { label: 'Undo', onClick: async () => { await unskipNext(); await repaint(); } } });
+        toast(t('splits.next.skipped', { name: routineName(routine) }), { action: { label: t('splits.undo'), onClick: async () => { await unskipNext(); await repaint(); } } });
       },
-    }, icon('skip-forward', { size: 18 }), `Skip ${routine.name}`));
+    }, icon('skip-forward', { size: 18 }), t('splits.next.skip', { name: routineName(routine) })));
   };
 
   const n = routine.items.length;
   replaceChildren(card,
     el('div', { class: 'sp-next-top' },
-      el('span', { class: 't-cap sp-cap' }, 'Next up'),
+      el('span', { class: 't-cap sp-cap' }, t('splits.next.title')),
       name ? el('a', { class: 'sp-next-split t-sub muted', href: href(splitPath(active.splitId)) }, name) : null),
     el('div', { class: 'sp-next-main' },
       el('div', { class: 'li-main' },
-        el('div', { class: 'strong truncate' }, routine.name),
-        el('div', { class: 't-sub muted' }, `${plural(n, 'exercise')} · ${next.index + 1} of ${next.count}`)),
-      el('button', { type: 'button', class: 'btn btn-primary', onClick: () => start(routine) }, icon('play', { size: 18 }), 'Start')),
-    el('ol', { class: 'sp-steps', 'aria-label': 'Rotation' },
+        el('div', { class: 'strong truncate' }, routineName(routine)),
+        el('div', { class: 't-sub muted' }, t('splits.next.position', { count: n, i: next.index + 1, n: next.count }))),
+      el('button', { type: 'button', class: 'btn btn-primary', onClick: () => start(routine) }, icon('play', { size: 18 }), t('splits.next.start'))),
+    el('ol', { class: 'sp-steps', 'aria-label': t('splits.rotation') },
       rotation.map((r, i) => el('li', {
         class: ['sp-step', i === next.index ? 'is-next' : null],
-        title: r.name,
+        title: routineName(r),
         'aria-current': i === next.index ? 'step' : null,
-      }, el('span', { class: 'vh' }, r.name)))),
+      }, el('span', { class: 'vh' }, routineName(r))))),
     el('div', { class: 'sp-next-links' },
-      rotation.length > 1 ? el('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'aria-haspopup': 'dialog', onClick: openOther }, 'Other session') : null,
-      showChange ? el('a', { class: 'btn btn-ghost btn-sm', href: href('workout/splits') }, 'Change split') : null,
-      el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: stop }, 'Stop following')));
+      rotation.length > 1 ? el('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'aria-haspopup': 'dialog', onClick: openOther }, t('splits.next.other')) : null,
+      showChange ? el('a', { class: 'btn btn-ghost btn-sm', href: href('workout/splits') }, t('splits.next.change')) : null,
+      el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: stop }, t('splits.stop.button'))));
   return true;
 }
 
@@ -109,18 +109,18 @@ export async function followingCard({ onChange } = {}) {
   const active = await loadActiveSplit();
   const name = followedName(active);
   if (!name) return null;
-  const card = el('section', { class: 'card sp-following', 'aria-label': 'Followed split' });
+  const card = el('section', { class: 'card sp-following', 'aria-label': t('splits.followedAria') });
   const stop = async () => {
-    const ok = await confirmDialog({ title: 'Stop following?', message: 'Your routines stay.', confirmLabel: 'Stop following' });
+    const ok = await confirmDialog({ title: t('splits.stop.title'), message: t('splits.stop.message'), confirmLabel: t('splits.stop.button') });
     if (!ok) return;
-    try { await stopFollowing(); } catch (err) { console.error(err); toast('Could not save.', { type: 'error' }); return; }
+    try { await stopFollowing(); } catch (err) { console.error(err); toast(t('splits.saveFailed'), { type: 'error' }); return; }
     if (onChange) onChange(); else card.remove();
   };
   append(card,
     el('a', { class: 'sp-following-main', href: href(splitPath(active.splitId)) },
-      el('span', { class: 't-cap sp-cap' }, 'Following'),
+      el('span', { class: 't-cap sp-cap' }, t('splits.following')),
       el('span', { class: 'li-title' }, name),
       icon('chevron-right', { class: 'li-chevron' })),
-    el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: stop }, 'Stop following'));
+    el('button', { type: 'button', class: 'btn btn-ghost btn-sm', onClick: stop }, t('splits.stop.button')));
   return card;
 }

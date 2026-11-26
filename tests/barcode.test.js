@@ -24,9 +24,9 @@ test('UPC-E expansion covers all last-digit rules', () => {
 });
 
 test('normaliseScan', () => {
-  assert.deepEqual(normaliseScan(' 3017620422003 ', 'ean_13'), { code: '3017620422003', note: '' });
+  assert.deepEqual(normaliseScan(' 3017620422003 ', 'ean_13'), { code: '3017620422003', upcE: null });
   assert.equal(normaliseScan('3017620422004', 'ean_13'), null);
-  assert.deepEqual(normaliseScan('04252614', 'upc_e'), { code: '042100005264', note: 'UPC-E 04252614 expanded' });
+  assert.deepEqual(normaliseScan('04252614', 'upc_e'), { code: '042100005264', upcE: '04252614' });
   assert.equal(normaliseScan('04252615', 'upc_e'), null);
   assert.equal(normaliseScan(null), null);
 });

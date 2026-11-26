@@ -4,7 +4,8 @@
  * A page. Feature modules export `routes: Route[]` from their index.js; src/app.js mounts them.
  * @typedef {object} Route
  * @property {string} path   'workout', 'workout/session/:id' — no leading '#/' or '/'. ':name' = param.
- * @property {string} [title] document title
+ * @property {string} [titleKey] catalogue key of the document title (src/i18n), e.g. 'settings.title'
+ * @property {string} [title] document title, untranslated (legacy; prefer titleKey)
  * @property {string} [tab]  tab to highlight ('diary'|'workout'|'trends'|'settings'); default = first path segment
  * @property {(container: HTMLElement, params: Record<string, string>, ctx: RouteContext)
  *            => void | Cleanup | Promise<void | Cleanup>} mount

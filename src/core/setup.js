@@ -44,18 +44,19 @@ const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
  * @param {object} current stored settings.targets
  * @param {{mode: 'grams', kcal: number, protein: number, carbs: number, fat: number}
  *        | {mode: 'percent', kcal: number, pct: {protein: number, carbs: number, fat: number}}} input
- * @returns {{ok: true, targets: object} | {ok: false, error: string, field?: string}}
+ * @returns {{ok: true, targets: object} | {ok: false, errorKey: string, field?: string}}
+ *   errorKey: catalogue key the UI shows (core.setup.*).
  */
 export function buildTargets(current, input) {
   const kcal = input && input.kcal;
-  if (!isNum(kcal) || kcal < 0) return { ok: false, error: 'Enter a valid calories target.', field: 'kcal' };
+  if (!isNum(kcal) || kcal < 0) return { ok: false, errorKey: 'core.setup.errorKcal', field: 'kcal' };
   if (input.mode === 'percent') {
-    if (!validateSplit(input.pct).ok) return { ok: false, error: 'The three percentages must add up to 100.', field: 'pct' };
+    if (!validateSplit(input.pct).ok) return { ok: false, errorKey: 'core.setup.errorSplit', field: 'pct' };
     const pct = Object.fromEntries(MACROS.map((k) => [k, input.pct[k]]));
     return { ok: true, targets: { ...current, kcal, ...gramsFromPct(kcal, pct), source: 'manual', mode: 'percent', pct } };
   }
   for (const k of MACROS) {
-    if (!isNum(input[k]) || input[k] < 0) return { ok: false, error: `Enter a valid ${k} target.`, field: k };
+    if (!isNum(input[k]) || input[k] < 0) return { ok: false, errorKey: `core.setup.error.${k}`, field: k };
   }
   const { pct: _drop, ...rest } = current || {};
   return { ok: true, targets: { ...rest, kcal, protein: input.protein, carbs: input.carbs, fat: input.fat, source: 'manual', mode: 'grams' } };
@@ -85,7 +86,7 @@ export function proposeTargets({ profile, weightKg, rateKgPerWeek, adaptive = {}
  * @param {{profile: object, goal: object, targets: object}} current stored settings
  * @param {{today: string, now: number, skipped?: boolean}} when
  * @returns {{settings: Record<string, object>, weight: {date: string, kg: number, updatedAt: number}|null,
- *            metaPatch: {setupCompletedAt: number, setupSkipped: boolean, setupVersion: number}|null, error?: string}}
+ *            metaPatch: {setupCompletedAt: number, setupSkipped: boolean, setupVersion: number}|null, errorKey?: string}}
  *   metaPatch is merged into settings.meta by the caller (read-modify-write in one transaction).
  */
 export function setupWrites(answers, current, { today, now, skipped = false }) {
@@ -101,7 +102,7 @@ export function setupWrites(answers, current, { today, now, skipped = false }) {
   if (isNum(a.rateKgPerWeek)) settings.goal = { ...current.goal, rateKgPerWeek: a.rateKgPerWeek };
   if (a.targets) {
     const r = buildTargets(current.targets, a.targets);
-    if (!r.ok) return { settings: {}, weight: null, metaPatch: null, error: r.error };
+    if (!r.ok) return { settings: {}, weight: null, metaPatch: null, errorKey: r.errorKey };
     settings.targets = r.targets;
   }
   return { settings, weight, metaPatch: { setupCompletedAt: now, setupSkipped: !!skipped, setupVersion: SETUP_VERSION } };

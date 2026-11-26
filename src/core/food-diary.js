@@ -2,19 +2,17 @@
 // Pure, no DOM / IndexedDB. ids and timestamps are passed in so everything is deterministic in tests.
 import { NUTRIENTS, REQUIRED_NUTRIENTS, sumEntries, emptyPer100 } from './nutrition.js';
 
+// Meals in display order; the UI shows t(labelKey) (src/food/names.js mealName).
 export const MEALS = Object.freeze([
-  { id: 'breakfast', label: 'Breakfast' },
-  { id: 'lunch', label: 'Lunch' },
-  { id: 'dinner', label: 'Dinner' },
-  { id: 'snack', label: 'Snack' },
+  { id: 'breakfast', labelKey: 'food.meal.breakfast' },
+  { id: 'lunch', labelKey: 'food.meal.lunch' },
+  { id: 'dinner', labelKey: 'food.meal.dinner' },
+  { id: 'snack', labelKey: 'food.meal.snack' },
 ]);
 export const MEAL_IDS = Object.freeze(MEALS.map((m) => m.id));
 
 /** @param {string} id */
 export const isMeal = (id) => MEAL_IDS.includes(id);
-/** @param {string} id @returns {string} 'Breakfast' */
-export const mealLabel = (id) => (MEALS.find((m) => m.id === id) || { label: id }).label;
-
 /**
  * Suggest a meal for the current time of day (used when no meal is given).
  * @param {Date} [now]
@@ -55,6 +53,13 @@ export function makeEntry({ id, date, meal, food, amount, now }) {
 }
 
 /**
+ * Stored names of entries / saved meals created without a name. They are data markers (kept in English in
+ * records and backups); the UI shows them translated (src/food/names.js).
+ */
+export const QUICK_ADD_NAME = 'Quick add'; // i18n-ignore (stored marker, translated at display time)
+export const DEFAULT_MEAL_NAME = 'Meal'; // i18n-ignore (stored marker, translated at display time)
+
+/**
  * Quick add: calories/macros without a food. Stored as amount 100 with per100 = the totals.
  * @param {{id: string, date: string, meal: string, name?: string, kcal: number, protein?: number|null,
  *          carbs?: number|null, fat?: number|null, now: number}} a
@@ -67,7 +72,7 @@ export function quickAddEntry({ id, date, meal, name, kcal, protein = null, carb
   per100.fat = fat ?? 0;
   return {
     id, date, meal, foodId: null,
-    name: String(name || '').trim() || 'Quick add',
+    name: String(name || '').trim() || QUICK_ADD_NAME,
     brand: null, amount: 100, basis: 'g', per100,
     createdAt: now, updatedAt: now,
   };
@@ -123,7 +128,7 @@ export function copyEntries(entries, { date, meal, now, newId }) {
  */
 export function mealFromEntries({ id, name, entries, now }) {
   return {
-    id, name: String(name || '').trim() || 'Meal',
+    id, name: String(name || '').trim() || DEFAULT_MEAL_NAME,
     items: entries.map((e) => ({
       foodId: e.foodId ?? null, name: e.name, brand: e.brand ?? null,
       amount: e.amount, basis: e.basis, per100: copyPer100(e.per100),

@@ -1,6 +1,9 @@
-// Display formatting. Pure (no DOM), English, metric. '.' as decimal separator, no grouping.
+// Display formatting. Pure (no DOM), metric. Numbers: '.' as decimal separator in every language
+// (see docs/I18N.md › Numbers); dates and day words follow the app language (src/i18n).
 import { parseDate, today, addDays } from '../core/dates.js';
 import { round } from '../core/numbers.js';
+import { t } from '../i18n/index.js';
+import { dateLabel } from '../i18n/dates.js';
 
 /** 12.50 -> '12.5', 3 -> '3', null -> '–'. @param {number|null|undefined} n */
 export function fmtNum(n, maxDecimals = 1) {
@@ -18,22 +21,21 @@ export const fmtKg = (n, maxDecimals = 2) => `${fmtNum(n, maxDecimals)} kg`;
 /** '150 g' or '250 ml' for an amount with its basis */
 export const fmtAmount = (n, basis = 'g') => `${fmtNum(n, 1)} ${basis}`;
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** '2026-11-18' -> 'Wed 18 Nov' (adds the year if not the current one) */
+/**
+ * '2026-11-18' -> 'Wed 18 Nov' (adds the year if not the current one), in the app language:
+ * de 'Mi. 18. Nov.', zh '11月18日周三' (src/i18n/dates.js).
+ */
 export function fmtDate(s, now = new Date()) {
   const d = parseDate(s);
-  const base = `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
-  return d.getFullYear() === now.getFullYear() ? base : `${base} ${d.getFullYear()}`;
+  return dateLabel(d, { year: d.getFullYear() !== now.getFullYear() });
 }
 
-/** 'Today', 'Yesterday', 'Tomorrow', else fmtDate() */
+/** 'Today', 'Yesterday', 'Tomorrow' (translated), else fmtDate() */
 export function fmtDay(s, now = new Date()) {
-  const t = today(now);
-  if (s === t) return 'Today';
-  if (s === addDays(t, -1)) return 'Yesterday';
-  if (s === addDays(t, 1)) return 'Tomorrow';
+  const t0 = today(now);
+  if (s === t0) return t('common.today');
+  if (s === addDays(t0, -1)) return t('common.yesterday');
+  if (s === addDays(t0, 1)) return t('common.tomorrow');
   return fmtDate(s, now);
 }
 
@@ -93,4 +95,13 @@ export function fmtTonnage(kg, { kg: kgOnly = false } = {}) {
   if (kgOnly || Math.abs(whole) < 10000) return `${fmtGrouped(whole, 0)} kg`;
   const [i, d] = (Math.abs(kg) / 1000).toFixed(2).split('.');
   return `${kg < 0 ? MINUS : ''}${fmtGrouped(Number(i), 0)}.${d} t`;
+}
+
+/**
+ * Join translated sentences: one space between them, none after a full-width stop (Chinese "。", "？", "！").
+ * @param {Array<string|null|undefined|false>} parts falsy parts are skipped
+ * @returns {string}
+ */
+export function joinSentences(parts) {
+  return parts.filter(Boolean).reduce((acc, p) => (!acc ? p : `${acc}${/[。！？]$/.test(acc) ? '' : ' '}${p}`), '');
 }

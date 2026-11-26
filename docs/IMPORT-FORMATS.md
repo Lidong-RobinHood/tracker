@@ -94,6 +94,8 @@ One item per line; cells are tab separated (copied from a sheet) or space separa
   `80kg 8` = 80 kg × 8 reps. One number after sets with an absolute weight in the same exercise
   (`100` after `100 7`) is listed as "weight without reps?" and left out (write `BW 12` for a
   bodyweight set); after added-weight sets (`+10 6`) it stays a bodyweight set.
+  Weight and reps are separated by spaces or a tab, never by a comma: a comma is a decimal mark
+  (`80,6` = 80.6, rejected as reps; `80, 6` is unreadable). The help sheet says so in every language.
 - dropset: `Dropset 5x 80`, `Drop 5 x 80`, `DS 5x80`, `Dropset: 5 x 80 kg` = 5 reps at 80 kg.
 - ignored: blank lines, header lines (`kg reps`, `Gewicht Wdh`).
 - **rejected (whole paste):** several column groups side by side (two exercise names or dates in one

@@ -76,11 +76,11 @@ export function getBaseUrl() {
   const v = validateBaseUrl(read(BASE_URL_STORAGE) || '');
   return v.ok ? v.url : '';
 }
-/** @returns {{ok: true, url: string} | {ok: false, error: string}} */
+/** @returns {{ok: true, url: string} | {ok: false, errorKey: string}} errorKey: catalogue key (namespace food) */
 export function setBaseUrl(raw) {
   const v = validateBaseUrl(raw);
   if (!v.ok) return v;
-  if (!write(BASE_URL_STORAGE, v.url)) return { ok: false, error: 'This browser does not allow storing settings.' };
+  if (!write(BASE_URL_STORAGE, v.url)) return { ok: false, errorKey: 'food.photoSettings.storageBlocked' };
   return v;
 }
 export const getUseSchema = () => read(SCHEMA_STORAGE) === '1';

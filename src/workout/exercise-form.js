@@ -6,11 +6,9 @@ import { MUSCLES } from '../core/muscles.js';
 import { DEFAULT_INCREMENT } from '../data/exercises.js';
 import { parseVideoUrl } from '../core/exercise-video.js';
 import { musclesBlock } from './muscle-map.js';
-
-export const EQUIPMENT = [
-  ['barbell', 'Barbell'], ['dumbbell', 'Dumbbell'], ['machine', 'Machine'],
-  ['cable', 'Cable'], ['bodyweight', 'Bodyweight'], ['other', 'Other'],
-];
+import { EQUIPMENT_IDS, equipmentName } from './data.js';
+import { t } from '../i18n/index.js';
+import { muscleName } from '../i18n/names.js';
 
 /**
  * @param {object} [initial] exercise or partial ({ name })
@@ -18,6 +16,7 @@ export const EQUIPMENT = [
  *   compact: hide notes and tutorial link (picker); preview: a small body map of the chosen muscles
  *   above the muscle chips; onMuscles: runs after every change of the direct / partial muscles
  * @returns {{node: HTMLElement, read: () => {ok: true, value: object}|{ok: false, error: string}, focusName: () => void}}
+ *   error: translated text
  */
 export function exerciseForm(initial = {}, { compact = false, preview = false, onMuscles = null } = {}) {
   const primary = new Set(initial.primary || []);
@@ -26,10 +25,10 @@ export function exerciseForm(initial = {}, { compact = false, preview = false, o
 
   const name = el('input', { class: 'input', type: 'text', value: initial.name || '', autocomplete: 'off', maxlength: '80' });
   const equipment = el('select', { class: 'select' },
-    EQUIPMENT.map(([v, label]) => el('option', { value: v, selected: v === (initial.equipment || 'barbell') }, label)));
+    EQUIPMENT_IDS.map((v) => el('option', { value: v, selected: v === (initial.equipment || 'barbell') }, equipmentName(v))));
   const increment = numberInput({
     value: initial.increment ?? DEFAULT_INCREMENT[initial.equipment || 'barbell'],
-    min: 0, max: 50, ariaLabel: 'Weight step', onInput: () => { incrementEdited = true; },
+    min: 0, max: 50, ariaLabel: t('workout.form.step'), onInput: () => { incrementEdited = true; },
   });
   equipment.addEventListener('change', () => {
     if (!incrementEdited) increment.setNumber(DEFAULT_INCREMENT[equipment.value] ?? 2.5);
@@ -39,7 +38,7 @@ export function exerciseForm(initial = {}, { compact = false, preview = false, o
     class: 'input', type: 'url', inputmode: 'url', value: initial.videoUrl || '', autocomplete: 'off',
     autocapitalize: 'off', spellcheck: 'false', maxlength: '2000', placeholder: 'https://youtu.be/…',
   });
-  const videoField = field('Tutorial link', videoUrl, { hint: 'Empty = default video.' });
+  const videoField = field(t('workout.form.tutorialLink'), videoUrl, { hint: t('workout.form.tutorialHint') });
   videoUrl.addEventListener('input', () => { videoField.classList.remove('is-missing'); videoUrl.removeAttribute('aria-invalid'); });
 
   const primaryChips = el('div', { class: 'chips' });
@@ -63,27 +62,27 @@ export function exerciseForm(initial = {}, { compact = false, preview = false, o
       else { set.add(m.id); other.delete(m.id); }
       changed();
     },
-  }, m.name);
+  }, muscleName(m.id));
   renderChips();
 
   // Labels show the user's own set weighting: 'Direct muscles · × 1', 'Partial muscles · × 0.5'.
-  const directLabel = el('div', { class: 'field-label' }, 'Direct muscles');
-  const partialLabel = el('div', { class: 'field-label' }, 'Partial muscles');
+  const directLabel = el('div', { class: 'field-label' }, t('workout.form.direct'));
+  const partialLabel = el('div', { class: 'field-label' }, t('workout.form.partial'));
   db.getSetting('volume').then((raw) => {
     const w = volumeWeights(raw);
-    directLabel.textContent = `Direct muscles · × ${fmtNum(w.primary, 2)}`;
-    partialLabel.textContent = `Partial muscles · × ${fmtNum(w.secondary, 2)}`;
+    directLabel.textContent = t('workout.form.directWeighted', { weight: fmtNum(w.primary, 2) });
+    partialLabel.textContent = t('workout.form.partialWeighted', { weight: fmtNum(w.secondary, 2) });
   }).catch((err) => console.error(err));
   const primaryField = el('div', { class: 'field' }, directLabel, primaryChips);
   const node = el('div', { class: 'stack' },
-    field('Name', name),
+    field(t('workout.form.name'), name),
     previewBlock ? previewBlock.node : null,
     primaryField,
     el('div', { class: 'field' }, partialLabel, secondaryChips),
     el('div', { class: 'grid-2' },
-      field('Equipment', equipment),
-      field('Weight step', increment, { unit: 'kg', hint: '0 = no suggestions', info: 'progression' })),
-    compact ? null : field('Notes', notes),
+      field(t('workout.form.equipment'), equipment),
+      field(t('workout.form.step'), increment, { unit: 'kg', hint: t('workout.form.stepHint'), info: 'progression' })),
+    compact ? null : field(t('workout.form.notes'), notes),
     compact ? null : videoField);
 
   return {
@@ -92,13 +91,13 @@ export function exerciseForm(initial = {}, { compact = false, preview = false, o
     read() {
       const n = name.value.trim();
       primaryField.classList.remove('is-missing');
-      if (!n) { name.focus(); return { ok: false, error: 'Enter a name.' }; }
-      if (!primary.size) { primaryField.classList.add('is-missing'); return { ok: false, error: 'Pick at least one direct muscle.' }; }
+      if (!n) { name.focus(); return { ok: false, error: t('workout.form.errName') }; }
+      if (!primary.size) { primaryField.classList.add('is-missing'); return { ok: false, error: t('workout.form.errMuscle') }; }
       const inc = increment.getNumber();
-      if (inc === null) { increment.focus(); return { ok: false, error: 'Enter a weight step from 0 to 50 kg.' }; }
+      if (inc === null) { increment.focus(); return { ok: false, error: t('workout.form.errStep') }; }
       const video = parseVideoUrl(compact ? initial.videoUrl : videoUrl.value);
       videoField.classList.toggle('is-missing', !video.ok);
-      if (!video.ok) { videoUrl.setAttribute('aria-invalid', 'true'); videoUrl.focus(); return { ok: false, error: `Tutorial link: ${video.error}` }; }
+      if (!video.ok) { videoUrl.setAttribute('aria-invalid', 'true'); videoUrl.focus(); return { ok: false, error: t('workout.form.errLink', { error: t(video.error) }) }; }
       return {
         ok: true,
         value: { name: n, primary: order(primary), secondary: order(secondary), equipment: equipment.value, increment: inc, notes: notes.value.trim(), videoUrl: video.value },

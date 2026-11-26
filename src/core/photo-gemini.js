@@ -25,12 +25,14 @@ import {
 } from './meal-photo.js';
 
 export const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-const NAME = 'Google Gemini';
+const NAME = 'Google Gemini'; // i18n-ignore (brand)
 
+// i18n-ignore-start (model names; notes are catalogue keys)
 export const GEMINI_SUGGESTED = Object.freeze([
-  { id: 'gemini-4-hydrogen', label: 'Gemini 4 Hydrogen', note: 'fast everyday model' },
-  { id: 'gemini-4-carbon', label: 'Gemini 4 Carbon', note: 'strongest reasoning' },
+  { id: 'gemini-4-hydrogen', label: 'Gemini 4 Hydrogen', noteKey: 'food.provider.note.fastEveryday' },
+  { id: 'gemini-4-carbon', label: 'Gemini 4 Carbon', noteKey: 'food.provider.note.strongest' },
 ]);
+// i18n-ignore-end
 export const GEMINI_DEFAULT_MODEL = GEMINI_SUGGESTED[0].id;
 
 /** "models/gemini-x" → "gemini-x" (the list returns resource names). */
@@ -100,7 +102,7 @@ export function classifyGeminiError(status, body) {
   if (status === 401 || st === 'UNAUTHENTICATED' || reasons.includes('API_KEY_INVALID') || /api key not valid/i.test(msg)) return photoError('auth', '', o);
   if (status === 403 && /api key|leaked|blocked/i.test(msg)) return photoError('auth', msg, o);
   if (status === 429) {
-    return photoError('rate_limit', msg, { ...o, message: 'Gemini limit or quota reached (429). Try later or check Google AI Studio.' });
+    return photoError('rate_limit', msg, { ...o, key: 'food.photoError.geminiQuota' });
   }
   if (status === 402 || (st === 'FAILED_PRECONDITION' && /billing|free tier/i.test(msg)) || /prepay|credit balance/i.test(msg)) return photoError('billing', msg, o);
   if (status === 403 || st === 'PERMISSION_DENIED') return photoError('permission', msg, o);
@@ -109,7 +111,7 @@ export function classifyGeminiError(status, body) {
   if (st === 'RESOURCE_EXHAUSTED') return photoError('billing', msg, o);
   if (status === 503 || st === 'UNAVAILABLE') return photoError('overloaded', '', o);
   if (status >= 500) return photoError('server', msg, o);
-  return photoError('bad_request', msg || `HTTP ${status}`, o);
+  return photoError('bad_request', msg || `HTTP ${status}`, o); // i18n-ignore (technical detail)
 }
 
 const BLOCKED = new Set(['SAFETY', 'RECITATION', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'SPII', 'IMAGE_SAFETY', 'IMAGE_PROHIBITED_CONTENT', 'LANGUAGE', 'OTHER']);
@@ -122,35 +124,33 @@ export function extractGeminiText(res) {
   const o = { provider: NAME };
   if (!res || typeof res !== 'object') return photoError('unusable', '', o);
   const block = res.promptFeedback && res.promptFeedback.blockReason;
-  if (block) return photoError('refusal', `Blocked: ${block}`, o);
+  if (block) return photoError('refusal', `blockReason: ${block}`, o); // i18n-ignore (technical detail)
   const c = Array.isArray(res.candidates) ? res.candidates[0] : null;
   if (!c) return photoError('unusable', '', o);
   if (c.finishReason === 'MAX_TOKENS') return photoError('truncated', '', o);
   const parts = c.content && Array.isArray(c.content.parts) ? c.content.parts : [];
   const text = parts.filter((p) => p && !p.thought && typeof p.text === 'string').map((p) => p.text).join('');
   // A blocked candidate is a refusal; "OTHER" only counts when nothing usable came back.
-  if (BLOCKED.has(c.finishReason) && (c.finishReason !== 'OTHER' || !text.trim())) return photoError('refusal', `Stopped: ${c.finishReason}`, o);
+  if (BLOCKED.has(c.finishReason) && (c.finishReason !== 'OTHER' || !text.trim())) return photoError('refusal', `finishReason: ${c.finishReason}`, o); // i18n-ignore (technical detail)
   if (!text.trim()) return photoError('unusable', '', o);
   return { ok: true, text, model: typeof res.modelVersion === 'string' ? res.modelVersion : null };
 }
 
 export const gemini = Object.freeze({
   id: 'gemini',
-  label: 'Google Gemini (AI Studio)',
+  label: 'Google Gemini (AI Studio)', // i18n-ignore (brand)
   name: NAME,
   auth: { header: 'x-goog-api-key', prefix: '' },
   hosts: ['generativelanguage.googleapis.com'],
   suggested: GEMINI_SUGGESTED,
   defaultModel: GEMINI_DEFAULT_MODEL,
-  keyPlaceholder: 'Gemini API key',
-  keyHelp: 'Create one in Google AI Studio (aistudio.google.com/apikey).',
+  // Texts are catalogue keys (namespace food), translated by the UI.
+  keyPlaceholderKey: 'food.provider.gemini.keyPlaceholder',
+  keyHelpKey: 'food.provider.gemini.keyHelp',
   keyLooksValid: () => true,
-  keyFormatNote: '',
+  keyFormatNoteKey: '',
   pricingUrl: 'https://aistudio.google.com/docs/pricing',
-  notes: [
-    'Billed to your Google project, or free-tier limits without billing.',
-    'On the free tier Google may use your photos to improve its products.',
-  ],
+  noteKeys: ['food.provider.gemini.note1', 'food.provider.gemini.note2'],
   structured: true,
   buildAnalyse: buildGeminiRequest,
   buildTest: buildGeminiTest,

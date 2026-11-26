@@ -1,55 +1,59 @@
 // Import hub: the three importers and the list of past imports with Undo.
-import { el, pageHeader, href, confirmDialog, toast, fmtDate, icon, sectionHeader, tag } from '../ui/index.js';
+import { el, pageHeader, href, confirmDialog, toast, fmtDate, fmtTime, icon, sectionHeader, tag, joinSentences } from '../ui/index.js';
 import { fromTimestamp } from '../core/dates.js';
-import { ensureCss, loadRuns, undoRun, plural, runSummary } from './shared.js';
+import { t } from '../i18n/index.js';
+import { ensureCss, loadRuns, undoRun, runSummary } from './shared.js';
 
-const TYPE_LABEL = { workouts: 'Workouts', weights: 'Body weight', food: 'Food diary' };
+const TYPE_LABEL = { workouts: 'import.hub.workouts', weights: 'import.hub.weights', food: 'import.hub.food' };
 
 export async function mountHub(container) {
   ensureCss();
   container.classList.add('imp-view');
   const runsBox = el('div', { class: 'card card-flush' });
   container.append(
-    pageHeader({ title: 'Import data', subtitle: 'Preview first. Every import can be undone below.', back: 'settings' }),
+    pageHeader({ title: t('import.title'), subtitle: t('import.hub.subtitle'), back: 'settings' }),
     el('div', { class: 'card card-flush' }, el('div', { class: 'list' },
-      item('import/workouts', 'barbell', 'Workouts', 'Spreadsheet paste, .txt or .csv'),
-      item('import/weights', 'scale', 'Body weight', 'Date and kg per line'),
-      item('import/food', 'utensils', 'Food diary', 'MyFitnessPal, Cronometer, FDDB (CSV)'))),
-    el('section', { class: 'section' }, sectionHeader('Past imports'), runsBox));
+      item('import/workouts', 'barbell', t('import.hub.workouts'), t('import.hub.workoutsSub')),
+      item('import/weights', 'scale', t('import.hub.weights'), t('import.hub.weightsSub')),
+      item('import/food', 'utensils', t('import.hub.food'), t('import.hub.foodSub')))),
+    el('section', { class: 'section' }, sectionHeader(t('import.hub.past')), runsBox));
 
   async function render() {
     const runs = await loadRuns();
-    if (!runs.length) { runsBox.replaceChildren(el('p', { class: 't-sub muted imp-none' }, 'No imports yet.')); return; }
+    if (!runs.length) { runsBox.replaceChildren(el('p', { class: 't-sub muted imp-none' }, t('import.hub.none'))); return; }
     runsBox.replaceChildren(el('div', { class: 'list' }, runs.map((r) => runRow(r))));
   }
 
   function runRow(r) {
-    const when = `${fmtDate(fromTimestamp(r.createdAt))} ${new Date(r.createdAt).toTimeString().slice(0, 5)}`;
-    const status = r.status === 'undone' ? tag('Undone')
-      : r.status === 'done' ? null : tag('Not finished', { tone: 'warn' });
+    const when = `${fmtDate(fromTimestamp(r.createdAt))} ${fmtTime(r.createdAt)}`;
+    const status = r.status === 'undone' ? tag(t('import.hub.undone'))
+      : r.status === 'done' ? null : tag(t('import.hub.notFinished'), { tone: 'warn' });
     const btn = r.status === 'undone' ? null : el('button', {
-      type: 'button', class: 'btn btn-sm btn-danger imp-undo', 'aria-label': `Undo this import: ${runSummary(r)}`, onClick: async () => {
+      type: 'button', class: 'btn btn-sm btn-danger imp-undo', 'aria-label': t('import.hub.undoLabel', { summary: runSummary(r) }), onClick: async () => {
         const ok = await confirmDialog({
-          title: 'Undo this import?',
+          title: t('import.hub.undoTitle'),
           message: undoMessage(r),
-          confirmLabel: 'Undo import', danger: true,
+          confirmLabel: t('import.hub.undoConfirm'), danger: true,
         });
         if (!ok) return;
         btn.disabled = true;
         try {
           const res = await undoRun(r.id);
           const n = Object.values(res.removed).reduce((a, b) => a + b, 0);
-          toast(`Import undone: ${plural(n, 'record')} removed${res.restored ? `, ${res.restored} earlier weights restored` : ''}${res.keptExercises ? `, ${plural(res.keptExercises, 'exercise')} kept because they are in use` : ''}.`, { type: 'success' });
+          const parts = [t('import.hub.undoneToast', { count: n })];
+          if (res.restored) parts.push(t('import.hub.restored', { count: res.restored }));
+          if (res.keptExercises) parts.push(t('import.hub.keptExercises', { count: res.keptExercises }));
+          toast(joinSentences(parts), { type: 'success' });
         } catch (err) {
           console.error(err);
-          toast(`Undo failed: ${err.message}`, { type: 'error' });
+          toast(t('import.hub.undoFailed', { error: err.message }), { type: 'error' });
         }
         render();
       },
-    }, icon('undo-2', { size: 18 }), 'Undo');
+    }, icon('undo-2', { size: 18 }), t('import.hub.undo'));
     return el('div', { class: 'list-item imp-run', dataset: { run: r.id } },
       el('div', { class: 'li-main' },
-        el('div', { class: 'li-title imp-run-title' }, TYPE_LABEL[r.type] || r.type, status),
+        el('div', { class: 'li-title imp-run-title' }, TYPE_LABEL[r.type] ? t(TYPE_LABEL[r.type]) : r.type, status),
         el('div', { class: 'li-sub imp-wrap' }, `${when} · ${runSummary(r)}`)),
       btn);
   }
@@ -59,10 +63,9 @@ export async function mountHub(container) {
 
 /** 'Removes 1 entry on 1 day (19 Nov 2026) from the CSV import. Your own entries stay.' */
 function undoMessage(r) {
-  const text = runSummary(r);
-  const m = text.match(/^([^:]{1,40}): (.*)$/); // food runs: 'CSV: 1 entry on 1 day, 19 Nov 2026'
-  const body = (m ? m[2] : text).replace(/, (\w{3} \d{1,2} \w{3} \d{4}(?: – \w{3} \d{1,2} \w{3} \d{4})?)$/, ' ($1)');
-  return `Removes ${body}${m ? ` from the ${m[1]} import` : ''}. Your own entries stay.`;
+  if (!r.info) return t('import.hub.undoMessageOld', { summary: runSummary(r) });
+  const what = runSummary(r, { source: false });
+  return r.info.source ? t('import.hub.undoMessageSource', { summary: what, source: r.info.source }) : t('import.hub.undoMessage', { summary: what });
 }
 
 function item(path, iconName, title, sub) {

@@ -46,6 +46,9 @@ test('buildTargets rejects invalid input', () => {
   assert.equal(buildTargets(DEFAULT_TARGETS, { mode: 'grams', kcal: null, protein: 1, carbs: 1, fat: 1 }).ok, false);
   assert.equal(buildTargets(DEFAULT_TARGETS, { mode: 'grams', kcal: 2000, protein: 1, carbs: null, fat: 1 }).field, 'carbs');
   assert.equal(buildTargets(DEFAULT_TARGETS, { mode: 'percent', kcal: 2000, pct: { protein: 30, carbs: 30, fat: 30 } }).ok, false);
+  assert.equal(buildTargets(DEFAULT_TARGETS, { mode: 'percent', kcal: 2000, pct: { protein: 30, carbs: 30, fat: 30 } }).errorKey, 'core.setup.errorSplit');
+  assert.equal(buildTargets(DEFAULT_TARGETS, { mode: 'grams', kcal: null, protein: 1, carbs: 1, fat: 1 }).errorKey, 'core.setup.errorKcal');
+  assert.equal(buildTargets(DEFAULT_TARGETS, { mode: 'grams', kcal: 2000, protein: 1, carbs: -1, fat: 1 }).errorKey, 'core.setup.error.carbs');
 });
 
 test('proposeTargets: formula estimate and check-in style targets', () => {
@@ -98,7 +101,7 @@ test('setupWrites: skipped steps write nothing for them', () => {
 test('setupWrites: invalid targets abort without writes', () => {
   const current = { profile: {}, goal: {}, targets: DEFAULT_TARGETS };
   const w = setupWrites({ targets: { mode: 'percent', kcal: 2000, pct: { protein: 10, carbs: 10, fat: 10 } } }, current, { today: '2026-11-19', now: 1 });
-  assert.ok(w.error);
+  assert.match(w.errorKey, /^core\.setup\./);
   assert.deepEqual(w.settings, {});
   assert.equal(w.metaPatch, null);
 });

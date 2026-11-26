@@ -5,13 +5,16 @@ import {
   el, append, replaceChildren, pageHeader, sectionHeader, cardHeader, segmented, tag, icon, infoButton, href,
   setBodyMapValues, openSheet, toast, fmtNum, navigate, emptyState, confirmDialog,
 } from '../ui/index.js';
-import { splitById, SHARED_BULLETS, SPLIT_DISCLAIMER } from '../data/splits.js';
+import { splitById } from '../data/splits.js';
+import { t } from '../i18n/index.js';
+import {
+  muscleName, exerciseName, splitName, splitSuits, splitBullets, sessionName, styleLabel, levelLabel, placeLabel, equipmentName,
+} from '../i18n/names.js';
 import { MUSCLES } from '../core/muscles.js';
 import { sanitiseTargets, volumeWeights } from '../core/volume.js';
-import { formatTarget } from '../core/workout.js';
 import { exerciseUsage } from '../core/exercise-usage.js';
 import { coverageStep, coverageBands, alternatives, autoSwaps, targetsFromCoverage, VOLUME_LEVELS } from '../core/splits.js';
-import { loadExercises, loadWorkouts, musclesLine } from '../workout/data.js';
+import { loadExercises, loadWorkouts, musclesLine, fmtTarget } from '../workout/data.js';
 import { tutorialFor } from '../workout/tutorial.js';
 import { setsMap, setsMapRow, setsRow, setsList } from '../workout/muscle-map.js';
 import { mapSteps } from '../core/routine-sets.js';
@@ -21,18 +24,17 @@ import {
 } from './store.js';
 import { customRoutineIds } from '../core/splits.js';
 import { customiseAction } from './custom-new.js';
-import { styleLabel, levelLabel, equipmentLabel } from './library.js';
 
-const LEVEL_LABEL = { minimum: 'Minimum', standard: 'Standard', high: 'High' };
-const EQUIP_NAME = { barbell: 'Barbell', dumbbell: 'Dumbbell', machine: 'Machine', cable: 'Cable', bodyweight: 'Bodyweight', other: 'Other' };
+/** Volume level → label key (splits.level.minimum …). */
+const levelText = (v) => t(`splits.level.${v}`);
 const view = { sets: 'map' }; // Map / List toggle, kept while the app runs
 
 export async function mountDetail(container, params) {
   ensureSplitsCss();
   const split = splitById(params.id);
   if (!split) {
-    append(container, pageHeader({ title: 'Split', back: 'workout/splits' }), emptyState('Split not found.',
-      el('a', { class: 'btn', href: href('workout/splits') }, 'All splits')));
+    append(container, pageHeader({ title: t('splits.split'), back: 'workout/splits' }), emptyState(t('splits.notFound'),
+      el('a', { class: 'btn', href: href('workout/splits') }, t('splits.all'))));
     return;
   }
   const [exMap, workouts, weights, rawTargets, active] = await Promise.all([
@@ -54,31 +56,31 @@ export async function mountDetail(container, params) {
   const setsBody = el('div', { class: 'sp-sets-body' });
   const paintSets = () => {
     const cov = current.coverage;
-    map.setAttribute('aria-label', `Planned weekly sets: ${MUSCLES.map((m) => `${m.name} ${fmtNum(cov[m.id].total, 1)}`).join(', ')}`);
+    map.setAttribute('aria-label', t('splits.sets.mapAria', { list: MUSCLES.map((m) => `${muscleName(m.id)} ${fmtNum(cov[m.id].total, 1)}`).join(t('splits.listSep')) }));
     setBodyMapValues(map, mapSteps(cov, coverageStep));
     if (view.sets === 'map') {
-      replaceChildren(setsBody, setsMapRow(map, coverageBands(weights), 'Weekly sets'));
+      replaceChildren(setsBody, setsMapRow(map, coverageBands(weights), t('splits.sets.title')));
     } else {
       replaceChildren(setsBody, setsList(MUSCLES.map((m) => muscleRow(m, cov[m.id], targets[m.id]))));
     }
   };
   const levelSeg = segmented({
-    ariaLabel: 'Volume', value: state.level,
-    options: VOLUME_LEVELS.map((v) => ({ value: v, label: LEVEL_LABEL[v] })),
+    ariaLabel: t('splits.volume'), value: state.level,
+    options: VOLUME_LEVELS.map((v) => ({ value: v, label: levelText(v) })),
     onChange: (v) => { state.level = v; persist(); recompute(); },
   });
   const setsToggle = segmented({
-    small: true, ariaLabel: 'Show weekly sets as', value: view.sets,
-    options: [{ value: 'map', label: 'Map' }, { value: 'list', label: 'Sets' }],
+    small: true, ariaLabel: t('splits.sets.showAs'), value: view.sets,
+    options: [{ value: 'map', label: t('splits.sets.map') }, { value: 'list', label: t('splits.sets.list') }],
     onChange: (v) => { view.sets = v; paintSets(); },
   });
-  const setsHeader = cardHeader('Weekly sets', { trail: setsToggle });
+  const setsHeader = cardHeader(t('splits.sets.title'), { trail: setsToggle });
   // the sheet text uses the user's own set weighting
   setsHeader.querySelector('.card-title').after(infoButton('split-sets', { values: volumeWeights(weights) }));
   const setsCard = el('section', { class: 'card sp-sets-card' },
     setsHeader,
     setsBody,
-    el('div', { class: 'sp-level' }, el('span', { class: 't-cap muted' }, 'Volume'), levelSeg));
+    el('div', { class: 'sp-level' }, el('span', { class: 't-cap muted' }, t('splits.volume')), levelSeg));
 
   // ------------------------------------------------ week
   const weekBox = el('div', { class: 'stack' });
@@ -87,12 +89,12 @@ export async function mountDetail(container, params) {
     const totals = current.sessions.map((s) => s.items.reduce((a, i) => a + i.sets, 0));
     const lo = Math.min(...totals); const hi = Math.max(...totals);
     replaceChildren(weekBox,
-      sectionHeader('Week', { trail: `${lo === hi ? lo : `${lo}–${hi}`} sets / session` }),
+      sectionHeader(t('splits.week'), { trail: lo === hi ? t('splits.setsPerSession', { count: lo }) : t('splits.setsPerSessionRange', { lo, hi }) }),
       current.sessions.map((s, si) => el('section', { class: 'card card-flush sp-day' },
         el('div', { class: 'sp-day-head' },
           el('span', { class: 'sp-day-n', 'aria-hidden': 'true' }, String(si + 1)),
-          el('h3', { class: 'card-title grow' }, s.name),
-          per > 1 ? tag(`× ${per} / week`) : null),
+          el('h3', { class: 'card-title grow' }, sessionName(s)),
+          per > 1 ? tag(t('splits.perWeek', { n: per })) : null),
         el('div', { class: 'list' }, s.items.map((it, i) => exerciseRow(s, it, i))))));
   };
   const exerciseRow = (s, it, i) => {
@@ -103,9 +105,9 @@ export async function mountDetail(container, params) {
       onClick: () => openAlternatives(s, it, i),
     },
     el('div', { class: 'li-main' },
-      el('div', { class: 'li-title' }, ex ? ex.name : 'Unknown exercise'),
-      swapped ? el('div', { class: 'li-sub sp-swapped' }, icon('repeat', { size: 14 }), 'Swapped') : null),
-    el('span', { class: 'li-trail sp-target' }, formatTarget({ targetSets: it.sets, targetReps: it.reps, targetRepsMax: it.repsMax })),
+      el('div', { class: 'li-title' }, ex ? exerciseName(ex) : t('splits.unknownExercise')),
+      swapped ? el('div', { class: 'li-sub sp-swapped' }, icon('repeat', { size: 14 }), t('splits.swapped')) : null),
+    el('span', { class: 'li-trail sp-target' }, fmtTarget({ targetSets: it.sets, targetReps: it.reps, targetRepsMax: it.repsMax })),
     icon('chevron-right', { class: 'li-chevron' }));
   };
 
@@ -124,7 +126,7 @@ export async function mountDetail(container, params) {
     const alts = alternatives(it.exerciseId, opts);
     const all = alternatives(it.exerciseId, { ...opts, showAll: true, limit: 60 });
     const orig = exMap.get(it.original);
-    const sheet = openSheet({ title: 'Swap exercise', className: 'sp-alt-sheet' });
+    const sheet = openSheet({ title: t('splits.swap.title'), className: 'sp-alt-sheet' });
     const listBox = el('div');
     const choose = (id) => {
       if (id === it.original) delete state.swaps[key]; else state.swaps[key] = id;
@@ -133,42 +135,43 @@ export async function mountDetail(container, params) {
       sheet.close();
     };
     const altRow = (ex, { current: isCur = false } = {}) => {
-      const t = tutorialFor(ex);
-      const sub = [musclesLine(ex), EQUIP_NAME[ex.equipment] || ex.equipment].filter(Boolean).join(' · ');
+      const tut = tutorialFor(ex);
+      const name = exerciseName(ex);
+      const sub = [musclesLine(ex), equipmentName(ex.equipment)].filter(Boolean).join(' · ');
       return el('div', { class: 'list-item sp-alt' },
         isCur
-          ? el('div', { class: 'li-main sp-alt-main' }, el('div', { class: 'li-title' }, ex.name), el('div', { class: 'li-sub' }, sub))
-          : el('button', { type: 'button', class: 'li-main sp-alt-main', onClick: () => choose(ex.id), 'aria-label': `Swap to ${ex.name}` },
-            el('div', { class: 'li-title' }, ex.name), el('div', { class: 'li-sub' }, sub)),
-        usage.has(ex.id) && !isCur ? tag('Logged') : null,
+          ? el('div', { class: 'li-main sp-alt-main' }, el('div', { class: 'li-title' }, name), el('div', { class: 'li-sub' }, sub))
+          : el('button', { type: 'button', class: 'li-main sp-alt-main', onClick: () => choose(ex.id), 'aria-label': t('splits.swap.toAria', { name }) },
+            el('div', { class: 'li-title' }, name), el('div', { class: 'li-sub' }, sub)),
+        usage.has(ex.id) && !isCur ? tag(t('splits.swap.logged')) : null,
         el('a', {
-          class: 'btn btn-icon btn-ghost', href: t.url, target: '_blank', rel: 'noopener noreferrer',
-          'aria-label': `Tutorial: ${ex.name} (opens in a new tab)`,
+          class: 'btn btn-icon btn-ghost', href: tut.url, target: '_blank', rel: 'noopener noreferrer',
+          'aria-label': t('splits.swap.tutorialAria', { name }),
         }, icon('circle-play', { size: 20 })));
     };
-    replaceChildren(listBox, alts.length ? el('div', { class: 'list' }, alts.map((ex) => altRow(ex))) : el('p', { class: 't-sub muted' }, 'No similar exercise.'));
+    replaceChildren(listBox, alts.length ? el('div', { class: 'list' }, alts.map((ex) => altRow(ex))) : el('p', { class: 't-sub muted' }, t('splits.swap.none')));
     append(sheet.body,
       cur ? el('div', { class: 'list sp-alt-current' }, altRow(cur, { current: true })) : null,
       it.exerciseId !== it.original && orig
         ? el('button', { type: 'button', class: 'btn btn-secondary btn-block sp-alt-reset', onClick: () => choose(it.original) },
-          icon('undo-2', { size: 18 }), `Back to ${orig.name}`)
+          icon('undo-2', { size: 18 }), t('splits.swap.backTo', { name: exerciseName(orig) }))
         : null,
-      sectionHeader('Same movement'),
+      sectionHeader(t('splits.swap.sameMovement')),
       listBox);
     // "Show all": every exercise with the same main muscle, also movements the day already has.
     const more = all.length > alts.length ? el('button', {
       type: 'button', class: 'btn btn-ghost btn-block sp-alt-all',
       onClick: () => { replaceChildren(listBox, el('div', { class: 'list' }, all.map((ex) => altRow(ex)))); more.remove(); },
-    }, `Show all ${all.length}`) : null;
+    }, t('splits.swap.showAll', { count: all.length })) : null;
     append(sheet.body, more);
   }
 
   // ------------------------------------------------ how to run it + disclaimer
   const howTo = el('section', { class: 'section' },
-    sectionHeader('How to run it', { info: 'split-run' }),
-    el('div', { class: 'card' }, el('ul', { class: 'sp-bullets' }, [...SHARED_BULLETS, ...split.bullets].map((b) => el('li', b)))));
-  const disclaimer = el('p', { class: 't-sub muted sp-disclaimer' }, SPLIT_DISCLAIMER, ' ',
-    el('a', { class: 'sp-src-link', href: href('licences?section=split-sources') }, 'Methods and sources'));
+    sectionHeader(t('splits.howTo'), { info: 'split-run' }),
+    el('div', { class: 'card' }, el('ul', { class: 'sp-bullets' }, splitBullets(split).map((b) => el('li', b)))));
+  const disclaimer = el('p', { class: 't-sub muted sp-disclaimer' }, t('data.splitGuide.disclaimer'), ' ',
+    el('a', { class: 'sp-src-link', href: href('licences?section=split-sources') }, t('splits.sources')));
 
   // ------------------------------------------------ follow
   const actions = el('div', { class: 'stack sp-actions' });
@@ -176,22 +179,22 @@ export async function mountDetail(container, params) {
   const customise = el('button', {
     type: 'button', class: 'btn btn-secondary btn-block',
     onClick: customiseAction(split, () => ({ level: state.level, swaps: state.swaps }), exMap),
-  }, icon('copy', { size: 18 }), 'Customise');
+  }, icon('copy', { size: 18 }), t('splits.customise'));
   const paintActions = () => {
     if (following) {
       replaceChildren(actions,
-        el('button', { type: 'button', class: 'btn btn-secondary btn-block', onClick: openAdopt }, 'Create the routines again'),
+        el('button', { type: 'button', class: 'btn btn-secondary btn-block', onClick: openAdopt }, t('splits.follow.again')),
         customise,
         el('button', {
           type: 'button', class: 'btn btn-ghost btn-block',
           onClick: async () => {
-            if (!(await confirmDialog({ title: 'Stop following?', message: 'Your routines stay.', confirmLabel: 'Stop following' }))) return;
+            if (!(await confirmDialog({ title: t('splits.stop.title'), message: t('splits.stop.message'), confirmLabel: t('splits.stop.button') }))) return;
             await stopFollowing();
             navigate('workout/splits');
           },
-        }, 'Stop following'));
+        }, t('splits.stop.button')));
     } else {
-      replaceChildren(actions, el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: openAdopt }, 'Follow this split'), customise);
+      replaceChildren(actions, el('button', { type: 'button', class: 'btn btn-primary btn-block', onClick: openAdopt }, t('splits.follow.this')), customise);
     }
   };
 
@@ -201,17 +204,17 @@ export async function mountDetail(container, params) {
     const n = split.sessions.length;
     const newTargets = targetsFromCoverage(current.coverage);
     const opts = { replace: previous.length > 0, setTargets: false };
-    const sheet = openSheet({ title: `Follow ${split.name}`, className: 'sp-adopt' });
+    const sheet = openSheet({ title: t('splits.follow.title', { name: splitName(split) }), className: 'sp-adopt' });
     // One short line under each choice says what it does.
-    const newTargetsText = MUSCLES.filter((m) => newTargets[m.id]).map((m) => `${m.name} ${fmtNum(newTargets[m.id], 0)}`).join(' · ');
+    const newTargetsText = MUSCLES.filter((m) => newTargets[m.id]).map((m) => `${muscleName(m.id)} ${fmtNum(newTargets[m.id], 0)}`).join(' · ');
     const targetsLine = el('p', { class: 'field-hint sp-targets-line' });
-    const paintTargets = () => { targetsLine.textContent = opts.setTargets ? `Replaces your targets: ${newTargetsText}` : 'Your weekly set targets stay.'; };
+    const paintTargets = () => { targetsLine.textContent = opts.setTargets ? t('splits.targets.replaces', { list: newTargetsText || t('splits.targets.none') }) : t('splits.targets.stay'); };
     paintTargets();
     const replaceLine = el('p', { class: 'field-hint' });
     const paintReplace = () => {
       replaceLine.textContent = opts.replace
-        ? `Deletes the ${previous.length} routine${previous.length === 1 ? '' : 's'} of earlier splits. History stays.`
-        : 'Nothing is deleted.';
+        ? t('splits.follow.deletes', { count: previous.length })
+        : t('splits.follow.nothingDeleted');
     };
     paintReplace();
     const tick = el('input', {
@@ -221,18 +224,18 @@ export async function mountDetail(container, params) {
     append(sheet.body,
       el('div', { class: 'list sp-adopt-list' }, current.sessions.map((s, i) => el('div', { class: 'list-item' },
         el('span', { class: 'sp-day-n', 'aria-hidden': 'true' }, String(i + 1)),
-        el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, s.name)),
-        el('span', { class: 'li-trail t-sub muted' }, `${s.items.length} exercises`)))),
-      el('div', { class: 'sp-adopt-meta t-sub muted' }, `${LEVEL_LABEL[state.level]} volume`),
+        el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, sessionName(s))),
+        el('span', { class: 'li-trail t-sub muted' }, t('splits.exercises', { count: s.items.length }))))),
+      el('div', { class: 'sp-adopt-meta t-sub muted' }, t('splits.follow.volume', { level: levelText(state.level) })),
       previous.length ? el('div', { class: 'field' },
-        el('div', { class: 'field-label-row' }, el('span', { class: 'field-label' }, `Earlier split routines (${previous.length})`)),
+        el('div', { class: 'field-label-row' }, el('span', { class: 'field-label' }, t('splits.follow.earlier', { n: previous.length }))),
         segmented({
-          ariaLabel: `Earlier split routines (${previous.length})`, value: 'replace',
-          options: [{ value: 'replace', label: 'Replace' }, { value: 'keep', label: 'Keep' }],
+          ariaLabel: t('splits.follow.earlier', { n: previous.length }), value: 'replace',
+          options: [{ value: 'replace', label: t('splits.follow.replace') }, { value: 'keep', label: t('splits.follow.keep') }],
           onChange: (v) => { opts.replace = v === 'replace'; paintReplace(); },
         }), replaceLine) : null,
       el('label', { class: 'sp-tick', htmlFor: 'sp-set-targets' },
-        el('span', { class: 'grow' }, 'Set weekly set targets'), tick),
+        el('span', { class: 'grow' }, t('splits.targets.set')), tick),
       targetsLine);
     append(sheet.footer, el('button', {
       type: 'button', class: 'btn btn-primary btn-block',
@@ -240,23 +243,23 @@ export async function mountDetail(container, params) {
         try {
           const r = await adoptSplit(split, { level: state.level, swaps: state.swaps, exMap, weights, replace: opts.replace, setTargets: opts.setTargets });
           sheet.close();
-          toast(`${r.routines.length} routines created`, { type: 'success' });
+          toast(t('splits.follow.created', { count: r.routines.length }), { type: 'success' });
           navigate('workout');
         } catch (err) {
           console.error(err);
-          toast(`Could not create routines: ${err && err.message}`, { type: 'error' });
+          toast(t('splits.follow.failed', { error: err && err.message }), { type: 'error' });
         }
       },
-    }, `Create ${n} routines`));
+    }, t('splits.follow.create', { count: n })));
   }
 
   append(container,
-    pageHeader({ title: split.name, back: 'workout/splits' }),
+    pageHeader({ title: splitName(split), back: 'workout/splits' }),
     el('div', { class: 'sp-head' },
       el('div', { class: 'sp-tags' },
-        tag(`${split.days} days`, { tone: 'accent' }), tag(styleLabel(split.style)), tag(levelLabel(split.level)),
-        tag(equipmentLabel(split.equipment)), following ? tag('Following', { tone: 'ok', icon: 'check' }) : null),
-      el('p', { class: 't-sub muted' }, split.suits)),
+        tag(t('splits.days', { count: split.days }), { tone: 'accent' }), tag(styleLabel(split.style)), tag(levelLabel(split.level)),
+        tag(placeLabel(split.equipment)), following ? tag(t('splits.following'), { tone: 'ok', icon: 'check' }) : null),
+      el('p', { class: 't-sub muted' }, splitSuits(split))),
     setsCard, weekBox, howTo, actions, disclaimer);
   paintSets();
   paintWeek();
@@ -264,6 +267,6 @@ export async function mountDetail(container, params) {
 }
 
 function muscleRow(m, c, target) {
-  return setsRow(m.name, c, { step: coverageStep(c.total), extra: [`${c.daysHit} ${c.daysHit === 1 ? 'day' : 'days'}`], target });
+  return setsRow(muscleName(m.id), c, { step: coverageStep(c.total), extra: [t('splits.days', { count: c.daysHit })], target });
 }
 

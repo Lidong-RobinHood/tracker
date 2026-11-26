@@ -7,11 +7,12 @@ import { loadDraft, saveDraft } from '../ui/draft.js';
 import {
   ACTIVE_SPLIT_KEY, cleanActiveSplit, resolveSessions, splitRoutines, splitCoverage, perWeek, targetsFromCoverage,
   CUSTOM_SPLITS_KEY, CUSTOM_PREFIX, cleanCustomSplits, cleanCustomSplit, customRoutineIds, customFromLibrary, activeForCustom,
-  rotationState, routineAsSession, rotationCoverage, sessionsPerWeekOf, cleanSkips,
+  rotationState, routineAsSession, rotationCoverage, sessionsPerWeekOf, cleanSkips, DEFAULT_SPLIT_NAME,
 } from '../core/splits.js';
 import { today } from '../core/dates.js';
 import { splitById } from '../data/splits.js';
 import { volumeWeights } from '../core/volume.js';
+import { splitName } from '../i18n/names.js';
 
 export const TARGETS_KEY = 'volumeTargets'; // same key as src/workout/targets.js
 
@@ -32,15 +33,15 @@ export async function loadActiveSplit() {
   const active = cleanActiveSplit(await db.getSetting(ACTIVE_SPLIT_KEY));
   if (!active || active.kind !== 'custom') return active;
   const cs = (await loadCustomSplits()).find((x) => x.id === active.splitId);
-  return cs ? { ...active, routineIds: [...cs.sessions], name: cs.name } : null;
+  return cs ? { ...active, routineIds: [...cs.sessions], name: cs.name, sourceSplitId: cs.sourceSplitId } : null;
 }
 
 /** Display name of the followed split (library or custom), or null. */
 export function followedName(active) {
   if (!active) return null;
-  if (active.kind === 'custom') return active.name || null;
+  if (active.kind === 'custom') return active.name ? splitName({ id: active.splitId, name: active.name, sourceSplitId: active.sourceSplitId }) : null;
   const s = splitById(active.splitId);
-  return s ? s.name : null;
+  return s ? splitName(s) : null;
 }
 
 /** Route of a split's screen (library detail or custom editor). */
@@ -120,8 +121,9 @@ export async function loadCustomSplit(id) {
   return (await loadCustomSplits()).find((x) => x.id === id) || null;
 }
 
-/** A new custom split record (not saved). */
-export function newCustomSplit({ name = 'My split', sessions = [], sessionsPerWeek = null } = {}) {
+/** A new custom split record (not saved); without a name it stores the default marker 'My split' (shown translated). */
+export function newCustomSplit({ name, sessions = [], sessionsPerWeek = null } = {}) {
+  if (!name) name = DEFAULT_SPLIT_NAME;
   const now = Date.now();
   return cleanCustomSplit({ id: `${CUSTOM_PREFIX}${crypto.randomUUID()}`, name, sessions, sessionsPerWeek, createdAt: now, updatedAt: now });
 }
@@ -184,7 +186,9 @@ export async function copyLibrarySplit(split, { level, swaps, exMap }) {
   // splitCopy: made by Customise, so "Replace" on a later adopt never deletes them (adoptedRoutines)
   const routines = splitRoutines(split, sessions, { ids: sessions.map(() => crypto.randomUUID()), now, firstOrder })
     .map((r) => ({ ...r, splitCopy: true }));
-  const cs = customFromLibrary(split, { id: `${CUSTOM_PREFIX}${crypto.randomUUID()}`, routineIds: routines.map((r) => r.id), now });
+  const cs = customFromLibrary(split, {
+    id: `${CUSTOM_PREFIX}${crypto.randomUUID()}`, routineIds: routines.map((r) => r.id), now,
+  }); // default name '<English name> (custom)', shown translated (splitName)
   await db.transaction(['routines', 'settings'], 'readwrite', async (t) => {
     for (const r of routines) await t.put('routines', r);
     const cur = await t.get('settings', CUSTOM_SPLITS_KEY);

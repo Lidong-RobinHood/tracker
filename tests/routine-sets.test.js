@@ -4,6 +4,11 @@ import { routineSets, sessionStep, sessionBands, mapSteps } from '../src/core/ro
 import { bandStep, bandLegend, WEEK_BAND_EDGES, SESSION_BAND_EDGES } from '../src/core/set-bands.js';
 import { coverageStep, coverageBands } from '../src/core/splits.js';
 import { MUSCLE_IDS } from '../src/core/muscles.js';
+import { interpolate } from '../src/i18n/index.js';
+import EN_WORKOUT from '../src/i18n/en/workout.js';
+
+/** Band legend labels are catalogue keys + params; render them with the English catalogue. */
+const label = (b) => interpolate(EN_WORKOUT[b.key], b.params);
 
 const EX = new Map([
   ['bench', { id: 'bench', primary: ['chest'], secondary: ['triceps', 'shoulders'] }],
@@ -48,9 +53,9 @@ test('routineSets: unknown exercises, bad or missing targets and empty routines 
 
 test('sessionStep / sessionBands: 6+, 4–5.5, 2–3.5, under 2, none', () => {
   assert.deepEqual([0, -1, NaN, 0.5, 1.5, 2, 3.5, 4, 5.5, 6, 20].map(sessionStep), [0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4]);
-  assert.deepEqual(sessionBands({}).map((b) => b.label), ['6+', '4–5.5', '2–3.5', 'Under 2', 'None']);
-  assert.deepEqual(sessionBands({ primary: 1, secondary: 0 }).map((b) => b.label), ['6+', '4–5', '2–3', 'Under 2', 'None']);
-  assert.deepEqual(sessionBands({ primary: 1, secondary: 0.3 }).map((b) => b.label), ['6+', '4–under 6', '2–under 4', 'Under 2', 'None']);
+  assert.deepEqual(sessionBands({}).map(label), ['6+', '4–5.5', '2–3.5', 'Under 2', 'None']);
+  assert.deepEqual(sessionBands({ primary: 1, secondary: 0 }).map(label), ['6+', '4–5', '2–3', 'Under 2', 'None']);
+  assert.deepEqual(sessionBands({ primary: 1, secondary: 0.3 }).map(label), ['6+', '4–under 6', '2–under 4', 'Under 2', 'None']);
   assert.deepEqual(sessionBands({}).map((b) => b.step), [4, 3, 2, 1, 0]);
 });
 
@@ -105,6 +110,7 @@ test('workoutSets: the starting point and empty input count nothing', () => {
 test('tonnageStep / tonnageBands: quarters of the largest muscle', () => {
   assert.deepEqual([0, -5, 100, 250, 251, 500, 501, 750, 751, 1000].map((t) => tonnageStep(t, 1000)), [0, 0, 1, 1, 2, 2, 3, 3, 4, 4]);
   assert.equal(tonnageStep(10, 0), 0);
-  assert.deepEqual(tonnageBands(2300).map((b) => b.label), ['Over 1725 kg', 'Over 1150 kg', 'Over 575 kg', 'Up to 575 kg', 'None']);
-  assert.deepEqual(tonnageBands(2300, (v) => `${v} x`)[0], { step: 4, label: 'Over 1725 x' });
+  assert.deepEqual(tonnageBands(2300).map(label), ['Over 1725 kg', 'Over 1150 kg', 'Over 575 kg', 'Up to 575 kg', 'None']);
+  assert.deepEqual(tonnageBands(2300, (v) => `${v} x`)[0], { step: 4, key: 'workout.band.over', params: { value: '1725 x' } });
+  assert.deepEqual(tonnageBands(2300).map((b) => b.key).filter((k) => !(k in EN_WORKOUT)), [], 'every key in the catalogue');
 });

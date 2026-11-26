@@ -36,6 +36,15 @@ swap exercises, and follow one split as ordinary routines with a "Next up" rotat
 14 splits, 2–6 days, 7 styles, 3 levels, 2 home splits. Names are generic descriptions (style + days);
 no authored or commercial program names (the test has a denylist). Ids are stable: never rename one.
 
+**Languages.** The English wording in `src/data/splits.js` is the source; the `data` catalogue
+(`src/i18n/en/data.js`) is built from it (keys `data.split.<id>.name|suits|bullet1|bullet2`, day names
+`data.session.<session id>`, ids in camelCase: `fb3-home` → `fb3Home`), German and Chinese are in
+`src/i18n/de|zh/data.js`; `tests/data-i18n.test.js` fails when a split, day or text has no de/zh entry.
+The UI shows them through `src/i18n/names.js` (`splitName`, `splitSuits`, `splitBullets`, `sessionName`).
+Routines and custom splits created from the library are named in the language active at that moment
+(stored as user data, never rewritten); routines still carrying the English day name of their `splitId`
+show the translated name (`routineName`).
+
 | id | Name | Days | Style | Level | Equipment |
 |---|---|---|---|---|---|
 | `fb2` | Full body 2-day | 2 | Full body | Beginner | Gym |

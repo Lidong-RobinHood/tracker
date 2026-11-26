@@ -200,3 +200,23 @@ test('isLoggedWorkout: finished with a done set; empty or unfinished workouts do
   assert.equal(w.isLoggedWorkout(WO('d', '2026-11-10', [entry([S(90, 8)])], false)), false);
   assert.equal(w.hasDoneSet(WO('d', '2026-11-10', [entry([S(90, 8)])], false)), true);
 });
+
+test('format helpers take translated labels; English defaults stay for other callers', () => {
+  const L = { sets: (n) => `${n} Sätze`, bw: 'KG', drop: 'Drop' };
+  assert.equal(w.formatTarget({ targetSets: 4, targetReps: null }, L), '4 Sätze');
+  assert.equal(w.formatTarget({ targetSets: 3, targetReps: 6, targetRepsMax: 8, targetWeight: 100 }, L), '3 × 6–8 @ 100 kg');
+  assert.equal(w.formatSets([S(0, 12), S(100, 8), S(80, 5, 'dropset')], L), 'KG × 12, 100 × 8 + Drop 80 × 5');
+  assert.equal(w.formatWeight(null, L), 'KG');
+  assert.equal(w.isBodyweightWeight(0), true);
+  assert.equal(w.isBodyweightWeight(2.5), false);
+});
+
+test('rescheduleWorkout errors are catalogue keys with params', async () => {
+  const { default: EN } = await import('../src/i18n/en/workout.js');
+  const NOW = new Date(2026, 10, 19, 20, 0).getTime();
+  const r = w.rescheduleWorkout({ finishedAt: null }, { date: '2026-11-12', time: '07:00', durationMin: 0 }, NOW);
+  assert.deepEqual(r, { ok: false, error: 'workout.schedule.errDuration', params: { max: w.MAX_DURATION_MIN } });
+  for (const input of [{ date: 'x', time: '07:00' }, { date: '2026-11-25', time: '07:00' }, { date: '2026-11-12', time: '' }]) {
+    assert.ok(w.rescheduleWorkout({ finishedAt: null }, input, NOW).error in EN);
+  }
+});

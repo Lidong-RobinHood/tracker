@@ -5,8 +5,8 @@ import { mountLicences } from './licences-view.js';
 
 /** @type {import('../types.js').Route[]} */
 export const routes = [
-  { path: 'settings', title: 'Settings', mount: mountSettings },
-  { path: 'settings/goal', title: 'Goal and targets', mount: mountGoal },
-  { path: 'settings/sets', title: 'Set weighting', mount: mountSets },
-  { path: 'licences', title: 'Licences', tab: 'settings', mount: mountLicences },
+  { path: 'settings', titleKey: 'settings.title', mount: mountSettings },
+  { path: 'settings/goal', titleKey: 'settings.goal.title', mount: mountGoal },
+  { path: 'settings/sets', titleKey: 'settings.sets.title', mount: mountSets },
+  { path: 'licences', titleKey: 'settings.licences.title', tab: 'settings', mount: mountLicences },
 ];

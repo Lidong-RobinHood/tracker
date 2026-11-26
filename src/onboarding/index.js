@@ -7,6 +7,6 @@ export { startAppServices } from './shell.js';
 
 /** @type {import('../types.js').Route[]} */
 export const routes = [
-  { path: 'welcome', title: 'Setup', tab: 'settings', mount: mountWelcome },
-  { path: 'help', title: 'Help', tab: 'settings', mount: mountHelp },
+  { path: 'welcome', titleKey: 'onboarding.welcome.title', tab: 'settings', mount: mountWelcome },
+  { path: 'help', titleKey: 'onboarding.help.title', tab: 'settings', mount: mountHelp },
 ];

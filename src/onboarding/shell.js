@@ -7,6 +7,7 @@ import { showSetupCard } from '../core/setup.js';
 import { backupState, snoozeBackup, updateMeta } from './backup.js';
 import { startUpdateChecks, onUpdateState, applyUpdate } from './update.js';
 import { exportBackup } from '../settings/settings-view.js';
+import { t } from '../i18n/index.js';
 
 export function ensureCss() {
   if (document.querySelector('link[data-onboarding-css]')) return;
@@ -28,7 +29,7 @@ let token = 0;
 export function startAppServices(regPromise) {
   ensureCss();
   const main = document.getElementById('main');
-  host = el('div', { class: 'ob-notices', role: 'region', 'aria-label': 'Notices' });
+  host = el('div', { class: 'ob-notices', role: 'region', 'aria-label': t('onboarding.notices.label') });
   main.before(host);
   startUpdateChecks(regPromise);
   onUpdateState((st) => { if (st.status !== updateStatus) { updateStatus = st.status; refreshNotices(); } });
@@ -46,8 +47,8 @@ async function refreshNotices() {
   const quiet = path === 'welcome' || path.startsWith('workout/session/');
 
   if (updateStatus === 'available' && !quiet) {
-    notes.push(notice('update', 'refresh-cw', [el('span', { class: 'grow' }, 'Update available.')],
-      el('button', { type: 'button', class: 'btn btn-sm btn-primary', onClick: () => applyUpdate() }, 'Update')));
+    notes.push(notice('update', 'refresh-cw', [el('span', { class: 'grow' }, t('onboarding.notice.updateAvailable'))],
+      el('button', { type: 'button', class: 'btn btn-sm btn-primary', onClick: () => applyUpdate() }, t('common.update'))));
   }
   try {
     if (path !== 'welcome') {
@@ -55,9 +56,9 @@ async function refreshNotices() {
       if (my !== token) return;
       if (st.banner && path !== 'settings') {
         notes.push(notice('backup', 'triangle-exclamation-point', [el('span', { class: 'grow' },
-          st.never ? 'No backup yet. Data is only on this phone.' : `Last backup ${st.daysSince} days ago. Data is only on this phone.`), infoButton('backup')],
-        el('button', { type: 'button', class: 'btn btn-sm btn-primary', onClick: async () => { if (await exportBackup()) refreshNotices(); } }, 'Export backup'),
-        el('button', { type: 'button', class: 'btn btn-sm btn-ghost', onClick: async () => { await snoozeBackup(); refreshNotices(); } }, 'Later')));
+          st.never ? t('onboarding.notice.backupNever') : t('onboarding.notice.backupDays', { count: st.daysSince })), infoButton('backup')],
+        el('button', { type: 'button', class: 'btn btn-sm btn-primary', onClick: async () => { if (await exportBackup()) refreshNotices(); } }, t('common.exportBackup')),
+        el('button', { type: 'button', class: 'btn btn-sm btn-ghost', onClick: async () => { await snoozeBackup(); refreshNotices(); } }, t('onboarding.notice.later'))));
       }
       const hint = await emptyHint(path, st);
       if (my !== token) return;
@@ -83,17 +84,17 @@ async function emptyHint(path, st) {
   if (path === '' || path === 'diary' || path.startsWith('diary/')) {
     const keys = (await db.getAll('settings')).map((s) => s.key);
     if (!showSetupCard({ meta, settingKeys: keys })) return null;
-    return notice('setup', 'target', [el('span', { class: 'grow' }, el('strong', null, 'New here?'), ' Set up targets or import data.')],
-      el('a', { class: 'btn btn-sm btn-primary', href: href('welcome') }, 'Set up'),
+    return notice('setup', 'target', [el('span', { class: 'grow' }, el('strong', null, t('onboarding.notice.setupLead')), ' ', t('onboarding.notice.setupText'))],
+      el('a', { class: 'btn btn-sm btn-primary', href: href('welcome') }, t('onboarding.notice.setUp')),
       el('button', { type: 'button', class: 'btn btn-sm btn-ghost',
-        onClick: async () => { await updateMeta({ setupCardDismissedAt: Date.now() }); refreshNotices(); } }, 'Not now'));
+        onClick: async () => { await updateMeta({ setupCardDismissedAt: Date.now() }); refreshNotices(); } }, t('onboarding.notice.notNow')));
   }
   if (meta.hintsDismissedAt) return null;
-  const dismiss = el('button', { type: 'button', class: 'btn btn-sm btn-ghost', 'aria-label': 'Hide this hint',
-    onClick: async () => { await updateMeta({ hintsDismissedAt: Date.now() }); refreshNotices(); } }, 'Hide');
+  const dismiss = el('button', { type: 'button', class: 'btn btn-sm btn-ghost', 'aria-label': t('onboarding.notice.hideHintLabel'),
+    onClick: async () => { await updateMeta({ hintsDismissedAt: Date.now() }); refreshNotices(); } }, t('onboarding.notice.hide'));
   if (path === 'workout' && !counts.workouts && !counts.routines) {
-    return notice('hint', 'upload', [el('span', { class: 'grow' }, 'Coming from a spreadsheet? Import your workout history.')],
-      el('a', { class: 'btn btn-sm', href: href('import') }, 'Import'), dismiss);
+    return notice('hint', 'upload', [el('span', { class: 'grow' }, t('onboarding.notice.importHint'))],
+      el('a', { class: 'btn btn-sm', href: href('import') }, t('onboarding.notice.import')), dismiss);
   }
   return null;
 }

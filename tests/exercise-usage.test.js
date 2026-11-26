@@ -74,3 +74,17 @@ test('search: abbreviations and base lifts first among equal matches (seed libra
   const b2 = rankExercises(lib, 'bench d', u).map((e) => e.id);
   assert.equal(b2[0], 'seed:bench-dip');
 });
+
+test('search: the translated name (altOf) matches too; the stored English name still matches', () => {
+  const bench = { id: 'seed:bench-press', name: 'Bench Press (Barbell)', equipment: 'barbell', primary: ['chest'] };
+  const curl = { id: 'seed:barbell-curl', name: 'Barbell Curl', equipment: 'barbell', primary: ['biceps'] };
+  const alt = { 'seed:bench-press': { name: 'Bankdrücken (Langhantel)', terms: 'Langhantel Brust' }, 'seed:barbell-curl': { name: 'Langhantel-Curl', terms: 'Langhantel Bizeps' } };
+  const altOf = (e) => alt[e.id];
+  assert.equal(matchScore(bench, 'bankdr', altOf(bench)), 4);
+  assert.equal(matchScore(bench, 'bench press (b', altOf(bench)), 4, 'English name prefix');
+  assert.equal(matchScore(bench, 'brust', altOf(bench)), 1, 'translated muscle word');
+  assert.equal(matchScore(bench, 'bankdr'), 0, 'without alt only English matches');
+  assert.deepEqual(rankExercises([curl, bench], 'langhantel', new Map(), altOf).map((e) => e.id), ['seed:barbell-curl', 'seed:bench-press']);
+  assert.deepEqual(recentExercises([curl, bench], new Map([['seed:bench-press', { count: 1, lastDate: '2026-01-01', lastAt: 0 }], ['seed:barbell-curl', { count: 1, lastDate: '2026-01-01', lastAt: 0 }]]), 12, altOf).map((e) => e.id),
+    ['seed:bench-press', 'seed:barbell-curl'], 'ties ordered by the translated name');
+});

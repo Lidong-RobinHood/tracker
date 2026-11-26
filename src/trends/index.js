@@ -8,10 +8,10 @@ import { mountWeeks, mountWeek } from './week-view.js';
 
 /** @type {import('../types.js').Route[]} */
 export const routes = [
-  { path: 'trends', title: 'Trends', mount: mountDashboard },
-  { path: 'trends/weight', title: 'Weight', mount: mountWeight },
-  { path: 'trends/expenditure', title: 'Expenditure & target', mount: mountExpenditure },
-  { path: 'trends/intake', title: 'Intake history', mount: mountIntake },
-  { path: 'trends/weeks', title: 'Weekly reports', mount: mountWeeks },
-  { path: 'trends/week/:weekStart', title: 'Weekly report', mount: mountWeek },
+  { path: 'trends', titleKey: 'trends.title', mount: mountDashboard },
+  { path: 'trends/weight', titleKey: 'trends.weight.title', mount: mountWeight },
+  { path: 'trends/expenditure', titleKey: 'trends.exp.routeTitle', mount: mountExpenditure },
+  { path: 'trends/intake', titleKey: 'trends.intake.title', mount: mountIntake },
+  { path: 'trends/weeks', titleKey: 'trends.weeks.title', mount: mountWeeks },
+  { path: 'trends/week/:weekStart', titleKey: 'trends.week.title', mount: mountWeek },
 ];

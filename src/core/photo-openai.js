@@ -26,12 +26,14 @@ import {
 } from './meal-photo.js';
 
 export const OPENAI_BASE = 'https://api.openai.com/v1';
-const NAME = 'OpenAI';
+const NAME = 'OpenAI'; // i18n-ignore (brand)
 
+// i18n-ignore-start (model names; notes are catalogue keys)
 export const OPENAI_SUGGESTED = Object.freeze([
-  { id: 'gpt-6.2-astra', label: 'GPT-6.2 Astra', note: 'OpenAI’s recommended starting model' },
-  { id: 'gpt-6.1-terra', label: 'GPT-6.1 Terra', note: 'fast and efficient' },
+  { id: 'gpt-6.2-astra', label: 'GPT-6.2 Astra', noteKey: 'food.provider.note.openaiStart' },
+  { id: 'gpt-6.1-terra', label: 'GPT-6.1 Terra', noteKey: 'food.provider.note.fastEfficient' },
 ]);
+// i18n-ignore-end
 export const OPENAI_DEFAULT_MODEL = OPENAI_SUGGESTED[0].id;
 
 // ------------------------------------------------------------------ custom base URL
@@ -41,25 +43,34 @@ export const BASE_URL_MAX = 300;
  * Check a user-entered base URL for an OpenAI-compatible service (e.g. "https://openrouter.ai/api/v1").
  * https only, no user:password@, no query string or fragment (a key must never ride in the URL).
  * A pasted ".../chat/completions" is cut back to the base.
- * @returns {{ok: true, url: string, host: string} | {ok: false, error: string}}
+ * @returns {{ok: true, url: string, host: string} | {ok: false, errorKey: string}} errorKey: catalogue key (namespace food)
  */
 export function validateBaseUrl(raw) {
   const s = String(raw ?? '').trim();
-  if (!s) return { ok: false, error: 'Enter the base URL of the service.' };
-  if (s.length > BASE_URL_MAX) return { ok: false, error: 'The base URL is too long.' };
-  if (/\s/.test(s)) return { ok: false, error: 'The base URL must not contain spaces.' };
+  const bad = (code) => ({ ok: false, errorKey: `food.baseUrl.${code}` });
+  if (!s) return bad('empty');
+  if (s.length > BASE_URL_MAX) return bad('tooLong');
+  if (/\s/.test(s)) return bad('spaces');
   let u;
-  try { u = new URL(s); } catch { return { ok: false, error: 'This is not a valid URL. It should look like https://example.com/v1' }; }
-  if (u.protocol !== 'https:') return { ok: false, error: 'Only https:// URLs are allowed.' };
-  if (u.username || u.password || /@/.test(s.replace(/^https:\/\//i, '').split('/')[0])) return { ok: false, error: 'The URL must not contain a user name or password. Put the API key in the key field.' };
-  if (u.search || s.includes('?')) return { ok: false, error: 'The URL must not contain a query string (“?…”). Put the API key in the key field, never in the URL.' };
-  if (u.hash || s.includes('#')) return { ok: false, error: 'The URL must not contain “#”.' };
-  if (!u.hostname || !(u.hostname.includes('.') || u.hostname === 'localhost')) return { ok: false, error: 'The URL needs a full host name, e.g. https://example.com/v1' };
+  try { u = new URL(s); } catch { return bad('invalid'); }
+  if (u.protocol !== 'https:') return bad('https');
+  if (u.username || u.password || /@/.test(s.replace(/^https:\/\//i, '').split('/')[0])) return bad('credentials');
+  if (u.search || s.includes('?')) return bad('query');
+  if (u.hash || s.includes('#')) return bad('hash');
+  if (!u.hostname || !(u.hostname.includes('.') || u.hostname === 'localhost')) return bad('host');
   const path = u.pathname.replace(/\/+$/, '').replace(/\/chat\/completions$/i, '').replace(/\/+$/, '');
   return { ok: true, url: `${u.origin}${path}`, host: u.host };
 }
 
-const hostOf = (baseUrl) => { const v = validateBaseUrl(baseUrl); return v.ok ? v.host : 'the custom service'; };
+/** Host of the custom service, or null (the UI then says "the API provider"). */
+/** Error thrown by the custom builders for an invalid base URL; `key`: catalogue key of the reason. */
+function baseUrlError(v) {
+  const e = new Error(`invalid base URL (${v.errorKey})`);
+  e.key = v.errorKey;
+  return e;
+}
+
+const hostOf = (baseUrl) => { const v = validateBaseUrl(baseUrl); return v.ok ? v.host : null; };
 
 // ------------------------------------------------------------------ requests
 function chatBody({ model, imageBase64, mediaType, hint, schemaInRequest, systemRole, maxTokensField }) {
@@ -96,7 +107,7 @@ export function buildOpenAIRequest({ model, imageBase64, mediaType = 'image/jpeg
  */
 export function buildCustomRequest({ model, imageBase64, mediaType = 'image/jpeg', hint = '', baseUrl, useSchema = false }) {
   const v = validateBaseUrl(baseUrl);
-  if (!v.ok) throw new Error(v.error);
+  if (!v.ok) throw baseUrlError(v);
   return {
     url: `${v.url}/chat/completions`,
     headers: { 'content-type': 'application/json' },
@@ -107,7 +118,7 @@ export function buildCustomRequest({ model, imageBase64, mediaType = 'image/jpeg
 export const buildOpenAIModels = () => ({ url: `${OPENAI_BASE}/models`, headers: {} });
 export function buildCustomModels({ baseUrl }) {
   const v = validateBaseUrl(baseUrl);
-  if (!v.ok) throw new Error(v.error);
+  if (!v.ok) throw baseUrlError(v);
   return { url: `${v.url}/models`, headers: {} };
 }
 
@@ -146,7 +157,7 @@ function classifyChatError(status, body, provider) {
   if (status === 529 || code === 'server_is_overloaded' || type === 'service_unavailable_error' || status === 503) return photoError('overloaded', '', o);
   if (status >= 500) return photoError('server', msg, o);
   if (/content[_ ]?(policy|filter|management)|safety system|moderation/i.test(msg)) return photoError('refusal', msg, o);
-  return photoError('bad_request', msg || `HTTP ${status}`, o);
+  return photoError('bad_request', msg || `HTTP ${status}`, o); // i18n-ignore (technical detail)
 }
 
 /** Classify an HTTP error ({error:{message, type, code, param}}). */
@@ -159,7 +170,7 @@ function extractChatText(res, provider) {
   const c = res && Array.isArray(res.choices) ? res.choices[0] : null;
   if (!c || !c.message) return photoError('unusable', '', o);
   if (typeof c.message.refusal === 'string' && c.message.refusal.trim()) return photoError('refusal', c.message.refusal, o);
-  if (c.finish_reason === 'content_filter') return photoError('refusal', 'Stopped by the content filter.', o);
+  if (c.finish_reason === 'content_filter') return photoError('refusal', 'finish_reason: content_filter', o); // i18n-ignore (technical detail)
   if (c.finish_reason === 'length') return photoError('truncated', '', o);
   const content = c.message.content;
   const text = typeof content === 'string' ? content
@@ -181,14 +192,13 @@ export const openai = Object.freeze({
   hosts: ['api.openai.com'],
   suggested: OPENAI_SUGGESTED,
   defaultModel: OPENAI_DEFAULT_MODEL,
-  keyPlaceholder: 'OpenAI API key',
-  keyHelp: 'Create one at platform.openai.com/api-keys.',
+  // Texts are catalogue keys (namespace food), translated by the UI.
+  keyPlaceholderKey: 'food.provider.openai.keyPlaceholder',
+  keyHelpKey: 'food.provider.openai.keyHelp',
   keyLooksValid: () => true,
-  keyFormatNote: '',
+  keyFormatNoteKey: '',
   pricingUrl: 'https://developers.openai.com/api/docs/pricing',
-  notes: [
-    'Each analysis is billed to your OpenAI credit.',
-  ],
+  noteKeys: ['food.provider.openai.note1'],
   structured: true,
   buildAnalyse: buildOpenAIRequest,
   buildTest: buildOpenAIModels,
@@ -200,22 +210,21 @@ export const openai = Object.freeze({
 
 export const custom = Object.freeze({
   id: 'custom',
-  label: 'OpenAI-compatible (custom)',
-  name: 'Custom service',
+  // No brand: label and name are catalogue keys (namespace food), translated by the UI.
+  label: '',
+  labelKey: 'food.provider.custom.label',
+  name: '',
+  nameKey: 'food.provider.custom.name',
   auth: { header: 'authorization', prefix: 'Bearer ' },
   hosts: [],
   suggested: Object.freeze([]),
   defaultModel: '',
-  keyPlaceholder: 'API key of the service',
-  keyHelp: 'Create one in your service’s dashboard.',
+  keyPlaceholderKey: 'food.provider.custom.keyPlaceholder',
+  keyHelpKey: 'food.provider.custom.keyHelp',
   keyLooksValid: () => true,
-  keyFormatNote: '',
+  keyFormatNoteKey: '',
   pricingUrl: '',
-  notes: [
-    'For OpenAI-style services with image input, e.g. OpenRouter, Groq, Mistral, Together.',
-    'Billed by that service, or within its free tier.',
-    'Services that block browser calls (CORS) cannot be used.',
-  ],
+  noteKeys: ['food.provider.custom.note1', 'food.provider.custom.note2', 'food.provider.custom.note3'],
   structured: false,
   needsBaseUrl: true,
   buildAnalyse: buildCustomRequest,
@@ -224,5 +233,6 @@ export const custom = Object.freeze({
   parseModels: parseOpenAIModels,
   parseAnswer: extractCustomText,
   classifyError: classifyCustomError,
-  networkMessage: (ctx = {}) => `Could not reach ${hostOf(ctx.baseUrl)}. Check the URL and connection; the service may block browser calls (CORS).`,
+  /** Network failure text: catalogue key + params (the service may block browser calls). */
+  networkError: (ctx = {}) => ({ key: 'food.photoError.networkCustom', provider: hostOf(ctx.baseUrl) }),
 });

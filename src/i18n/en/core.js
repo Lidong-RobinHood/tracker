@@ -1,0 +1,43 @@
+// en catalogue, namespace 'core'. Flat 'key': 'text' with {placeholders}; see docs/I18N.md.
+export default {
+  // activity levels (core/adaptive.js ACTIVITY_LEVELS, by id)
+  'core.activity.sedentary': 'Sedentary',
+  'core.activity.sedentary.hint': 'Desk job, little exercise',
+  'core.activity.light': 'Lightly active',
+  'core.activity.light.hint': 'Exercise 1–3 days a week',
+  'core.activity.moderate': 'Moderately active',
+  'core.activity.moderate.hint': 'Exercise 3–5 days a week',
+  'core.activity.active': 'Very active',
+  'core.activity.active.hint': 'Hard exercise 6–7 days a week',
+  'core.activity.extra': 'Extremely active',
+  'core.activity.extra.hint': 'Physical job plus training',
+  // what the expenditure estimate still needs (core/adaptive.js estimateExpenditure().missing)
+  'core.missing.weighIns_one': '{count} more weigh-in ({days} days)',
+  'core.missing.weighIns_other': '{count} more weigh-ins ({days} days)',
+  'core.missing.completeDays_one': '{count} more complete day ({days} days)',
+  'core.missing.completeDays_other': '{count} more complete days ({days} days)',
+  'core.missing.history_one': '{count} more day of history',
+  'core.missing.history_other': '{count} more days of history',
+  'core.missing.staleWeighIn': 'A weigh-in (none in {days} days)',
+  // goal rate (core/goal-display.js, core/goal-rate.js)
+  'core.goal.summary': '{rate} kg / week',
+  'core.goal.summaryKcal': '{rate} kg / week · {kcal} kcal / day',
+  'core.goal.errorAmount': 'Enter an amount above 0',
+  'core.goal.errorMax': 'Max {max} kg / week',
+  'core.goal.speechMaintain': 'maintain, 0 kilograms per week',
+  'core.goal.speechLose': 'minus {n} kilograms per week',
+  'core.goal.speechGain': 'plus {n} kilograms per week',
+  'core.goal.speechLoseEmpty': 'minus, enter kilograms per week',
+  'core.goal.speechGainEmpty': 'plus, enter kilograms per week',
+  'core.goal.maintain': 'Maintain',
+  'core.goal.lose': 'Lose {amount} kg / week',
+  'core.goal.gain': 'Gain {amount} kg / week',
+  'core.goal.loseMax': 'Lose: max {max} kg / week',
+  'core.goal.gainMax': 'Gain: max {max} kg / week',
+  // target validation (core/setup.js buildTargets)
+  'core.setup.errorKcal': 'Enter a valid calories target.',
+  'core.setup.errorSplit': 'The three percentages must add up to 100.',
+  'core.setup.error.protein': 'Enter a valid protein target.',
+  'core.setup.error.carbs': 'Enter a valid carbs target.',
+  'core.setup.error.fat': 'Enter a valid fat target.',
+};

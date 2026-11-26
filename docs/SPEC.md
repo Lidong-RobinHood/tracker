@@ -14,7 +14,7 @@ all calculation logic is pure and free of browser APIs.
 - Installable PWA: `manifest.webmanifest` + `sw.js`. Service worker is **network-first
   with cache fallback** for same-origin files (updates must never be stuck behind a cache);
   it never caches API responses.
-- UI language: English. Mobile-first, designed for 375 px width, light and dark mode,
+- UI language: English, German, Simplified Chinese (Settings › General › Language; section 9, docs/I18N.md). Mobile-first, designed for 375 px width, light and dark mode,
   tap targets ≥ 44 px, numeric keypads (`inputmode="decimal"`) for all number entry.
 - Decimal input accepts both `,` and `.`.
 
@@ -173,6 +173,8 @@ negative = lose), `targets` (kcal, protein, carbs, fat; source 'manual'|'adaptiv
 `activeSplit` (optional): `{ splitId, level: 'minimum'|'standard'|'high', routineIds: [ids in rotation
 order], adoptedAt }`. Absent = no split followed. "Stop following" removes it and keeps the routines.
 It lives in `settings`, so export / import carry it with no schema change.
+`language` (optional): `'auto'|'en'|'de'|'zh'`, mirrored from localStorage `tracker.language` (read at boot);
+after an import the settings value wins (`docs/I18N.md`).
 A followed **custom split** is `{ kind: 'custom', splitId: 'custom:<uuid>', level: 'standard', routineIds,
 adoptedAt }` (values without `kind` keep the shape above); either kind may carry `skips: [{ date, at }]`
 (Next up › Skip). `customSplits` (optional): the user's own splits, `[{ id: 'custom:<uuid>', name,
@@ -373,5 +375,27 @@ endpoint); the key stays in this browser's localStorage, never in the export. Th
 (items, amounts, per-100 values, confidence) is sanitised and shown for review and editing; nothing
 is logged until the user confirms.
 
-## 9. Out of scope for now
+## 9. Languages
+
+- English, German, Simplified Chinese; Settings › General › Language: Automatic (default), English, Deutsch, 中文.
+  Automatic follows the device (`navigator.languages`: first German or Chinese entry, else English). Choosing a
+  language reloads the app; the choice is kept in localStorage and in settings key `language` (so backups carry it).
+- Everything the app names is stored language-neutrally (an id or the canonical English text) and translated
+  when shown, so switching the language re-labels everything and backups are language-independent: built-in
+  exercises, splits, muscles, equipment, meal names, generic (USDA) foods, the day names of routines adopted or
+  copied from a built-in split and of workouts started from them, and the stored default names: 'Workout',
+  'New routine', 'My split', '<split> (custom)', saved meals 'Meal', 'Breakfast Thu 26 Nov', 'Breakfast photo',
+  diary entries 'Quick add', 'Imported', '<meal> (imported)', 'Meal photo', '… + 2 more', serving 'Whole pack'.
+  Past imports store their counts and dates and are described in the current language (imports saved by 0.7.1
+  keep their English text). A name saved unchanged in an editor keeps its stored form. Only what the user typed
+  (and Open Food Facts products, imported text) is stored and shown as typed. No exceptions.
+- Search finds generic foods by their English, German or Chinese name in every language; a match only in another
+  language's name ranks below the app language's matches of the same quality (a prefix or inside-word match
+  there below all of them). The exercise picker and library search the shown name, equipment and muscles.
+  Alphabetical lists sort with the app language's collation (German umlauts, Chinese by pinyin).
+- Percentages are written `62 %` (no-break space) in every language.
+- Numbers keep the decimal point (`82.5`) and narrow-space grouping in every language; input accepts `,` or `.`.
+  Dates and weekdays follow the language (`Mi. 18. Nov.`, `11月18日周三`), times stay 24 h.
+
+## 10. Out of scope for now
 Accounts, sync, micronutrients, imperial units.

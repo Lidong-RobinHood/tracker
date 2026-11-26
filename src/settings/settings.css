@@ -4,6 +4,8 @@
 .set-list .list-item { gap: var(--s3); }
 .set-list .li-lead { display: flex; }
 .set-list .li-sub.set-wrap, .set-list .li-sub { white-space: normal; }
+/* titles wrap too: German and Chinese labels are longer / must not be cut off at 320 px */
+.set-list .li-title { white-space: normal; overflow-wrap: break-word; hyphens: auto; }
 .set-title-info { display: flex; align-items: center; overflow: visible; }
 .set-section-note { margin: 0; padding: 0 var(--s1); }
 .set-backup-card { display: flex; flex-direction: column; gap: var(--s3); background: var(--warn-soft); box-shadow: none; }
@@ -26,7 +28,8 @@
 .set-row-label { flex: 1 1 auto; min-width: 0; font-size: var(--fs-body); line-height: var(--lh-body); }
 .set-row-alt { flex: none; font-size: var(--fs-sub); color: var(--ink-2); white-space: nowrap; }
 .set-row > .input-unit, .set-row > .input { flex: none; width: 7.5em; }
-.set-row > .select { flex: 0 1 auto; width: auto; max-width: 62%; }
+.set-list .list-item > .btn { flex: none; }
+.set-row > .select, .set-lang > .select { flex: 0 1 auto; width: auto; max-width: 62%; }
 .set-row .input-unit .input { padding-left: var(--s2); padding-right: 2.6em; }
 .set-row .input-unit .unit { right: var(--s2); }
 .set-row .swatch { width: 10px; height: 10px; }

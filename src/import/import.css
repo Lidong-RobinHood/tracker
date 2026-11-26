@@ -63,3 +63,5 @@ details[open] > summary .imp-chev { transform: rotate(180deg); }
 .imp-run .li-main { min-width: 0; flex: 1 1 180px; }
 .imp-run-title { display: flex; align-items: center; gap: var(--s2); }
 .imp-undo { gap: var(--s1); }
+/* Stat tile captions may wrap (longer German words at 320 px). */
+.imp-view .tile-label { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }

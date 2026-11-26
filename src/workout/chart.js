@@ -1,7 +1,10 @@
 // Hand-written inline SVG line chart for progress screens. Colours come from the shared CSS tokens
 // (classes in workout.css), so it follows light and dark mode. No data ever goes through innerHTML.
 import { daysBetween } from '../core/dates.js';
-import { shortDate } from './data.js';
+import { dateShort } from './progress-ui.js';
+
+/** Axis / tooltip date with ordinary spaces (as before: SVG text). */
+const axisDate = (date) => dateShort(date).replace(/\u00a0/g, ' ');
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -46,8 +49,8 @@ export function lineChart({ points, format, ariaLabel, zero = false }) {
     s('line', { class: 'wk-ch-grid', x1: L, x2: W - R, y1: y(t), y2: y(t) }),
     s('text', { class: 'wk-ch-label', x: L - 6, y: y(t) + 3.5, 'text-anchor': 'end' }, format(t))));
   const xs = points.length
-    ? [s('text', { class: 'wk-ch-label', x: L, y: H - 6, 'text-anchor': 'start' }, shortDate(points[0].date).replace(/ /g, ' ')),
-      points.length > 1 ? s('text', { class: 'wk-ch-label', x: W - R, y: H - 6, 'text-anchor': 'end' }, shortDate(points[points.length - 1].date).replace(/ /g, ' ')) : null]
+    ? [s('text', { class: 'wk-ch-label', x: L, y: H - 6, 'text-anchor': 'start' }, axisDate(points[0].date)),
+      points.length > 1 ? s('text', { class: 'wk-ch-label', x: W - R, y: H - 6, 'text-anchor': 'end' }, axisDate(points[points.length - 1].date)) : null]
     : [];
   const path = points.length > 1
     ? s('polyline', { class: 'wk-ch-line', points: points.map((p) => `${x(p).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ') })
@@ -57,8 +60,8 @@ export function lineChart({ points, format, ariaLabel, zero = false }) {
     const last = i === points.length - 1;
     if (!showDots && !p.mark && !last) return null;
     return s('circle', { class: ['wk-ch-dot', p.mark && 'is-mark', last && 'is-last'].filter(Boolean).join(' '), cx: x(p).toFixed(1), cy: y(p.value).toFixed(1), r: p.mark || last ? 4 : 3 },
-      s('title', {}, `${shortDate(p.date).replace(/ /g, ' ')}: ${p.label || format(p.value)}`));
+      s('title', {}, `${axisDate(p.date)}: ${p.label || format(p.value)}`));
   });
-  return s('svg', { class: 'wk-chart', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': ariaLabel, preserveAspectRatio: 'xMidYMid meet' },
+  return s('svg', { class: 'wk-chart', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': ariaLabel, preserveAspectRatio: 'xMidYMid meet' }, // i18n-ignore: SVG attribute
     grid, xs, path, dots);
 }
