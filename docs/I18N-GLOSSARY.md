@@ -31,6 +31,8 @@ product names, provider/model names, "Open Food Facts", "USDA", "YouTube", "API"
 | Scan barcode | Barcode scannen | 扫描条形码 |
 | Meal photo | Mahlzeitenfoto | 餐食照片 |
 | Estimate | Schätzung | 估算 |
+| Dish / Dishes (own estimates, search section) | Gericht / Gerichte | 菜品 |
+| Small / Normal / Large (dish portion) | Klein / Normal / Groß | 小 / 中 / 大 |
 | Goal (lose / maintain / gain) | Ziel (Abnehmen / Halten / Zunehmen) | 目标（减重 / 保持 / 增重） |
 | Body weight | Körpergewicht | 体重 |
 | Weigh-in | Messung | 称重 (list: 称重记录, count: 称重次数) |

@@ -2,7 +2,7 @@
 // One decision per screen, every step skippable. Finishing writes the same settings records as the
 // Settings screen (core/setup.js) plus today's weigh-in, and marks setup complete in settings.meta.
 import * as db from '../db/db.js';
-import { el, pageHeader, field, numberInput, toast, navigate, fmtNum, fmtGrouped, href, icon, infoButton, segmented, progressBar } from '../ui/index.js';
+import { el, pageHeader, field, numberInput, toast, navigate, fmtNum, fmtGrouped, fmtError, href, icon, infoButton, segmented, progressBar } from '../ui/index.js';
 import { today } from '../core/dates.js';
 import { ACTIVITY_LEVELS } from '../core/adaptive.js';
 import { MACROS, SPLIT_PRESETS, validateSplit, pctFromGrams, gramsFromPct, targetMode, carbsRest } from '../core/macro-split.js';
@@ -266,7 +266,7 @@ export async function mountWelcome(container) {
       navigate(dest, { replace: true });
     } catch (err) {
       console.error(err);
-      toast(t('onboarding.welcome.saveFailed', { error: err.message }), { type: 'error' });
+      toast(t('onboarding.welcome.saveFailed', { error: fmtError(err) }), { type: 'error' });
     } finally {
       busy = false;
     }

@@ -54,8 +54,8 @@ read/write through `src/db/db.js` and call `src/core`.
 Only foods the user has logged, saved or edited are stored (a local library/cache).
 
 ```
-{ id, source: 'off' | 'usda' | 'custom',
-  sourceKey,            // 'off:<barcode>' | 'usda:<fdcId>' | 'custom:<id>'
+{ id, source: 'off' | 'usda' | 'dish' | 'custom',
+  sourceKey,            // 'off:<barcode>' | 'usda:<fdcId>' | 'dish:<id>' | 'custom:<id>'
   barcode: string|null,
   name, brand: string|null,
   basis: 'g' | 'ml',    // nutrients are per 100 of this unit
@@ -64,8 +64,16 @@ Only foods the user has logged, saved or edited are stored (a local library/cach
   servings: [ { label, amount } ],   // e.g. {label:'1 slice', amount:30}; may be empty
   userEdited: boolean,  // user corrected name/values; never overwrite from the API
   lastAmount: number|null,           // last logged amount, used as default next time
-  useCount, lastUsedAt, createdAt, updatedAt }
+  useCount, lastUsedAt, createdAt, updatedAt,
+  nameLang?: 'en' | 'de' | 'zh',     // optional, generic ('usda') foods and dishes only: shown in this language
+                                     // instead of the app language (found through its name, §9); absent =
+                                     // follow the app language. `name` stays the English USDA / dish name.
+  sizes?: [small, normal, large] }   // optional, dishes only: portion sizes in g (from dishes.json)
 ```
+`source: 'dish'` is one of the app's own dish estimates (`src/data/dishes.json`, `src/data/dishes.README.md`), logged
+like a generic food: `sourceKey: 'dish:<id>'` (ids are stable), the dish's English name, per-100 g values and its
+three portion `sizes`, so the sizes stay available from Recent, saved meals and Your foods, also when the dish later
+leaves dishes.json (it is then shown with the stored English name). All new fields are optional; no schema change.
 
 ### `diary` (key `id`; index `date`)
 One logged item. **Stores a snapshot** so later edits to a food never change history.
@@ -76,11 +84,14 @@ One logged item. **Stores a snapshot** so later edits to a food never change his
   name, brand: string|null,
   amount, basis: 'g' | 'ml',
   per100: { ...same shape as foods.per100 },   // snapshot at logging time
-  createdAt, updatedAt }
+  createdAt, updatedAt,
+  estimate?: true }          // optional, quick-add only: logged by "Estimate a meal" (§4), shown with '≈'
 ```
 Totals are always computed: `value = per100.x * amount / 100`. Quick-add (calories/macros
 without a food) is stored as `amount: 100` with `per100` = the entered totals and
-`foodId: null`.
+`foodId: null`. `estimate: true` (language-neutral; absent on every other entry) marks a quick add logged by
+"Estimate a meal", named or not; any other value counts as absent. Copying the entry keeps it; editing its kcal in
+the entry sheet drops it; a saved meal does not carry it. Optional field, no schema change.
 
 ### `meals` (saved meals; key `id`)
 ```
@@ -204,6 +215,10 @@ the Next up rotation are documented in `docs/SPLITS.md`.
 Export = one JSON file `{ app:'tracker', schemaVersion, exportedAt, stores:{ <store>: [records] } }`
 with every store. Import validates `app` + `schemaVersion`, shows record counts, asks for
 confirmation, then **replaces** all data in one transaction.
+Records are exported and imported as stored, optional fields included (e.g. `foods.nameLang`); a file without
+an optional field imports as before, and an unknown `nameLang` value is ignored when shown (and dropped the
+next time the food is saved). A diary entry's `estimate` is kept only when it is `true`: any other value is dropped
+on import.
 
 ## 4. Food
 
@@ -213,14 +228,30 @@ Search · Scan · Recent · Meals · Quick add.
 - **Scan:** camera barcode scan as in the spike (native `BarcodeDetector`, vendored ZXing
   fallback). Look the barcode up in the local `foods` store first (so the user's corrected
   values win), then Open Food Facts.
-- **Search:** local library first (instant), then generic foods (bundled dataset, no API
-  key), then Open Food Facts text search (debounced, respects rate limits, clearly labelled
-  by source).
+- **Search:** local library first (instant), then dishes (the app's own estimates, `src/data/dishes.json`), then
+  generic foods (bundled dataset, no API key), then Open Food Facts text search (debounced, respects rate limits,
+  clearly labelled by source). Dishes and generic foods are searched from 2 characters, or from 1 Han character
+  (粥, 面, 鱼); a single Latin letter searches only the user's foods. Dishes and generic foods load lazily on the first search (dishes.json also when a
+  logged dish is on screen), never at app start. The "Dishes" section shows up to 8 rows (up to 12 when the generic
+  section has fewer than 5), each with the quiet "≈ Estimate" badge and ≈ kcal of its normal portion on the right.
+  Dishes are ranked like generic foods (names and aliases in all three languages, app language first, Han matching,
+  umlaut folding, German compounds); a few everyday classics carry a tier (`DISH_TIERS`, `src/core/dishes.js`) so
+  "pizza" finds the Margherita first. A dish and a near-identical USDA food may both show (different sections).
 - **Not found / incomplete:** goes straight to the food editor, barcode pre-filled, so the
   product is created once and found next time.
+- **Estimate a meal** (Quick add, top row; `src/food/estimate.js`, model `src/core/meal-estimate.js`): a sheet that
+  builds a plate from hand portions, for meals eaten out: protein in palms (meat / fish / tofu · egg), carbs in fists
+  (rice / noodles / potato / bread), vegetables in fists, fat · sauce in thumbs, each in halves (palms 0–2, fists 0–3,
+  thumbs 0–4). The cooking method (grilled / pan-fried / deep-fried / creamy) sets the default thumbs
+  (0 / 0.5 / 1 / 0.75 × (palms + carb fists), to halves) until the user moves the thumb stepper; changing the
+  method again resets it. Per-unit values: `ESTIMATE_UNITS` (rounded typical cooked values from the USDA generic
+  foods). Live ≈ kcal and macros; logged as one quick-add entry (kcal + macros, `estimate: true`, §3) to the chosen meal on
+  the Add screen's date. No name → stored marker 'Estimated meal', shown translated.
 - **Portion screen** (every path ends here):
   - amount field in g/ml, pre-filled with last amount for this food, else serving size, else 100;
   - quick chips for known servings and ×½ ×2;
+  - a dish: Small / Normal / Large (plate icon + grams) above the amount, Normal preselected on the first add; picking
+    one fills the grams, typing another amount deselects it; "≈ Estimate" under the name and "≈" before the kcal;
   - live calories and macros for the entered amount;
   - **"Edit values"** opens the food editor: name, brand, basis and all per-100 values are
     editable. Saving stores the food locally with `userEdited: true`; these values are used
@@ -228,6 +259,11 @@ Search · Scan · Recent · Meals · Quick add.
 - **Diary:** day view with four meals, per-meal and day totals, remaining vs target for
   kcal/protein/carbs/fat, previous/next day, tap entry to edit amount/values or delete,
   copy a meal to another day, save a meal's entries as a saved meal.
+- **Estimates in lists:** a dish's kcal (unedited dish, values unchanged) is led by "≈" in its food row (search and
+  Your foods: ≈ kcal of the normal portion; Recent: ≈ kcal of the last amount shown under the name, the normal portion
+  without one), diary entry and saved-meal item; an entry from "Estimate a meal" (`estimate: true`) also gets "≈" in
+  its diary row and entry sheet; meal and day totals have no mark. A food whose `source` is not a known value (e.g. from
+  a hand-edited backup) shows no source badge.
 - Completeness: a food needs name + kcal + protein + carbs + fat to be logged; the editor
   highlights what is missing. kJ-only products are converted (÷ 4.184) and marked.
 
@@ -382,17 +418,32 @@ is logged until the user confirms.
   language reloads the app; the choice is kept in localStorage and in settings key `language` (so backups carry it).
 - Everything the app names is stored language-neutrally (an id or the canonical English text) and translated
   when shown, so switching the language re-labels everything and backups are language-independent: built-in
-  exercises, splits, muscles, equipment, meal names, generic (USDA) foods, the day names of routines adopted or
+  exercises, splits, muscles, equipment, meal names, generic (USDA) foods, dishes, the day names of routines adopted or
   copied from a built-in split and of workouts started from them, and the stored default names: 'Workout',
   'New routine', 'My split', '<split> (custom)', saved meals 'Meal', 'Breakfast Thu 26 Nov', 'Breakfast photo',
-  diary entries 'Quick add', 'Imported', '<meal> (imported)', 'Meal photo', '… + 2 more', serving 'Whole pack'.
+  diary entries 'Quick add', 'Imported', '<meal> (imported)', 'Meal photo', '… + 2 more', 'Estimated meal', serving
+  'Whole pack'.
   Past imports store their counts and dates and are described in the current language (imports saved by 0.7.1
   keep their English text). A name saved unchanged in an editor keeps its stored form. Only what the user typed
-  (and Open Food Facts products, imported text) is stored and shown as typed. No exceptions.
-- Search finds generic foods by their English, German or Chinese name in every language; a match only in another
+  (and Open Food Facts products, imported text) is stored and shown as typed. No exceptions (a generic food may
+  also carry a language code, `nameLang`, see below; never translated text).
+- Search finds generic foods and dishes by their English, German or Chinese name (and aliases) in every language; a match only in another
   language's name ranks below the app language's matches of the same quality (a prefix or inside-word match
   there below all of them). The exercise picker and library search the shown name, equipment and muscles.
   Alphabetical lists sort with the app language's collation (German umlauts, Chinese by pinyin).
+- "Show the name as I typed it": a generic food or dish found through another language's name, and not through the app
+  language's, is shown in that language: in the search result and, once added, everywhere (diary, saved meals,
+  Recent, Your foods, portion, editor) in every app language. Which language: a query with Chinese characters
+  means Chinese; any matching app-language name (or alias) means the app language (shared words such as
+  "pizza", "tofu"); otherwise the matching name's language, English before German before Chinese. Stored as
+  `foods.nameLang` (no value = the app language); the stored `name` stays English. Dishes follow the same rules; their
+  names come from dishes.json by id.
+  Rule for later adds: **the most recent add decides**. Logging the food from a search (generic results or
+  Your foods) sets `nameLang` to the language that search matched, and a match through the app language
+  clears it (saving edited values of a food opened from a search does the same); logging it from Recent or
+  a saved meal keeps it. Your foods search treats the pinned name as that language's (typing it keeps the
+  pin). A name the user typed (renamed food or entry) always wins. Open Food Facts products and custom foods
+  keep the name they came with.
 - Percentages are written `62 %` (no-break space) in every language.
 - Numbers keep the decimal point (`82.5`) and narrow-space grouping in every language; input accepts `,` or `.`.
   Dates and weekdays follow the language (`Mi. 18. Nov.`, `11月18日周三`), times stay 24 h.

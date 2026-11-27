@@ -4,7 +4,8 @@ import { scale, sumEntries } from '../core/nutrition.js';
 import { entriesFromMeal, mealFromEntries } from '../core/food-diary.js';
 import { t } from '../i18n/index.js';
 import { putEntries, putMeal, removeMeal, touchFoods, getFood } from './store.js';
-import { mealSelect, dateInput, mealDateRow, macroText } from './widgets.js';
+import { mealSelect, dateInput, mealDateRow, macroText, approxMark } from './widgets.js';
+import { isEstimateFood } from '../core/dishes.js';
 import { mealName, itemName, savedMealName, foodsById } from './names.js';
 import { ensureDisplayNames } from './generic.js';
 
@@ -13,13 +14,21 @@ const uuid = () => crypto.randomUUID();
 /** kcal of a saved meal at its stored amounts. */
 export const mealKcal = (meal) => sumEntries(meal.items).kcal;
 
-/** Display names of a saved meal's items (generic foods in the app language). @returns {Promise<string[]>} */
-async function itemNames(meal) {
+/**
+ * Display names of a saved meal's items (generic foods and dishes in the app language) and which items hold a
+ * dish's own estimate (shown with '≈': an unedited dish whose values the item still has).
+ * @returns {Promise<{names: string[], est: boolean[]}>}
+ */
+async function itemInfo(meal) {
   const ids = [...new Set(meal.items.map((i) => i.foodId).filter(Boolean))];
   const foods = await Promise.all(ids.map((id) => getFood(id)));
   await ensureDisplayNames(foods);
   const byId = foodsById(foods);
-  return meal.items.map((i) => itemName(i, i.foodId ? byId.get(i.foodId) : null));
+  const foodOf = (i) => (i.foodId ? byId.get(i.foodId) : null);
+  return {
+    names: meal.items.map((i) => itemName(i, foodOf(i))),
+    est: meal.items.map((i) => { const f = foodOf(i); return isEstimateFood(f) && Boolean(i.per100 && f.per100 && i.per100.kcal === f.per100.kcal); }),
+  };
 }
 
 /**
@@ -29,12 +38,12 @@ async function itemNames(meal) {
  * @returns {Promise<'logged'|'changed'|null>} 'changed' if the meal was edited/deleted
  */
 export async function openLogMeal(meal, { date, meal: mealId, onChange }) {
-  const names = await itemNames(meal);
+  const { names, est } = await itemInfo(meal);
   const rows = meal.items.map((item, i) => {
     const amount = numberInput({ value: item.amount, min: 0, max: 10000, decimals: 1, ariaLabel: t('food.meals.amountOf', { name: names[i] }), onInput: update });
     const kcal = el('span', { class: 'num' });
     const row = el('div', { class: 'meal-item-row' },
-      el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, names[i]), el('div', { class: 'li-sub' }, kcal)),
+      el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, names[i]), el('div', { class: 'li-sub' }, est[i] ? approxMark() : null, kcal)),
       el('div', { class: 'input-unit meal-amount' }, amount, el('span', { class: 'unit' }, item.basis)));
     return { item, amount, kcal, row };
   });
@@ -98,13 +107,13 @@ export async function openLogMeal(meal, { date, meal: mealId, onChange }) {
  * @returns {Promise<'saved'|'deleted'|null>}
  */
 export async function openEditMeal(meal, { onChange } = {}) {
-  const names = await itemNames(meal);
+  const { names, est } = await itemInfo(meal);
   const shownName = savedMealName(meal);
   const name = el('input', { class: 'input', type: 'text', value: shownName, maxlength: '80', 'aria-label': t('food.meals.name') });
   const rows = meal.items.map((item, i) => {
     const amount = numberInput({ value: item.amount, min: 0.1, max: 10000, decimals: 1, ariaLabel: t('food.meals.amountOf', { name: names[i] }) });
     const row = el('div', { class: 'meal-item-row' },
-      el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, names[i]), el('div', { class: 'li-sub' }, `${fmtGrouped(item.per100.kcal, 0)} kcal / 100 ${item.basis}`)),
+      el('div', { class: 'li-main' }, el('div', { class: 'li-title' }, names[i]), el('div', { class: 'li-sub' }, est[i] ? approxMark() : null, `${fmtGrouped(item.per100.kcal, 0)} kcal / 100 ${item.basis}`)),
       el('div', { class: 'input-unit meal-amount' }, amount, el('span', { class: 'unit' }, item.basis)),
       iconButton('x', { label: t('food.meals.removeItem', { name: names[i] }), onClick: () => { row.remove(); r.removed = true; } }));
     const r = { item, amount, row, removed: false };

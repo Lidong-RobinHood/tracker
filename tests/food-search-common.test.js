@@ -40,6 +40,11 @@ const CASES = {
     ['blueberries', 171711], ['orange', 169097], ['almonds', 170567], ['peanut butter', 172470], ['lentils', 172421],
     ['chickpeas', 173757], ['black beans', 173735], ['sugar', 169655], ['honey', 169640], ['coffee', 171890, true],
     ['green tea', 171917], ['orange juice', 169098], ['beer', 168746], ['red wine', 173190], ['whey protein', 173177],
+    // prepared foods (FNDDS): the plain dish first
+    ['pizza', 2708614, true], ['pizza', 2708638], ['pepperoni pizza', 2708638, true], ['hamburger', 2706920, true],
+    ['burger', 2706920, true], ['cheeseburger', 2706888, true], ['french fries', 2709456, true], ['fries', 2709456],
+    ['fried rice', 2708952, true], ['sushi', 2708959, true], ['ramen', 2709153, true], ['burrito', 2708534, true],
+    ['latte', 2710386, true], ['cappuccino', 2710472, true],
   ],
   de: [
     ['ei', 171287], ['milch', 171265, true], ['hähnchenbrust', 171077, true], ['haehnchenbrust', 171077], ['reis', 168878, true],
@@ -58,6 +63,10 @@ const CASES = {
     ['wachsbohnen', 169320], ['hähnchenschenkel', 173627, true], ['speck', 168277, true], ['eiweißpulver', 173180, true],
     ['blaubeeren', 171711, true], ['körniger frischkäse', 172179, true], ['basmati', 168878, true],
     ['cola', 174852, true], ['wein', 173190, true], ['sahne', 170859, true], ['malzbier', 174863, true],
+    ['pizza', 2708614, true], ['pizza', 2708638], ['salamipizza', 2708638, true], ['hamburger', 2706920, true],
+    ['burger', 2706920, true], ['pommes', 2709456, true], ['pommes frites', 2709456, true],
+    ['gebratener reis', 2708952, true], ['sushi', 2708959, true], ['ramen', 2709153, true], ['cappuccino', 2710472, true],
+    ['latte', 2710386, true],
   ],
   zh: [
     ['鸡蛋', 171287], ['牛奶', 171265, true], ['鸡胸肉', 171077], ['米饭', 168878, true], ['燕麦', 173904], ['燕麦片', 173904],
@@ -72,6 +81,13 @@ const CASES = {
     ['绿茶', 171917], ['橙汁', 169098], ['啤酒', 168746], ['乳清蛋白', 173177],
     ['芝士', 173414], ['煎蛋', 173423, true], ['鸡爪', 171119, true], ['吐司', 174924, true], ['意面', 169737, true],
     ['糙米饭', 169704, true], ['猪里脊', 168249, true],
+    ['披萨', 2708614, true], ['pizza', 2708614, true], ['汉堡', 2706920, true], ['hamburger', 2706920, true],
+    ['芝士汉堡', 2706888, true], ['薯条', 2709456, true], ['炒饭', 2708952], ['寿司', 2708959], ['拉面', 2709153],
+    ['拿铁', 2710386, true], ['卡布奇诺', 2710472, true],
+    // single characters (zh alias of that character): noodles before bread, plain rice, chicken meat before eggs …
+    ['面', 169732], ['面', 169737], ['饭', 168878, true], ['米', 168877], ['米', 168878], ['粉', 168914, true],
+    ['包', 2708724, true], ['蛋', 171287, true], ['奶', 171265, true], ['鸡', 171052, true], ['肉', 167902, true],
+    ['菜', 170390, true],
   ],
 };
 
@@ -168,7 +184,8 @@ function matchRank(lang, i, q) {
 
 const TRAPS = {
   // English UI: German "Beeren" (berries), "Aubergine", "Rumpsteak"-style and "Bundesstaat" matches must not lead
-  en: [['beer', 'Alcoholic beverage, beer, regular, all'], ['gin', null], ['rum', 'Alcoholic beverage, distilled, all (gin, rum, vodka, whiskey) 80 proof'], ['bun', null]],
+  // ("rum": the FNDDS food "Rum" since the survey foods were added)
+  en: [['beer', 'Alcoholic beverage, beer, regular, all'], ['gin', null], ['rum', 'Rum'], ['bun', null]],
   // German UI: English "seeds", "barley", "ginger", "nuggets" (reh) must not lead
   de: [['see', null], ['bar', null], ['gin', null], ['reh', null]],
   // Chinese UI, Latin queries: English names before German ones ("beer" ≠ "Beeren", "gin" ≠ "Aubergine")
@@ -194,7 +211,7 @@ for (const lang of Object.keys(TRAPS)) {
 test('cross-language traps (zh): "gin" lists gin before Virginia peanuts and never eggplant (German "Aubergine")', () => {
   const top = search('gin', buildIndex('zh'), { limit: 10 }).map((f) => idOf.get(f));
   assert.ok(!top.includes(169228), top.join(', '));
-  assert.ok(top.slice(0, 2).some((id) => /\bgin\b/.test(foods[ids.indexOf(id)].name)), top.join(', '));
+  assert.ok(top.slice(0, 2).some((id) => /\bgin\b/i.test(foods[ids.indexOf(id)].name)), top.join(', ')); // FNDDS "Gin" too
 });
 
 test('cross-language: exact words in another language still find the food', () => {

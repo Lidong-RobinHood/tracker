@@ -181,6 +181,8 @@ export default {
   'settings.lic.food': 'Food data',
   'settings.lic.generic': 'Generic foods:',
   'settings.lic.packaged': 'Packaged products:',
+  'settings.lic.dishes': 'Dishes:',
+  'settings.lic.dishesText': 'the app’s own estimates, calculated from typical recipes with USDA FoodData Central ingredient values.',
   'settings.lic.dataErrors': 'Data can contain errors; check the label.',
   'settings.lic.barcode': 'Barcode scanner',
   'settings.lic.icons': 'Icons',

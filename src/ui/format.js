@@ -105,3 +105,17 @@ export function fmtTonnage(kg, { kg: kgOnly = false } = {}) {
 export function joinSentences(parts) {
   return parts.filter(Boolean).reduce((acc, p) => (!acc ? p : `${acc}${/[。！？]$/.test(acc) ? '' : ' '}${p}`), '');
 }
+
+/**
+ * Text of a caught error for a message: its `message`, else the value as text (an IndexedDB abort can reject
+ * with null; a thrown string has no message). Never throws.
+ * @param {unknown} err
+ */
+export function fmtError(err) {
+  try {
+    const m = err && typeof err === 'object' ? err.message : null;
+    return typeof m === 'string' && m ? m : String(err);
+  } catch {
+    return '?'; // e.g. an object without a prototype
+  }
+}

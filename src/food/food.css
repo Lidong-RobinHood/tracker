@@ -72,6 +72,8 @@
 .search-actions { flex-wrap: wrap; }
 .add-body .stack > .stack:empty, .add-body .stack > p:empty { display: none; }
 .badge-edited, .badge-src-custom { background: var(--accent-soft); color: var(--accent-ink); }
+/* own dish estimate: a quiet neutral badge '≈ Estimate' */
+.badge-src-dish { background: var(--fill); color: var(--ink-2); gap: 3px; }
 .off-credit a { color: var(--accent); }
 .card-flush + .off-credit, .scan-result .off-credit { padding: 0 var(--s1); }
 
@@ -114,6 +116,12 @@
 .macro-cap .swatch, .photo-value-label .swatch { width: 8px; height: 8px; border-radius: 2px; }
 .macro-val { font-size: var(--fs-head); line-height: var(--lh-head); font-weight: var(--fw-semibold); white-space: nowrap; }
 .edit-values { align-self: flex-start; }
+/* dish sizes (Small / Normal / Large): plate icon, label, grams, stacked in a segmented control */
+.size-seg > button { flex: 1 1 0; min-width: 0; min-height: 56px; flex-direction: column; gap: 2px; padding: var(--s1); }
+.size-seg > button .ic { width: 20px; height: 20px; }
+.size-seg > button > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.size-seg .size-g { font-weight: var(--fw-regular); color: var(--ink-2); }
+.size-seg[hidden] { display: none; }
 .portion-sheet .field-error:empty, .food-editor .field-error:empty, .photo-panel .field-error:empty { display: none; }
 
 /* ---------------------------------------------------------------- editor */
@@ -210,3 +218,42 @@
 .photo-model-picker { width: 100%; min-width: 0; }
 .photo-note .plain-list li + li { margin-top: var(--s2); }
 .ext-link { color: var(--accent); display: inline-flex; align-items: center; gap: 2px; }
+
+/* ---------------------------------------------------------------- quick add: estimate a meal (src/food/estimate.js) */
+.estimate-entry .list-item { min-height: 64px; }
+.estimate-entry .li-lead { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: var(--r-md); background: var(--accent-soft); color: var(--accent-ink); }
+.estimate-entry .li-lead .ic { width: 24px; height: 24px; }
+.estimate-entry .li-main { display: flex; flex-direction: column; }
+.unit-icons { display: flex; align-items: center; gap: var(--s2); color: var(--ink-2); margin-top: 2px; }
+.unit-icons .ic { width: 16px; height: 16px; }
+/* '≈' before an estimated kcal figure (read as 'About'): portion sheet, dish rows, diary entries, saved-meal items */
+.approx { color: var(--ink-2); font-weight: var(--fw-regular); margin-right: 2px; }
+
+.estimate-sheet .portion-values { gap: var(--s2); padding: var(--s3) var(--s4); }
+/* stepper: − value + (36 px visible, 44 px hit area) */
+.stepper { display: flex; align-items: center; gap: var(--s1); flex: none; }
+.stepper > button {
+  position: relative; display: grid; place-items: center; width: 36px; height: 36px; padding: 0;
+  border: 0; border-radius: var(--r-sm); background: var(--fill); color: var(--ink); cursor: pointer;
+}
+.stepper > button::after { content: ""; position: absolute; inset: -4px; }
+.stepper > button:disabled { opacity: .4; cursor: default; }
+.stepper > button .ic { width: 18px; height: 18px; }
+.stepper-val { min-width: 3.2ch; text-align: center; font-size: var(--fs-head); line-height: var(--lh-head); font-weight: var(--fw-semibold); }
+/* cooking method: icon over label, four equal options */
+.seg-stack > button { flex: 1 1 0; min-width: 0; min-height: 56px; flex-direction: column; gap: 2px; padding: var(--s1) 2px; }
+.seg-stack > button .ic { width: 22px; height: 22px; }
+.seg-stack > button > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 359px) { .seg-stack > button { padding: var(--s1) 0; font-size: var(--fs-sub); line-height: var(--lh-sub); } }
+.name-meal-row { align-items: end; }
+/* one row per group: unit icon, name + grams, stepper; kinds or cooking below */
+.est-rows { display: flex; flex-direction: column; }
+.est-row { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) 0 var(--s3); border-top: 1px solid var(--line); }
+.est-rows > .est-row:first-child { border-top: 0; padding-top: 0; }
+.est-row-head { display: flex; align-items: center; gap: var(--s3); min-height: var(--tap); }
+.est-row-head > .ic { width: 28px; height: 28px; color: var(--accent); flex: none; }
+.est-row-title { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.est-row-title .strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.est-row .chips { gap: var(--s2); }
+.est-row .chip { flex: 1 1 0; justify-content: center; min-width: 0; }
+.est-row.is-zero .chips { opacity: .45; }

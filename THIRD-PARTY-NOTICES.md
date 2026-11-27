@@ -44,6 +44,8 @@ The body map and the muscle icons were drawn for this project; no third-party ar
 - Licence: public domain, CC0 1.0 Universal.
 - Citation: U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.
 - Use of this data does not imply endorsement by USDA.
+- `src/data/dishes.json` holds the app's own dish estimates, calculated from typical recipes with the ingredient
+  values of this file (see `src/data/dishes.README.md`); credited on Settings › Licences as own estimates.
 
 ## Online services used at runtime (nothing is bundled)
 

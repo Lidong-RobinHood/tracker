@@ -1,12 +1,18 @@
 // Portion screen: every add path ends here. Amount, serving chips, live values, edit values, meal/date.
+// A dish (own estimate, core/dishes.js) adds Small / Normal / Large above the amount (picking one fills the grams;
+// typing another amount deselects it) and shows its values with '≈'.
 import { el, openSheet, numberInput, toast, fmtNum, fmtDay, fmtAmount, replaceChildren, icon } from '../ui/index.js';
 import { scale, isComplete, missingFields } from '../core/nutrition.js';
 import { defaultAmount, multiplyAmount } from '../core/portion.js';
+import { validSizes, isEstimateFood, SIZE_LABELS } from '../core/dishes.js';
 import { t } from '../i18n/index.js';
 import { logFood, saveFood } from './store.js';
 import { openFoodEditor } from './food-editor.js';
 import { mealSelect, dateInput, sourceBadge, per100Text, offCredit, mealDateRow, portionValues, missingText } from './widgets.js';
 import { foodName, mealName, servingLabel } from './names.js';
+
+/** Plate icons of the three dish sizes (small, normal, large). */
+const plates = () => [icon('plate-s'), icon('plate-m'), icon('plate-l')];
 
 /**
  * Edit a food's values (userEdited) and store it. Returns the stored record or null.
@@ -42,6 +48,7 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
   amount.classList.add('portion-amount');
   const unit = el('span', { class: 'unit' });
   const chips = el('div', { class: 'chips chips-scroll portion-chips' });
+  const sizesEl = el('div', { class: 'seg size-seg', role: 'group', 'aria-label': t('food.dish.size') });
   const valuesEl = el('div', { class: 'portion-values' });
   const extra = el('div', { class: 't-sub muted num portion-extra' });
   const warn = el('p', { class: 'field-error' });
@@ -54,6 +61,7 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
     content: [
       el('div', { class: 'portion-head' }, titleEl, subEl),
       creditEl,
+      sizesEl,
       el('div', { class: 'field portion-amount-row' },
         el('label', { class: 'field-label', htmlFor: amount.id = `amt-${Math.random().toString(36).slice(2)}` }, t('food.portion.amount')),
         el('div', { class: 'input-unit' }, amount, unit)),
@@ -74,6 +82,13 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
       ` ${[current.brand, per100Text(current)].filter(Boolean).join(' · ')}`);
     creditEl.hidden = current.source !== 'off';
     unit.textContent = current.basis || 'g';
+    const sizes = validSizes(current.sizes);
+    sizesEl.hidden = !sizes;
+    const icons = plates();
+    sizesEl.replaceChildren(...(sizes || []).map((g, i) => el('button', {
+      type: 'button', 'aria-pressed': 'false', dataset: { amount: String(g) },
+      onClick: () => { amount.setNumber(g); update(); },
+    }, icons[i], el('span', null, t(`food.dish.${SIZE_LABELS[i]}`)), el('span', { class: 'size-g' }, fmtAmount(g, current.basis)))));
     chips.replaceChildren(
       ...(current.servings || []).map((s) => el('button', {
         type: 'button', class: 'chip', dataset: { amount: String(s.amount) },
@@ -94,8 +109,9 @@ export function openPortion({ food, date, meal, kcalConverted = false }) {
     const extras = [['sugars', v.sugars], ['satFatShort', v.satFat], ['fibre', v.fibre], ['salt', v.salt]]
       .filter(([, x]) => x !== null).map(([k, x]) => t('food.portion.extra', { label: t(`food.nutrient.${k}`), value: fmtNum(x, k === 'salt' ? 2 : 1) }));
     extra.textContent = extras.join(' · ');
-    replaceChildren(valuesEl, portionValues(v, extras.length ? extra : null));
+    replaceChildren(valuesEl, portionValues(v, extras.length ? extra : null, { approx: isEstimateFood(current) }));
     for (const c of chips.querySelectorAll('[data-amount]')) c.classList.toggle('is-active', n !== null && Number(c.dataset.amount) === n);
+    for (const b of sizesEl.querySelectorAll('[data-amount]')) b.setAttribute('aria-pressed', String(n !== null && Number(b.dataset.amount) === n));
     const missing = missingFields(current);
     warn.textContent = missing.length ? t('food.portion.missing', { fields: missingText(missing) }) : '';
     addBtn.disabled = n === null || n <= 0;

@@ -27,6 +27,12 @@
 // Lucide's LICENSE) and vendor/icons/LICENSE-tabler-icons.txt. Listed in THIRD-PARTY-NOTICES.md and
 // on Settings › Licences and data sources.
 //
+// Own icons (drawn for this app on 2026-11-27, no third-party artwork; see docs/AUTHORSHIP.md): hand-palm,
+// hand-fist, hand-thumb (hand portions of "Estimate a meal"), cook-steam (steamed / grilled), cook-pan
+// (pan-fried), cook-fry (deep-fried); plate-s, plate-m, plate-l (small / normal / large dish portion, plate rims
+// of growing size). Same grid and stroke as Lucide: 24 × 24, stroke 2, round caps and
+// joins, no fill. They are not from Lucide: do not replace them when icons are fetched again.
+//
 // globe (2026-11-26, Settings › Language) was added without network access, from Lucide's published
 // icons/globe.svg markup as known; compare it with the file the next time icons are fetched.
 //
@@ -37,7 +43,7 @@
 
 const NS = 'http://www.w3.org/2000/svg';
 
-/** @type {Readonly<Record<string, string>>} name -> inner SVG markup (trusted, static) — 78 icons */
+/** @type {Readonly<Record<string, string>>} name -> inner SVG markup (trusted, static) — 84 icons */
 const ICONS = Object.freeze({
   'activity': '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />',
   'arrow-down': '<path d="M12 5v14" /><path d="m19 12-7 7-7-7" />',
@@ -61,6 +67,9 @@ const ICONS = Object.freeze({
   'circle-question-mark': '<circle cx="12" cy="12" r="10" /><path d="M9 9.5a3 2.5 0 016 0c0 2-2 2-3 3.5" /><path d="M12 17h.01" />',
   'clock': '<circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />',
   'cloud-off': '<path d="M10.94 5.274A7 7 0 0 1 15.71 10h1.79a4.5 4.5 0 0 1 4.222 6.057" /><path d="M18.796 18.81A4.5 4.5 0 0 1 17.5 19H9A7 7 0 0 1 5.79 5.78" /><path d="m2 2 20 20" />',
+  'cook-fry': '<path d="M5 9h14v8a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3z" /><path d="M2.5 9H5" /><path d="M19 9h2.5" /><path d="M5 12.5h14" /><circle cx="9" cy="16.5" r="1" /><circle cx="12.5" cy="15.5" r="1" /><circle cx="15.5" cy="16.8" r=".6" /><path d="M10 6c-.6-.8-.6-1.7 0-2.5" /><path d="M14 6c-.6-.8-.6-1.7 0-2.5" />',
+  'cook-pan': '<path d="M3 12h13v1.5a4.5 4.5 0 0 1-4.5 4.5h-4A4.5 4.5 0 0 1 3 13.5z" /><path d="M16 13.5h5" /><path d="M7.5 8.5c-.6-.8-.6-1.7 0-2.5" /><path d="M11.5 8.5c-.6-.8-.6-1.7 0-2.5" />',
+  'cook-steam': '<path d="M8 3c-1.3 1.3-1.3 2.7 0 4s1.3 2.7 0 4" /><path d="M12 3c-1.3 1.3-1.3 2.7 0 4s1.3 2.7 0 4" /><path d="M16 3c-1.3 1.3-1.3 2.7 0 4s1.3 2.7 0 4" /><path d="M3 15h18" /><path d="M5 15a7 6 0 0 0 14 0" />',
   'copy': '<rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />',
   'download': '<path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" />',
   'droplet': '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z" />',
@@ -75,6 +84,9 @@ const ICONS = Object.freeze({
   'funnel': '<path d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" />',
   'globe': '<circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" />',
   'grip-vertical': '<circle cx="9" cy="12" r="1" /><circle cx="9" cy="5" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="19" r="1" />',
+  'hand-fist': '<path d="M7.5 22v-3.2C5.6 17.6 4.5 15.6 4.5 13.4V9.5A2.5 2.5 0 0 1 7 7h10a2.5 2.5 0 0 1 2.5 2.5v4.2c0 2.3-1.1 4.2-3 5.2V22" /><path d="M9 7v4" /><path d="M12 7v4" /><path d="M15 7v4" /><path d="M4.5 11h15" /><path d="M4.6 14H11a1.5 1.5 0 0 1 0 3H9" />',
+  'hand-palm': '<path d="M8 22v-2.6c-1.8-1.1-3-2.7-3.6-4.7l-1-3.3a1.6 1.6 0 0 1 3-1.1L8 13.2V5.5A3.5 3.5 0 0 1 11.5 2h1A3.5 3.5 0 0 1 16 5.5V17c0 1.3-.7 2.4-2 3.1V22" /><path d="M10.7 2.6V8" /><path d="M13.3 2.6V8" />',
+  'hand-thumb': '<path d="M8.5 22v-4.5A1.5 1.5 0 0 1 8 16.4V6a4 4 0 0 1 8 0v10.4a1.5 1.5 0 0 1-.5 1.1V22" /><path d="M10.5 8.5V6.8a1.5 1.5 0 0 1 3 0v1.7z" /><path d="M10 13.5h4" />',
   'heart-pulse': '<path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5" /><path d="M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27" />',
   'image': '<rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />',
   'info': '<circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />',
@@ -86,6 +98,9 @@ const ICONS = Object.freeze({
   'minus': '<path d="M5 12h14" />',
   'pause': '<rect x="14" y="3" width="5" height="18" rx="1" /><rect x="5" y="3" width="5" height="18" rx="1" />',
   'pencil': '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path d="m15 5 4 4" />',
+  'plate-l': '<circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="5.5" />',
+  'plate-m': '<circle cx="12" cy="12" r="7.5" /><circle cx="12" cy="12" r="3.5" />',
+  'plate-s': '<circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" />',
   'play': '<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />',
   'plus': '<path d="M5 12h14" /><path d="M12 5v14" />',
   'refresh-cw': '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" />',

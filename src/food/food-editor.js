@@ -3,9 +3,7 @@ import { el, openSheet, numberInput, field, toast, fmtGrouped, segmented, iconBu
 import { missingFields, kjToKcal, macroKcal, NUTRIENTS } from '../core/nutrition.js';
 import { copyPer100 } from '../core/food-diary.js';
 import { SERVING_LABEL } from '../core/portion.js';
-import { localFoodName } from '../core/food-names.js';
-import { servingLabel } from './names.js';
-import { displayNames } from './generic.js';
+import { servingLabel, builtInFoodName } from './names.js';
 import { round } from '../core/numbers.js';
 import { t } from '../i18n/index.js';
 import { offCredit, missingText } from './widgets.js';
@@ -29,8 +27,9 @@ export function openFoodEditor({ food, title = t('food.portion.editValues'), not
   const draft = { ...food, per100: copyPer100(food.per100), servings: (food.servings || []).map((s) => ({ ...s })) };
   let basis = draft.basis === 'ml' ? 'ml' : 'g';
 
-  // A generic food is shown with its translated name; saved unchanged, the record keeps its English name.
-  const shownName = (mode === 'food' && localFoodName(draft, displayNames())) || draft.name || '';
+  // A generic food or dish is shown with its translated name (app language or its nameLang); saved unchanged,
+  // the record keeps its English name.
+  const shownName = (mode === 'food' && builtInFoodName(draft)) || draft.name || '';
   const name = el('input', { class: 'input', type: 'text', value: shownName, autocomplete: 'off', placeholder: t('food.editor.namePlaceholder'), maxlength: '120' });
   const brand = el('input', { class: 'input', type: 'text', value: draft.brand || '', autocomplete: 'off', placeholder: t('food.field.optional'), maxlength: '80' });
   const nameField = field(t('food.field.name'), name);

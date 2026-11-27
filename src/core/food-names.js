@@ -75,3 +75,55 @@ export function localItemName(item, food, names) {
   if (!item || !food || !item.foodId || item.foodId !== food.id) return null;
   return localFoodName({ source: food.source, sourceKey: food.sourceKey, name: item.name }, names);
 }
+
+/**
+ * Languages a generic food can be pinned to (a stored food's optional `nameLang`): the languages of the base
+ * data and of the names files. Kept here (core) so validation needs no i18n module.
+ */
+export const FOOD_NAME_LANGS = Object.freeze(['en', 'de', 'zh']);
+
+/** True for a valid `nameLang` value ('en' | 'de' | 'zh'). */
+export const isFoodNameLang = (v) => typeof v === 'string' && FOOD_NAME_LANGS.includes(v);
+
+/**
+ * Sources whose names are built in and shown translated, so they can carry `nameLang`: generic (USDA) foods and
+ * the app's own dish estimates ('dish', core/dishes.js). Open Food Facts and custom foods keep their name.
+ */
+export const NAME_LANG_SOURCES = Object.freeze(['usda', 'dish']);
+
+/** True for a food whose name is built in (generic food or dish): it may carry `nameLang`. */
+export const hasBuiltInName = (food) => Boolean(food && NAME_LANG_SOURCES.includes(food.source));
+
+/**
+ * Language a food's name is shown in: its `nameLang` when it is a generic (USDA) food or a dish with a valid one (the
+ * user found and added it through that language's name: "show the name as I typed it"), else the app
+ * language. A renamed food shows its own name whatever this says (localFoodName).
+ * @param {{source?: string, nameLang?: string}|null|undefined} food @param {string} appLang
+ */
+export function shownNameLang(food, appLang) {
+  return hasBuiltInName(food) && isFoodNameLang(food.nameLang) ? food.nameLang : appLang;
+}
+
+/**
+ * A copy of a generic food or dish carrying the language it was found in: `nameLang` = `lang` (a language code),
+ * or null (found through the app language: storing it clears the field, toFoodRecord). Foods without a built-in
+ * name get no field (Open Food Facts and custom foods keep the name they came with).
+ * @template {object} T @param {T} food @param {string|null|undefined} lang @returns {T}
+ */
+export function withNameLang(food, lang) {
+  const out = { ...food };
+  if (hasBuiltInName(food)) out.nameLang = isFoodNameLang(lang) ? lang : null;
+  else delete out.nameLang;
+  return out;
+}
+
+/**
+ * `nameLang` of a food record about to be stored: the incoming food's when it has the field (a search result
+ * or a stored record; null clears it), else the existing record's. Only valid codes on generic foods and dishes
+ * are kept.
+ * @param {object} food @param {object|null} [existing] @returns {string|null}
+ */
+export function nameLangForRecord(food, existing = null) {
+  const v = food && Object.prototype.hasOwnProperty.call(food, 'nameLang') ? food.nameLang : existing ? existing.nameLang : null;
+  return hasBuiltInName(food) && isFoodNameLang(v) ? v : null;
+}

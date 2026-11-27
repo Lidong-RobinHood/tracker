@@ -4,11 +4,11 @@ Segments of USDA names are translated once (`de.json`) and composed in the origi
 The first letter of the composed name is capitalised. Mechanics (see `tools/build-food-names.mjs`):
 
 - `"<first segment>|<segment>"` overrides a segment for one food group (`"Nuts|roasted": "geröstet"`,
-  `"Egg|fried": "gebraten"`, `"Spices|ground": "gemahlen"`, `"Milk|whole": "Vollmilch"`). 100 such keys in de.json.
+  `"Egg|fried": "gebraten"`, `"Spices|ground": "gemahlen"`, `"Milk|whole": "Vollmilch"`). 145 such keys in de.json.
 - A translation of `"-"` drops the segment when its meaning is already in another one
   (`"roughy": "Granatbarsch (Orange Roughy)"` + `"Fish|orange": "-"`; `"Peppers|sweet": "-"` → "Paprika, rot, roh").
 - German only: a segment starting with "und"/"oder" is joined without a comma ("Calcium und Kalium").
-- Full-name fixes go to `overrides.de.json` (by fdcId), used for 41 names: hot peppers ("Chili, …" instead of
+- Full-name fixes go to `overrides.de.json` (by fdcId), used for 53 names: hot peppers ("Chili, …" instead of
   "Paprika, …") and lists that USDA spreads over several segments ("zubereitet mit Milch, Margarine und Eiern"), snap beans and buttermilk from whole milk.
 
 Chinese (`zh.json`) should mirror the same structure and decisions; group keys and "-" work for any language
@@ -133,3 +133,47 @@ Chinese (`zh.json`) should mirror the same structure and decisions; group keys a
 | powdered / maple (Sugars) | Puderzucker / Ahornzucker | |
 | stir-fried / thick | im Wok gebraten / dickflüssig | no calques |
 | Liver cheese / malt beer | Leberpastete (Liver Cheese) / Malzgetränk | false friends: Leberkäse has no liver, Malzbier is non-alcoholic |
+
+## Restaurant and prepared dishes (SR Legacy fast food / restaurant, FNDDS; added 2026-11-27)
+
+USDA codes for unspecified variants carry no information for the user and are dropped (`"-"`): `NFS`,
+`NS as to fat / part / type / type of meat / filling / icing / type of crust / cooking method / skin eaten /
+fried or baked / fried or grilled / raisins`, and the fat variants `fat added`, `made with oil`
+("Hamburger, NFS" → „Hamburger"). Where dropping would make two names identical, the code is translated instead
+(`"Potato|NS as to fresh or frozen": "frisch oder tiefgekühlt"`, override „…, o. n. A."). The older segment
+`NFS (45-59% cacao …)` keeps „o. n. A.".
+
+| English | German | Note |
+|---|---|---|
+| Fast foods / Restaurant, Chinese / Italian / Mexican / Latino / family style | Fast Food / Restaurant, chinesische / italienische / mexikanische / lateinamerikanische / amerikanische Familienküche | group keys `Restaurant\|…` |
+| from fast food / from restaurant / fast food / restaurant | Fast Food / Restaurant / Fast Food/Restaurant | |
+| from frozen / from fresh / from raw / from pre-cooked / from other sources | aus Tiefkühlware / aus Frischware / aus Rohware / aus vorgegarter Ware / andere Herkunft | |
+| home recipe, from home recipe / from mix / from refrigerated dough | nach Hausrezept / aus Backmischung / aus Kühlregal-Teig | |
+| frozen meal / diet frozen meal / … dinner | Tiefkühlgericht / Diät-Tiefkühlgericht / …-Menü | |
+| sauces: gravy / cream / white / mushroom / cheese / tomato / tomato-based / soy-based / meat sauce | Bratensoße / Rahmsoße / Béchamelsoße / Pilzsoße / Käsesoße / Tomatensoße / Soße auf Tomatenbasis / Soße auf Sojabasis / Fleischsoße | „Soße" spelling as before |
+| condiments / special sauce / tartar sauce / ranch | Würzsoßen / Spezialsoße / Remoulade (Sauce tartare) / Ranch-Soße | |
+| patty, patties; plain (burger) | Patty, Pattys; ohne Extras (`Fast foods\|plain`: pur) | |
+| on white / on wheat (bread); on white bun / on wheat bun / on bun / no bun | auf Weißbrot / auf Vollkornbrot; im hellen Brötchen / im Vollkornbrötchen / im Brötchen / ohne Brötchen | US "wheat bread" is brown bread |
+| X sandwich or sub | X-Sandwich oder -Sub | |
+| crust: regular / thin / thick / medium / stuffed / rising | normaler / dünner / dicker / mittlerer Boden / gefüllter Rand / aufgehender Boden | |
+| pepperoni (pizza) | Pepperoni-Salami | false friend: German Pepperoni are hot peppers; the SR sausage segment `Pepperoni` is unchanged |
+| 14" pizza | 36-cm-Pizza | |
+| white pizza | Pizza bianca (ohne Tomatensoße) | |
+| coated (chicken, fish, shrimp) | paniert | group keys; `coated` elsewhere stays „überzogen" |
+| skin / coating eaten / not eaten; peel eaten | Haut/Panade mitgegessen / nicht mitgegessen; Schale mitgegessen | |
+| vegetables including carrots, broccoli, and/or dark-green leafy | Gemüse mit Karotten, Brokkoli oder dunkelgrünem Blattgemüse | „und/oder" would get a comma (the join rule only knows „und "/„oder ") |
+| vegetables excluding carrots, broccoli, and dark-green leafy | Gemüse ohne Karotten, Brokkoli und dunkelgrünes Blattgemüse | two names with "excluding … and/or" are overrides |
+| vegetables other than dark green and/or tomatoes | anderes Gemüse (nicht dunkelgrün, keine Tomaten) | |
+| dumplings (in stews) / dumpling or pot sticker | Klöße / Teigtasche oder Potsticker | |
+| french fries / home fries / hash browns / tots | Pommes frites / Bratkartoffeln / Rösti (Hash Browns) / Kartoffelkroketten (Tots) | |
+| mashed (Potato, Fast foods) | Püree | group keys; SR `mashed` stays „püriert" |
+| Latte / Cafe Mocha / Iced Coffee / Frozen coffee drink | Caffè Latte / Caffè Mocha / Iced Coffee (Kaffee auf Eis) / Gefrorenes Kaffeegetränk (Frappé) | false friend: Eiskaffee contains ice cream |
+| with non-dairy milk / nonfat (coffee) / pre-lightened | mit Pflanzendrink / mit Magermilch / mit Kaffeeweißer | |
+| made with (light) mayonnaise / mayonnaise-type salad dressing / creamy / Italian dressing | mit (Light-)Mayonnaise / (Light-)Salatcreme / cremigem / italienischem Dressing | |
+| Puerto Rican / Mexican / Hawaiian style | nach puerto-ricanischer / mexikanischer / hawaiianischer Art | |
+| Chicken or turkey / Lamb or mutton / Venison or deer | Hähnchen oder Pute / Lamm oder Hammel / Hirsch/Reh | |
+| sandwich (cookie) | Doppelkeks (`Cookie\|sandwich`) | SR crackers keep „Doppelcracker" |
+| dessert (in frozen meals) | Dessert | SR `dessert` = Dessertwein |
+| Dish names used in German as they are | Pad Thai, Bibimbap, Burrito, Quesadilla, Gyros, Lasagne, Chow Mein, Lo Mein, Ramen, Sushi, Tiramisu, cocktail names | an explaining parenthesis only where the name is unknown in Germany (Haupia (Kokospudding)) |
+
+No brand or product names in translations: diet cola = zuckerfreie Cola (not "Cola light"), Fudgesicle = Schokoladen-Milcheis am Stiel, Creamsicle = Orangen-Vanille-Eis am Stiel, marshmallow pie = Marshmallow-Doppelkeks. Gefilte fish = Gefilte Fisch.

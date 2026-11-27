@@ -6,13 +6,14 @@ import {
 import { today, addDays, isValidDate, weekStart, parseDate } from '../core/dates.js';
 import { dayRange } from '../i18n/dates.js';
 import { scale } from '../core/nutrition.js';
-import { MEALS, groupByMeal, totals, copyEntries, isQuickAdd } from '../core/food-diary.js';
+import { MEALS, groupByMeal, totals, copyEntries, isQuickAdd, isEstimateEntry } from '../core/food-diary.js';
 import { targetStatus, shareOfDay, fmtPercent } from '../core/food-percent.js';
 import { t } from '../i18n/index.js';
 import { dayEntries, putEntry, putEntries, removeEntry, removeEntries, getTargets, updateFoodFromEntry, getFood } from './store.js';
 import { openFoodEditor } from './food-editor.js';
 import { openSaveAsMeal } from './meals.js';
-import { ensureCss, mealSelect, dateInput, macroText, mealDateRow, portionValues } from './widgets.js';
+import { ensureCss, mealSelect, dateInput, macroText, mealDateRow, portionValues, approxMark } from './widgets.js';
+import { isEstimateFood } from '../core/dishes.js';
 import { mealName, itemName, isUnnamedQuickAdd, savedMealDefault } from './names.js';
 import { ensureDisplayNames } from './generic.js';
 import { PHOTO_DRAFT } from './photo-tab.js';
@@ -163,13 +164,23 @@ export async function mountDiary(container, params) {
   /** Entry name in the app language (generic foods, 'Quick add'); user names as stored. */
   function nameOf(e) { return itemName(e, e.foodId ? foods.get(e.foodId) : null); }
 
+  /**
+   * True when an entry holds an estimate: logged by "Estimate a meal" (`estimate: true`), or a dish's own estimate
+   * (its food is an unedited dish and the entry still has the dish's values). Its kcal is shown with '≈'.
+   */
+  function isEstimate(e) {
+    if (isEstimateEntry(e)) return true; // logged by "Estimate a meal"
+    const f = e.foodId ? foods.get(e.foodId) : null;
+    return isEstimateFood(f) && e.per100 && f.per100 && e.per100.kcal === f.per100.kcal;
+  }
+
   function entryRow(e) {
     const v = scale(e.per100, e.amount);
     return el('button', { type: 'button', class: 'list-item entry-row', onClick: () => editEntry(e) },
       el('div', { class: 'li-main' },
         el('div', { class: 'li-title' }, nameOf(e)),
         el('div', { class: 'li-sub' }, isQuick(e) ? (isUnnamedQuickAdd(e) ? macroText(v) : `${t('food.quickAdd.title')} · ${macroText(v)}`) : [fmtAmount(e.amount, e.basis), e.brand].filter(Boolean).join(' · '))),
-      el('div', { class: 'li-trail num' }, fmtGrouped(v.kcal, 0), el('span', { class: 'vh' }, ' kcal')));
+      el('div', { class: 'li-trail num' }, isEstimate(e) ? approxMark() : null, fmtGrouped(v.kcal, 0), el('span', { class: 'vh' }, ' kcal')));
   }
 
   // ---------------------------------------------------------------- entry sheet
@@ -182,6 +193,7 @@ export async function mountDiary(container, params) {
     // Shown name: translated while unchanged; once "Edit values" returns a name, that one.
     const shownName = nameOf(entry);
     let nameChanged = false;
+    let approx = isEstimate(entry); // '≈' until the values are edited
     const nameEl = el('div', { class: 't-head portion-name' }, shownName);
     const mealSel = mealSelect(entry.meal);
     const dateIn = dateInput(entry.date);
@@ -204,7 +216,7 @@ export async function mountDiary(container, params) {
     function update() {
       const v = scale(draft.per100, quick ? 100 : amount.getNumber() ?? 0);
       nameEl.textContent = nameChanged ? draft.name : shownName;
-      replaceChildren(values, portionValues(v));
+      replaceChildren(values, portionValues(v, null, { approx }));
     }
     async function editValues() {
       // The editor shows the name as the user sees it; an unchanged name keeps the stored one (so a generic
@@ -217,6 +229,7 @@ export async function mountDiary(container, params) {
       if (!r) return;
       if (r.food.name !== shown) nameChanged = true;
       draft = { ...draft, name: nameChanged ? r.food.name : draft.name, basis: r.food.basis, per100: r.food.per100 };
+      approx = approx && r.food.per100.kcal === entry.per100.kcal;
       alsoUpdateFood = r.alsoUpdateFood;
       update();
     }
@@ -226,6 +239,8 @@ export async function mountDiary(container, params) {
       if (a === null || a <= 0) { amount.focus(); return; }
       if (!d) { toast(t('food.date.invalid'), { type: 'error' }); return; }
       const updated = { ...draft, amount: a, meal: mealSel.value, date: d };
+      // an estimate whose kcal was edited is no longer one (an invalid value is dropped too)
+      if (!approx || updated.estimate !== true) delete updated.estimate;
       try {
         await putEntry(updated);
         if (alsoUpdateFood) {

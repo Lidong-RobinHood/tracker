@@ -178,6 +178,8 @@ export default {
   'settings.lic.food': '食物数据',
   'settings.lic.generic': '通用食物：',
   'settings.lic.packaged': '包装食品：',
+  'settings.lic.dishes': '菜品：',
+  'settings.lic.dishesText': '本应用自己的估算值，根据常见食谱和 USDA FoodData Central 的食材数值计算。',
   'settings.lic.dataErrors': '数据可能有误，请以包装标签为准。',
   'settings.lic.barcode': '条形码扫描',
   'settings.lic.icons': '图标',

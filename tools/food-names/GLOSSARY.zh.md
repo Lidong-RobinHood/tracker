@@ -112,7 +112,7 @@ by fdcId.
 | Milk | 牛奶; goat/sheep/buffalo/human milk via overrides (山羊奶 …) |
 | Squash, summer / winter | 南瓜类，夏南瓜 / 冬南瓜 |
 | Cookies / Crackers | 曲奇饼干 / 咸饼干 |
-| light | 轻（Light）; tuna 浅色肉, rye flour / corn syrup 浅色, beer 淡啤（Light） |
+| light / lite | 低卡（Light） / 低卡（Lite） (reduced-calorie products; light mayonnaise / dressing 低脂…, light ice cream 低卡冰淇淋); tuna 浅色肉, rye flour / corn syrup 浅色, beer 淡啤（Light）, wine light via override 低卡（Light） |
 | wine dry / sweet | 干型 / 甜型 (`Alcoholic beverage\|dry`, `…\|sweet`) |
 | tea black / green | 红茶 / 绿茶 (`Beverages\|black`, `Beverages\|green`) |
 | oyster | 牡蛎（生蚝）; mushroom 平菇, sauce 蚝油, ostrich/emu cut Oyster部位 |
@@ -161,3 +161,50 @@ Mission, Nabisco, Glutino, Udi's, …), vitamin letters, and a few rare plants w
   and the GB18030 fish names 鲹 / 鳀 / 鳚 / 鲉 / 鲯.
 - Everyday search words that the USDA order cannot produce are aliases in `src/data/generic-foods-common.json`
   (芝士, 吐司, 意面, 糙米饭, 猪里脊, 煎鸡蛋), checked by `tests/food-search-common.test.js`.
+
+## Restaurant, fast-food and FNDDS dishes (2026-11-27)
+
+The 2,632 foods appended on 2026-11-27 are mostly dishes whose English name is one long segment
+("Pasta with tomato-based sauce and meat"). Such a segment is translated as one Chinese dish name, modifiers
+first (番茄酱汁肉类意面, 全麦面包火腿三明治, 鸡肉或火鸡面条配肉汁酱). Following segments keep the USDA order.
+
+| English | Chinese | Note |
+|---|---|---|
+| Restaurant / Fast foods, Fast food | 餐馆 / 快餐 | `Restaurant\|Chinese` 中餐, `\|Italian` 意大利菜, `\|Mexican` 墨西哥菜, `\|Latino` 拉美菜, family style 家庭式餐厅 |
+| from fast food / from restaurant / fast food / restaurant | 快餐店 / 餐馆 / 快餐店/餐馆 | "restaurant or fast food" 餐馆或快餐店 |
+| home recipe / from home recipe / made from home recipe | 家庭食谱 / 按家庭食谱 / 按家庭食谱制作 | |
+| frozen meal / diet frozen meal / ready-to-heat | 冷冻餐 / 低热量冷冻餐 / 加热即食 | |
+| from frozen / from fresh / from raw / from precooked | 冷冻半成品加热 / 鲜品制作 / 生料烹制 / 预熟制品 | |
+| NFS / NS as to X | 未细分 / 未注明X | NS as to fat 未注明是否加油脂, type 种类, part 部位, filling 馅料, cooking method 烹饪方法, skin eaten 是否吃皮, type of meat 肉类, type of crust 饼底类型 |
+| fat added / made with oil | 加油脂 / 用油 | |
+| coated / breaded / battered | 裹粉 / 裹面包糠 / 挂糊 | `coated` 涂层 stays for snack bars; chicken, fish, shrimp via group keys |
+| skin (/ coating) eaten, not eaten; peel eaten | 吃皮（/裹粉）, 不吃皮; 连皮吃 / 去皮吃 | |
+| gravy / cream sauce / white sauce / cheese sauce | 肉汁酱 / 奶油酱汁 / 白酱 / 奶酪酱 | |
+| tomato-based sauce (inside dish names) / soy-based sauce / mushroom sauce | 番茄酱汁 / 酱油酱汁 / 蘑菇酱汁 | the older standalone segment keeps 番茄底酱 |
+| whipped cream / nondairy whipped topping | 打发奶油 / 植脂奶油 | 掼奶油 is regional (Shanghai/HK); mainland users type 奶油 / 打发奶油 |
+| icing / frosting | 糖衣 / 糖霜 | as before |
+| on white / on wheat (bread), on white bun | 白面包 / 全麦面包, 白面包汉堡胚 | sandwich names: 全麦面包火鸡三明治 |
+| sandwich or sub / submarine sandwich / wrap | 三明治或潜艇三明治 / 潜艇三明治 / 卷饼 | club 总汇三明治, BLT 培根生菜番茄三明治（BLT）, Gyro 希腊旋转烤肉卷（Gyro） |
+| Hamburger / Cheeseburger / slider / patty | 汉堡 / 芝士汉堡 / 迷你汉堡 / 肉饼 | chicken fillet sandwich 鸡排堡（鸡排三明治）, fish sandwich 鱼排堡（鱼排三明治） |
+| Pizza; crusts | 披萨; 厚底, 薄底, 中厚底, 普通饼底, 芝心饼底 (stuffed) | 14" pizza 直径36厘米披萨; `Pepperidge Farm\|Pizza` keeps the Goldfish flavour name |
+| French fries / hash brown / tots / home fries | 薯条 / 薯饼（Hash Brown） / 炸薯球 (no trademark in brackets) / 家常煎土豆（Home Fries） | `Potato\|mashed` 土豆泥 |
+| Chinese-American | 宫保鸡丁, 左宗棠鸡, 橙汁鸡 (陈皮鸡 is a different Sichuan dish), 咕咾肉（糖醋肉）, 糖醋鸡（咕咾鸡）, sweet and sour chicken or turkey 糖醋鸡肉或火鸡肉, 芙蓉蛋, 木须肉, 蘑菇鸡片, 炒饭 (`Rice\|fried`), 炒面, 炒杂碎（Chop Suey）, 捞面（Lo Mein）, 炒河粉 (chow fun), 春卷（Egg Roll）, 馄饨、饺子或锅贴, 虾多士 | |
+| Japanese / Korean / Thai / Vietnamese | 寿司, 寿司卷, 加州卷 (`Sushi roll\|California`), 拉面, 方便面（泡面）, 天妇罗, 照烧; 韩式拌饭（石锅拌饭，Bibimbap）, 韩式辣炒年糕（Tteokbokki） (overrides); miso or tofu soup 味噌汤或豆腐汤; naan 印度烤饼（Naan） (not 馕); 泰式炒河粉（Pad Thai）; 越南河粉（Pho）, 越南春卷（米纸卷） | |
+| Coffee / tea drinks | 拿铁, 冰拿铁, 卡布奇诺, 摩卡, 玛奇朵, 咖啡冰沙, 冰咖啡; 珍珠奶茶, 康普茶（红茶菌） | pre-lightened 预加奶精, with non-dairy milk 用植物奶, `Tea\|black` 红茶, `Tea\|green` 绿茶, `Tea\|hot` 热 |
+| Mexican / Latin American | 墨西哥卷饼（Burrito）, 塔可（Taco）, 墨西哥奶酪馅饼（Quesadilla）, 辣酱玉米卷饼（Enchilada）, 法士达（Fajita）, 墨西哥粽（Tamale）, 南美馅饼（Empanada）, 墨西哥玉米片（Nachos）, 牛油果酱（Guacamole）, 吉拿棒（Churros）, 墨西哥甜面包（Pan Dulce） | dish name in Chinese, original in parentheses |
+| Puerto Rican style / Mexican style / Hawaiian style | 波多黎各式 / 墨西哥式 / 夏威夷式 | |
+| Cocktails and spirits | Chinese bar names where established (血腥玛丽, 长岛冰茶, 金汤力, 莫吉托, 椰林飘香（Piña Colada）), otherwise Chinese + English in parentheses; "X and cola" X兑可乐 | |
+| Chicken "wings" | “鸡翅” | FNDDS quotes kept (restaurant-style wings) |
+
+Overrides added on 2026-11-27 (`overrides.zh.json`):
+- The 155 "… and vegetables including/excluding carrots, broccoli, and(/or) dark-green leafy; …" dishes, written
+  in one piece: 牛肉、面条和蔬菜（不含胡萝卜、西兰花和深绿叶菜），肉汁酱.
+- Lists spread over several segments ("with egg, cheese, and bacon") joined with 、 and 和: 含鸡蛋、奶酪和培根
+  (same rule as above for SR lists).
+- Single names that read wrong when composed: Crab cake 蟹饼, BLT, club sandwiches, submarine sandwiches with
+  several fillings, Vietnamese rice-paper rolls, Fish, white 白肉鱼 (`Fish|white` is the sucker species in SR).
+- Some SR and FNDDS foods differ in English only by singular/plural ("Cookies, fortune" / "Cookie, fortune") and
+  compose to the same Chinese name; left as they are (same food in two databases).
+
+Brand and trademark names are not added in translations even where the USDA name carries one (Fudgesicle 巧克力牛奶冰棍, Creamsicle 香草橙味雪糕, marshmallow pie 棉花糖夹心派).
+Vegetables "other than dark green and/or tomatoes": 深绿色蔬菜和番茄以外的蔬菜.

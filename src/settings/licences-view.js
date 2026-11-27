@@ -65,8 +65,9 @@ export function mountLicences(container, params, ctx) {
     pageHeader({ title: t('settings.about.licences'), back: 'settings' }),
     section(t('settings.lic.food'),
       // i18n-ignore-start (USDA attribution and licence name, verbatim)
-      p(b(t('settings.lic.generic')), ' ', ext('https://fdc.nal.usda.gov', 'USDA FoodData Central'), ' (SR Legacy), public domain (CC0). U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov.'),
+      p(b(t('settings.lic.generic')), ' ', ext('https://fdc.nal.usda.gov', 'USDA FoodData Central'), ' (SR Legacy; Survey (FNDDS) 2021-2023), public domain (CC0). U.S. Department of Agriculture, Agricultural Research Service. FoodData Central, 2019. fdc.nal.usda.gov. U.S. Department of Agriculture, Agricultural Research Service. 2024. USDA Food and Nutrient Database for Dietary Studies 2021-2023. Food Surveys Research Group.'),
       // i18n-ignore-end
+      p(b(t('settings.lic.dishes')), ' ', t('settings.lic.dishesText')),
       p(b(t('settings.lic.packaged')), ' ',
         // i18n-ignore-start (Open Food Facts / ODbL attribution notice, verbatim)
         'Contains data from ', ext('https://world.openfoodfacts.org', 'Open Food Facts'),

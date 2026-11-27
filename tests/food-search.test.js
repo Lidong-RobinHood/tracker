@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { normalize, tokenize, indexItem, search, decodeGenericFoods, preferMatches, nameRank, langNames } from '../src/core/food-search.js';
+import { normalize, tokenize, indexItem, search, decodeGenericFoods, preferMatches, nameRank, langNames, searchesBundled } from '../src/core/food-search.js';
 
 test('normalize strips accents, case and punctuation', () => {
   assert.equal(normalize('  Crème Brûlée, Straße!  '), 'creme brulee strasse');
@@ -242,8 +242,14 @@ test('language ranks: a match only in another language ranks below the app langu
   assert.equal(nameRank('zh', 'zh'), 0);
   assert.equal(nameRank(null, 'de'), 0);
   assert.deepEqual(langNames('de', { en: 'Beer', de: 'Bier', zh: '啤酒' }),
-    [{ text: 'Bier', rank: 0 }, { text: 'Beer', rank: 1 }, { text: 'Bier', rank: 0 }, { text: '啤酒', rank: 2 }]);
+    [{ text: 'Bier', rank: 0, lang: null }, { text: 'Beer', rank: 1, lang: 'en' }, { text: 'Bier', rank: 0, lang: null }, { text: '啤酒', rank: 2, lang: 'zh' }]);
   // the same text in two languages counts in the better one
   const same = indexItem('tofu', [{ text: 'Tofu', rank: 0 }, { text: 'Tofu', rank: 2 }]);
   assert.equal(same.rank, undefined);
+});
+
+test('searchesBundled: two characters, or one Han character (粥, 面), search dishes and generic foods', () => {
+  for (const q of ['粥', '面', '饭', '鱼', '汤', ' 粥 ', 'ei', 'Öl', '麻婆']) assert.equal(searchesBundled(q), true, q);
+  for (const q of ['', ' ', 'a', 'Ö', '1', '%']) assert.equal(searchesBundled(q), false, JSON.stringify(q));
+  assert.equal(searchesBundled(null), false);
 });

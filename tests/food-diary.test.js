@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   makeEntry, quickAddEntry, groupByMeal, totals, progress, copyEntries, mealFromEntries, entriesFromMeal,
-  touchFood, toFoodRecord, pickByBarcode, usedFoods, isQuickAdd, mealForTime,
+  touchFood, toFoodRecord, pickByBarcode, usedFoods, isQuickAdd, mealForTime, badgeSource,
 } from '../src/core/food-diary.js';
 
 const food = {
@@ -110,4 +110,13 @@ test('mealForTime', () => {
   assert.equal(mealForTime(new Date(2026, 0, 1, 12)), 'lunch');
   assert.equal(mealForTime(new Date(2026, 0, 1, 19)), 'dinner');
   assert.equal(mealForTime(new Date(2026, 0, 1, 16)), 'snack');
+});
+
+test('badgeSource: known sources keep their badge, a missing one is custom, garbage shows none', () => {
+  for (const src of ['off', 'usda', 'custom']) assert.equal(badgeSource({ source: src }), src);
+  for (const src of [undefined, null, '']) assert.equal(badgeSource({ source: src }), 'custom', String(src));
+  assert.equal(badgeSource({}), 'custom');
+  for (const src of [{ a: 1 }, ['off'], 42, true, 'bogus', '[object Object]', 'dish']) {
+    assert.equal(badgeSource({ source: src }), null, JSON.stringify(src)); // ('dish' has its own '≈ Estimate' badge)
+  }
 });

@@ -1,23 +1,27 @@
 // Add-food screen: tabs Search · Scan · Recent · Meals · Quick add. Every food path ends in the portion sheet.
-// Quick add also holds "Scan meal photo" (AI estimate → review → log); old ?tab=photo links open it there.
+// Quick add also holds "Estimate a meal" (hand portions, src/food/estimate.js) and "Scan meal photo"
+// (AI estimate → review → log); old ?tab=photo links open it there.
 import {
   el, pageHeader, numberInput, field, toast, emptyState, fmtGrouped, fmtDate, fmtAmount, back, iconTabs, segmented, sectionHeader,
   cardHeader, iconButton, icon, infoButton, replaceChildren,
 } from '../ui/index.js';
 import { isComplete, missingFields, macroKcal, emptyPer100 } from '../core/nutrition.js';
 import { checkDigitOk } from '../core/barcode.js';
-import { indexItem, search, preferMatches } from '../core/food-search.js';
+import { indexItem, searchMatches, preferMatches, searchesBundled } from '../core/food-search.js';
+import { withNameLang } from '../core/food-names.js';
 import { usedFoods, quickAddEntry } from '../core/food-diary.js';
 import { t, compareText } from '../i18n/index.js';
 import { allFoods, allMeals, findByBarcode, preferStored, putEntry } from './store.js';
 import { lookupBarcode, searchProducts, searchWait } from './off-api.js';
-import { searchGeneric, loadGeneric, ensureDisplayNames, storedFoodNames } from './generic.js';
+import { searchGeneric, loadGeneric, ensureDisplayNames, storedFoodNames, asFound } from './generic.js';
+import { searchDishes, loadDishes } from './dishes.js';
 import { createScanner } from './scanner.js';
 import { openPortion, editAndSaveFood } from './portion.js';
 import { openLogMeal, openEditMeal, mealKcal } from './meals.js';
-import { foodRow, ensureCss, per100Text, offCredit, missingText } from './widgets.js';
+import { foodRow, ensureCss, per100Text, offCredit, missingText, dishTrail } from './widgets.js';
 import { foodName, mealName, savedMealName } from './names.js';
 import { buildPhotoScan, PHOTO_DRAFT } from './photo-tab.js';
+import { estimateEntry, openEstimate } from './estimate.js';
 import { loadDraft, saveDraft, clearDraft } from '../ui/draft.js';
 
 /** Tabs; labels are catalogue keys (translated when the view mounts). */
@@ -31,6 +35,10 @@ const TABS = [
 const TAB_KEY = 'tracker.food.addTab';
 const OFF_AUTO_MS = 1100;   // pause before an automatic OFF search
 const OFF_MIN_CHARS = 3;
+/** Dish rows in search: up to DISH_ROWS, up to DISH_ROWS_MAX when the generic section has fewer than SHORT_GENERIC rows. */
+const DISH_ROWS = 8;
+const DISH_ROWS_MAX = 12;
+const SHORT_GENERIC = 5;
 
 function rememberTab(tab) { try { localStorage.setItem(TAB_KEY, tab); } catch { /* storage blocked */ } }
 function lastTab() { try { return localStorage.getItem(TAB_KEY); } catch { return null; } }
@@ -65,13 +73,17 @@ export async function mountAdd(container, params, ctx) {
     return false;
   }
 
-  /** Any food picked from a list. Prefers the user's stored copy (their corrections win). */
+  /**
+   * Any food picked from a list. Prefers the user's stored copy (their corrections win). A search result keeps
+   * the language it was found in (nameLang, set by asFound): logging it stores that on the food.
+   */
   async function pick(food, { kcalConverted = false } = {}) {
-    const f = await preferStored(food);
+    const stored = await preferStored(food);
+    const f = stored !== food && Object.prototype.hasOwnProperty.call(food, 'nameLang') ? withNameLang(stored, food.nameLang) : stored;
     if (!isComplete(f)) {
       return toEditorThenPortion(f, { kcalConverted, note: t('food.add.missingNote', { fields: missingText(missingFields(f)) }) });
     }
-    return toPortion(f, { kcalConverted: f === food && kcalConverted });
+    return toPortion(f, { kcalConverted: stored === food && kcalConverted });
   }
 
   const panels = {};
@@ -97,11 +109,12 @@ export async function mountAdd(container, params, ctx) {
     const input = el('input', { type: 'search', placeholder: t('food.search.placeholder'), autocomplete: 'off', enterkeyhint: 'search', 'aria-label': t('food.search.placeholder') });
     const searchField = el('label', { class: 'search-field' }, icon('search'), input);
     const localSec = el('div', { class: 'stack' });
+    const dishSec = el('div', { class: 'stack' });
     const genericSec = el('div', { class: 'stack' });
     const offSec = el('div', { class: 'stack' });
     const offBtn = el('button', { type: 'button', class: 'btn btn-sm', hidden: true, onClick: () => runOff(true) }, icon('search'), t('food.search.off'));
     const createBtn = el('button', { type: 'button', class: 'btn btn-sm btn-ghost', onClick: () => toEditorThenPortion({ source: 'custom', name: input.value.trim(), per100: emptyPer100(), servings: [], basis: 'g' }) }, icon('plus'), t('food.search.create'));
-    const wrap = el('div', { class: 'stack' }, searchField, localSec, genericSec, offSec, el('div', { class: 'row-between search-actions' }, offBtn, createBtn));
+    const wrap = el('div', { class: 'stack' }, searchField, localSec, dishSec, genericSec, offSec, el('div', { class: 'row-between search-actions' }, offBtn, createBtn));
 
     let localIndex = null;
     let localNamed = false; // index built with the translated names of generic foods
@@ -116,7 +129,7 @@ export async function mountAdd(container, params, ctx) {
      */
     async function ensureLocal(withNames = false) {
       if (withNames && !localNamed) {
-        try { await loadGeneric(); } catch { /* offline: stored names only */ }
+        await Promise.all([loadGeneric(), loadDishes()].map((p) => p.catch(() => { /* offline: stored names only */ })));
         localIndex = null;
         localNamed = true;
       }
@@ -141,24 +154,32 @@ export async function mountAdd(container, params, ctx) {
       const q = input.value.trim();
       const my = ++seq;
       if (!q) {
-        replaceChildren(localSec); replaceChildren(genericSec); replaceChildren(offSec); offBtn.hidden = true;
+        replaceChildren(localSec); replaceChildren(dishSec); replaceChildren(genericSec); replaceChildren(offSec); offBtn.hidden = true;
         const recent = usedFoods(await ensureLocal().then((ix) => ix.map((e) => e.item)), { limit: 8 });
         if (my !== seq) return;
         if (recent.length) replaceChildren(localSec, ...section(t('food.search.recent'), recent.map((f) => foodRow(f, { onClick: () => pick(f) }))));
         return;
       }
       offBtn.hidden = false;
-      const local = search(q, await ensureLocal(q.length >= 2), { limit: 10 });
+      const bundled = searchesBundled(q); // 2+ characters, or one Han character (粥, 面)
+      const local = asFound(searchMatches(q, await ensureLocal(bundled), { limit: 10 }));
       if (my !== seq) return;
       replaceChildren(localSec, ...(local.length ? section(t('food.search.yourFoods'), local.map((f) => foodRow(f, { onClick: () => pick(f) }))) : []));
-      if (q.length < 2) { replaceChildren(genericSec); return; }
+      if (!bundled) { replaceChildren(dishSec); replaceChildren(genericSec); return; }
       if (!genericSec.childElementCount) replaceChildren(genericSec, el('p', { class: 't-sub muted search-note' }, t('food.search.loadingGeneric')));
+      // Own dish estimates above the generic foods (loaded with them; a missing dishes file shows none)
+      const dishesFound = searchDishes(q, DISH_ROWS_MAX).catch(() => []);
       try {
         const gen = await searchGeneric(q, 15);
+        const dishes = await dishesFound;
         if (my !== seq) return;
+        const shown = dishes.slice(0, gen.length < SHORT_GENERIC ? DISH_ROWS_MAX : DISH_ROWS);
+        replaceChildren(dishSec, ...(shown.length ? section(t('food.search.dishes'), shown.map((f) => foodRow(f, { onClick: () => pick(f) }))) : []));
         replaceChildren(genericSec, ...(gen.length ? section(t('food.search.generic'), gen.map((f) => foodRow(f, { onClick: () => pick(f) }))) : []));
       } catch (err) {
+        const dishes = await dishesFound;
         if (my !== seq) return;
+        replaceChildren(dishSec, ...(dishes.length ? section(t('food.search.dishes'), dishes.slice(0, DISH_ROWS_MAX).map((f) => foodRow(f, { onClick: () => pick(f) }))) : []));
         console.warn('Generic foods:', err);
         replaceChildren(genericSec, el('p', { class: 't-sub text-danger search-note' }, t(navigator.onLine === false ? 'food.search.genericOffline' : 'food.search.genericUnavailable')));
       }
@@ -329,7 +350,8 @@ export async function mountAdd(container, params, ctx) {
         ? el('div', { class: 'card card-flush' }, el('div', { class: 'list' }, foods.map((f) => foodRow(f, {
           onClick: () => pick(f),
           sub: f.lastAmount ? t('food.recent.last', { amount: fmtAmount(f.lastAmount, f.basis) }) : null,
-          trail: by === 'frequent' ? `${fmtGrouped(f.useCount, 0)}×` : per100Text(f),
+          // kcal / 100 g; a dish: ≈ kcal of its last amount (the one shown under the name), else of its normal portion
+          trail: by === 'frequent' ? `${fmtGrouped(f.useCount, 0)}×` : (f.lastAmount ? dishTrail(f, f.lastAmount) ?? undefined : undefined),
         }))))
         : emptyState(t('food.recent.empty')));
     }
@@ -419,7 +441,9 @@ export async function mountAdd(container, params, ctx) {
         setHidden: (h) => { manualCard.hidden = h; },
       },
     });
-    const wrap = el('div', { class: 'stack quick-panel' }, scan.el, manualCard);
+    // "Estimate a meal" (hand portions) on top: one row opening the builder sheet.
+    const estimate = estimateEntry(async () => { if (await openEstimate({ date, meal })) finished(); });
+    const wrap = el('div', { class: 'stack quick-panel' }, estimate, scan.el, manualCard);
     return {
       el: wrap,
       show() {

@@ -1,6 +1,6 @@
 // Settings home: grouped rows (goal and targets, set weighting, backup, storage, help, about) and the
 // set weighting screen. Goal and targets live in goal-view.js. Routes: settings, settings/sets.
-import { el, pageHeader, numberInput, toast, confirmDialog, fmtNum, fmtGrouped, fmtSigned, fmtBytes, href, icon, sectionHeader, infoButton, joinSentences } from '../ui/index.js';
+import { el, pageHeader, numberInput, toast, confirmDialog, fmtNum, fmtGrouped, fmtSigned, fmtBytes, fmtError, href, icon, sectionHeader, infoButton, joinSentences } from '../ui/index.js';
 import * as db from '../db/db.js';
 import { today } from '../core/dates.js';
 import { APP_VERSION } from '../version.js';
@@ -125,7 +125,7 @@ export async function exportBackup() {
     return true;
   } catch (err) {
     console.error(err);
-    toast(t('settings.export.failed', { error: err.message }), { type: 'error' });
+    toast(t('settings.export.failed', { error: fmtError(err) }), { type: 'error' });
     return false;
   }
 }
@@ -157,7 +157,7 @@ export async function importFlow(data, { reloadTo } = {}) {
     return true;
   } catch (err) {
     console.error(err);
-    toast(t('settings.import.failedUnchanged', { error: err.message }), { type: 'error', duration: 6000 });
+    toast(t('settings.import.failedUnchanged', { error: fmtError(err) }), { type: 'error', duration: 6000 });
     return false;
   }
 }
@@ -189,7 +189,14 @@ function dataSection() {
       toast(t('settings.import.notJson'), { type: 'error' });
       return;
     }
-    await importFlow(data);
+    // importFlow shows its own messages; anything unexpected still gets the translated "Import failed" (the
+    // input was cleared above, so the same file can be picked again)
+    try {
+      await importFlow(data);
+    } catch (err) {
+      console.error(err);
+      toast(t('settings.import.failed', { error: fmtError(err) }), { type: 'error', duration: 5000 });
+    }
   });
 
   const exportRow = el('button', { class: 'list-item', type: 'button', onClick: doExport },

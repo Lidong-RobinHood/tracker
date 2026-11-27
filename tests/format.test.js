@@ -55,3 +55,13 @@ test('tonnage: whole kg below 10 000 kg, t with two decimals from 10 000 kg', ()
   assert.equal(f.fmtTonnage(null), '–');
   assert.equal(f.fmtTonnage(Number.NaN), '–');
 });
+
+test('fmtError: message of a caught error, else the value as text; never throws', () => {
+  assert.equal(f.fmtError(new Error('Quota exceeded')), 'Quota exceeded');
+  assert.equal(f.fmtError(null), 'null');
+  assert.equal(f.fmtError(undefined), 'undefined');
+  assert.equal(f.fmtError('boom'), 'boom');
+  assert.equal(f.fmtError({ message: '' }), '[object Object]');
+  assert.equal(f.fmtError(Object.create(null)), '?');
+  assert.equal(f.fmtError({ get message() { throw new Error('x'); } }), '?');
+});

@@ -1,12 +1,15 @@
 // Bundled generic foods (USDA SR Legacy), loaded lazily on first search and kept in memory.
 // Translated names (src/data/generic-foods.<lang>.json, German and Chinese) are loaded with them: search finds
 // a food by its English, German or Chinese name in every app language (the app language's matches first), and
-// the app language's names are shown wherever a generic food appears (src/food/names.js). For display only the
-// app language's names file is loaded, and only when a generic food is on screen (ensureDisplayNames). A
-// names file that is missing or broken is skipped with a console warning: those foods stay English.
-import { decodeGenericFoods, indexItem, search, commonFoodsFromFile, forLanguage, langNames, foodIdsHash } from '../core/food-search.js';
-import { namesFromFile, localFoodName } from '../core/food-names.js';
+// the app language's names are shown wherever a generic food appears (src/food/names.js), except for a food the
+// user found and added through another language's name (its `nameLang`, "show the name as I typed it"). For
+// display only the app language's names file (plus the files of stored foods' nameLang) is loaded, and only
+// when a generic food is on screen (ensureDisplayNames). A names file that is missing or broken is skipped
+// with a console warning: those foods stay English.
+import { decodeGenericFoods, indexItem, searchMatches, commonFoodsFromFile, forLanguage, langNames, foodIdsHash } from '../core/food-search.js';
+import { namesFromFile, localFoodName, shownNameLang, withNameLang, hasBuiltInName } from '../core/food-names.js';
 import { getLanguage } from '../i18n/index.js';
+import { ensureDishNames, dishNames } from './dishes.js';
 
 /** Languages with a translated names file. */
 export const NAME_LANGS = Object.freeze(['de', 'zh']);
@@ -93,18 +96,46 @@ export function loadNames(lang) {
 
 /**
  * Load the app language's names for display (no-op in English), only when `foods` contains a generic food
- * (source 'usda'; without the argument: always). Never rejects. Await before rendering generic food names
- * (diary, add food, saved meals) so they do not flash English first.
+ * (source 'usda'; without the argument: always), and the names of every other language a generic food among
+ * `foods` is shown in (its nameLang); also the dishes (src/food/dishes.js) when `foods` contains one. Never
+ * rejects. Await before rendering generic food names (diary, add food, saved meals) so they do not flash English
+ * first.
  * @param {Array<object|null|undefined>} [foods] the stored foods about to be shown
- * @returns {Promise<Map<string, {h: string, name: string}>|null>}
+ * @returns {Promise<Map<string, {h: string, name: string}>|null>} the app language's names
  */
-export function ensureDisplayNames(foods) {
-  if (foods && !foods.some((f) => f && f.source === 'usda')) return Promise.resolve(displayNames());
-  return loadNames(getLanguage()).catch(() => null);
+export async function ensureDisplayNames(foods) {
+  const dishes = ensureDishNames(foods);
+  const names = await ensureGenericNames(foods);
+  await dishes;
+  return names;
+}
+
+/** ensureDisplayNames for the generic foods only. */
+async function ensureGenericNames(foods) {
+  if (foods && !foods.some((f) => f && f.source === 'usda')) return displayNames();
+  const app = getLanguage();
+  const langs = new Set([app]);
+  for (const f of foods || []) if (f && f.source === 'usda') langs.add(shownNameLang(f, app));
+  const loaded = await Promise.all([...langs].map((l) => loadNames(l).catch(() => null)));
+  return loaded[0];
 }
 
 /** The app language's names if loaded (see ensureDisplayNames), else null. Synchronous. */
 export const displayNames = () => loadedNames[getLanguage()] || null;
+
+/**
+ * Names map to show a food with (synchronous): the one of its nameLang when that is another language
+ * (null for English: the stored English name is shown), else the app language's (displayNames). A nameLang
+ * whose file is not loaded falls back to the app language.
+ * @param {object|null|undefined} food @returns {Map<string, {h: string, name: string}>|null}
+ */
+export function namesFor(food) {
+  const app = getLanguage();
+  const lang = shownNameLang(food, app);
+  if (lang === app) return displayNames();
+  if (lang === 'en') return null;
+  return loadedNames[lang] || displayNames();
+}
 
 /** @returns {Promise<Array<{item: object, words: string[], len: number}>>} search index */
 export function loadGeneric() {
@@ -148,18 +179,34 @@ function searchNames(food, lang, maps) {
 
 /**
  * Search names of a stored food for the local "Your foods" search: the shown name (rank 0) and, for an
- * unrenamed generic food, its names in the other languages ranked by language (nameRank). `suffix` (e.g. the
- * brand) is appended to each. Only complete after loadGeneric() / loadNames(); missing files give fewer names.
+ * unrenamed generic food or dish, its names in the other languages ranked by language (nameRank) and tagged with it
+ * (the shown name with the food's nameLang). `suffix` (e.g. the brand) is appended to each. Only complete
+ * after loadGeneric() / loadNames() (dishes: loadDishes()); missing files give fewer names.
  * @param {object} food @param {string} shown @param {string} [suffix]
  */
 export function storedFoodNames(food, shown, suffix = '') {
-  const names = localFoodName(food, loadedNames.de || null) || localFoodName(food, loadedNames.zh || null)
-    ? namesOf(food, NAME_LANGS.map((l) => loadedNames[l] || null)) : null;
-  const list = names ? langNames(getLanguage(), names, shown) : [{ text: shown, rank: 0 }, { text: food.name, rank: 0 }];
-  return list.map((n) => ({ text: n.text + suffix, rank: n.rank }));
+  const names = dishNames(food) || (localFoodName(food, loadedNames.de || null) || localFoodName(food, loadedNames.zh || null)
+    ? namesOf(food, NAME_LANGS.map((l) => loadedNames[l] || null)) : null);
+  const app = getLanguage();
+  const lang = shownNameLang(food, app);
+  // without the names files: the shown name (in its nameLang) and the stored one
+  const list = names ? langNames(app, names, shown, lang)
+    : [{ text: shown, rank: 0, lang: lang !== app && shown !== food.name ? lang : null }, { text: food.name, rank: 0 }];
+  return list.map((n) => ({ text: n.text + suffix, rank: n.rank, lang: n.lang || null }));
 }
 
-/** Search generic foods (loads the dataset and the names files on first call). */
+/**
+ * Search results as foods to show and log: a generic food or dish carries the language it was found in
+ * (`nameLang`: a code, or null for the app language; withNameLang), so the row, the portion sheet and the stored
+ * food show the name as the user typed it. Other foods are returned unchanged.
+ * @param {Array<{item: object, lang: string|null}>} matches from searchMatches()
+ */
+export const asFound = (matches) => matches.map(({ item, lang }) => (hasBuiltInName(item) ? withNameLang(item, lang) : item));
+
+/**
+ * Search generic foods (loads the dataset and the names files on first call). Each result carries the
+ * language it was found in (asFound): copies, the dataset stays unchanged.
+ */
 export async function searchGeneric(query, limit = 25) {
-  return search(query, await loadGeneric(), { limit });
+  return asFound(searchMatches(query, await loadGeneric(), { limit }));
 }

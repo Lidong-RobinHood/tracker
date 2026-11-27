@@ -1,6 +1,8 @@
 // Food diary logic: entry snapshots, totals per meal/day, targets, saved meals, food library updates.
 // Pure, no DOM / IndexedDB. ids and timestamps are passed in so everything is deterministic in tests.
 import { NUTRIENTS, REQUIRED_NUTRIENTS, sumEntries, emptyPer100 } from './nutrition.js';
+import { nameLangForRecord } from './food-names.js';
+import { DISH_SOURCE, validSizes } from './dishes.js';
 
 // Meals in display order; the UI shows t(labelKey) (src/food/names.js mealName).
 export const MEALS = Object.freeze([
@@ -64,22 +66,46 @@ export const DEFAULT_MEAL_NAME = 'Meal'; // i18n-ignore (stored marker, translat
  * @param {{id: string, date: string, meal: string, name?: string, kcal: number, protein?: number|null,
  *          carbs?: number|null, fat?: number|null, now: number}} a
  */
-export function quickAddEntry({ id, date, meal, name, kcal, protein = null, carbs = null, fat = null, now }) {
+export function quickAddEntry({ id, date, meal, name, kcal, protein = null, carbs = null, fat = null, estimate = false, now }) {
   const per100 = emptyPer100();
   per100.kcal = kcal;
   per100.protein = protein ?? 0;
   per100.carbs = carbs ?? 0;
   per100.fat = fat ?? 0;
-  return {
+  const e = {
     id, date, meal, foodId: null,
     name: String(name || '').trim() || QUICK_ADD_NAME,
     brand: null, amount: 100, basis: 'g', per100,
     createdAt: now, updatedAt: now,
   };
+  if (estimate === true) e.estimate = true; // "Estimate a meal": shown with '≈' (optional field, docs/SPEC.md §3)
+  return e;
 }
 
 /** @returns {boolean} true for quick-add entries (no food behind them) */
 export const isQuickAdd = (entry) => entry.foodId === null || entry.foodId === undefined;
+
+/**
+ * True for a quick-add entry logged by "Estimate a meal" (`estimate: true`; any other value, e.g. from a
+ * hand-edited backup, is ignored). Its kcal is shown with '≈', like a dish's own estimate.
+ * @param {object|null|undefined} entry
+ */
+export const isEstimateEntry = (entry) => Boolean(entry && isQuickAdd(entry) && entry.estimate === true);
+
+/** Sources with a badge of their own (a dish has the '≈ Estimate' badge, src/food/widgets.js). */
+const BADGE_SOURCES = new Set(['off', 'usda', 'custom']);
+
+/**
+ * Source whose badge a food shows: 'off' | 'usda' | 'custom' (also for a food without a source), or null for an
+ * unknown value (e.g. garbage from an imported backup): no badge rather than raw text.
+ * @param {object|null|undefined} food
+ * @returns {'off'|'usda'|'custom'|null}
+ */
+export function badgeSource(food) {
+  const src = food ? food.source : undefined;
+  if (src === undefined || src === null || src === '') return 'custom';
+  return typeof src === 'string' && BADGE_SOURCES.has(src) ? src : null;
+}
 
 /**
  * Entries grouped by meal, each list in logging order.
@@ -167,12 +193,16 @@ export function touchFood(food, amount, now) {
 /**
  * A complete, storable food record from a food-shaped object (fills ids, counters, timestamps).
  * Existing fields win; `existing` (the stored record with the same sourceKey) keeps its id and counters.
+ * `nameLang` (generic foods and dishes only): the food's when it has the field (null clears it), else the existing one's.
+ * `sizes` (dishes only, [small, normal, large] in g): the food's when valid, else the existing one's.
  * @param {object} food
  * @param {{id: string, now: number, existing?: object|null}} opts
  */
 export function toFoodRecord(food, { id, now, existing = null }) {
   const recId = existing ? existing.id : (food.id || id);
   const source = food.source || 'custom';
+  const nameLang = nameLangForRecord({ ...food, source }, existing);
+  const sizes = source === DISH_SOURCE ? validSizes(food.sizes) || validSizes(existing && existing.sizes) : null;
   return {
     id: recId,
     source,
@@ -189,6 +219,8 @@ export function toFoodRecord(food, { id, now, existing = null }) {
     lastUsedAt: existing ? existing.lastUsedAt ?? null : food.lastUsedAt ?? null,
     createdAt: existing ? existing.createdAt : food.createdAt || now,
     updatedAt: now,
+    ...(sizes ? { sizes } : {}), // a dish's portion sizes (core/dishes.js)
+    ...(nameLang ? { nameLang } : {}), // generic food or dish shown in the language it was found in (core/food-names.js)
   };
 }
 

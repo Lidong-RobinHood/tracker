@@ -1,5 +1,7 @@
-// Display names in the app language for food data. Records are never rewritten: generic (USDA) foods keep
-// their English name and are shown translated by sourceKey (src/food/generic.js loads the names); stored
+// Display names in the app language for food data. Records are never rewritten: generic (USDA) foods and dishes
+// keep their English name and are shown translated by sourceKey (src/food/generic.js loads the names,
+// src/food/dishes.js the dishes), in the app
+// language or in the language the user found the food in (its `nameLang`, see core/food-names.js); stored
 // markers such as 'Quick add', 'Meal', 'Whole pack' are shown translated; everything the user typed or an
 // Open Food Facts product name is shown as stored.
 import { t, EN_CATALOGUES } from '../i18n/index.js';
@@ -10,7 +12,9 @@ import { MEALS, QUICK_ADD_NAME, DEFAULT_MEAL_NAME } from '../core/food-diary.js'
 import { PACK_LABEL, SERVING_LABEL, MULTIPACK_RE } from '../core/portion.js';
 import { UNNAMED_ITEM, PHOTO_MEAL_NAME } from '../core/meal-photo.js';
 import { IMPORTED_NAME, IMPORTED_SUFFIX } from '../core/import-food.js';
-import { displayNames } from './generic.js';
+import { ESTIMATE_MEAL_NAME } from '../core/meal-estimate.js';
+import { namesFor } from './generic.js';
+import { dishName, dishItemName } from './dishes.js';
 
 /** 'Breakfast' / 'Frühstück' / '早餐' for a meal id (unknown ids as given). */
 export function mealName(id) {
@@ -18,14 +22,25 @@ export function mealName(id) {
   return m ? t(m.labelKey) : String(id ?? '');
 }
 
-/** Name of a food record or search item (generic foods translated unless the user edited them). */
+/**
+ * Translated name of a generic food or dish (record or search item) in the app language or its `nameLang`, or
+ * null (another kind of food, renamed, or its names not loaded).
+ */
+export function builtInFoodName(food) {
+  return localFoodName(food, namesFor(food)) || dishName(food);
+}
+
+/**
+ * Name of a food record or search item: generic foods and dishes in the app language, or in their `nameLang`
+ * (found through that language's name), unless the user renamed them.
+ */
 export function foodName(food) {
-  return localFoodName(food, displayNames()) || (food && food.name) || t('food.unnamedFood');
+  return builtInFoodName(food) || (food && food.name) || t('food.unnamedFood');
 }
 
 /**
  * Name of a diary entry or saved-meal item. `food`: its stored food (by foodId) when known, so an unedited
- * generic food is shown translated.
+ * generic food or dish is shown translated (in the food's nameLang when it has one).
  * @param {{name?: string, foodId?: string|null}} item @param {object|null} [food]
  */
 export function itemName(item, food = null) {
@@ -36,14 +51,14 @@ export function itemName(item, food = null) {
     const generated = generatedEntryName(item.name);
     if (generated) return generated;
   }
-  return localItemName(item, food, displayNames()) || item.name || t('food.unnamedFood');
+  return localItemName(item, food, namesFor(food)) || dishItemName(item, food) || item.name || t('food.unnamedFood');
 }
 
 const MORE_RE = /^(.+) \+ (\d+) more$/;
 /**
  * Entry names the app generates and stores in English (language-neutral), shown in the app language:
  * 'Imported' / '<file meal> (imported)' (food import), 'Meal photo' and '<items> + 2 more' (a photo logged as
- * one entry; the item names are the model's and stay). null for any other name.
+ * one entry; the item names are the model's and stay), 'Estimated meal' (Estimate a meal). null for any other name.
  * @param {string} name
  */
 function generatedEntryName(name) {
@@ -52,6 +67,7 @@ function generatedEntryName(name) {
     return t('food.entry.mealImported', { meal: name.slice(0, -IMPORTED_SUFFIX.length) });
   }
   if (name === PHOTO_MEAL_NAME) return t('food.photo.mealPhoto');
+  if (name === ESTIMATE_MEAL_NAME) return t('food.estimate.defaultName');
   const m = MORE_RE.exec(name);
   if (m) return `${m[1]}${t('food.photo.more', { count: Number(m[2]) })}`;
   return null;

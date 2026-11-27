@@ -1,5 +1,6 @@
 // Portions and serving sizes. Pure, no DOM.
 import { parseDecimal, round } from './numbers.js';
+import { validSizes } from './dishes.js';
 
 /** Label of the serving chip for a whole pack (never used as the default amount). Stored in food records. */
 export const PACK_LABEL = 'Whole pack'; // i18n-ignore (stored marker, translated at display time)
@@ -106,11 +107,14 @@ export function cleanServings(servings) {
 }
 
 /**
- * Default amount on the portion screen: last logged amount, else first serving (not the whole pack), else 100.
- * @param {{lastAmount?: number|null, servings?: Array<{amount: number}>}} food
+ * Default amount on the portion screen: last logged amount, else a dish's normal portion, else first serving (not
+ * the whole pack), else 100.
+ * @param {{lastAmount?: number|null, sizes?: number[], servings?: Array<{amount: number}>}} food
  */
 export function defaultAmount(food) {
   if (food && Number.isFinite(food.lastAmount) && food.lastAmount > 0) return food.lastAmount;
+  const sizes = food && validSizes(food.sizes);
+  if (sizes) return sizes[1]; // a dish: its normal portion
   const s = food && food.servings && food.servings.find((x) => Number.isFinite(x.amount) && x.amount > 0 && x.label !== PACK_LABEL);
   if (s) return s.amount;
   return 100;

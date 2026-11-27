@@ -49,8 +49,10 @@ export async function logFood(food, { date, meal, amount }) {
   return db.transaction(['foods', 'diary'], 'readwrite', async (t) => {
     let existing = food.id ? await t.get('foods', food.id) : null;
     if (!existing && food.sourceKey) existing = (await t.byIndex('foods', 'sourceKey', food.sourceKey))[0] || null;
-    // Never overwrite user-corrected values with API/dataset data.
-    const base = existing && existing.userEdited && !food.userEdited ? existing : food;
+    // Never overwrite user-corrected values with API/dataset data. The language a generic food was found in
+    // (search result's nameLang, null = the app language) applies either way: the most recent add sets it.
+    const kept = existing && existing.userEdited && !food.userEdited ? existing : food;
+    const base = kept !== food && Object.prototype.hasOwnProperty.call(food, 'nameLang') ? { ...kept, nameLang: food.nameLang } : kept;
     const rec = touchFood(toFoodRecord(base, { id: uuid(), now, existing }), amount, now);
     t.put('foods', rec);
     const entry = makeEntry({ id: uuid(), date, meal, food: rec, amount, now });

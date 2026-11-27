@@ -2,6 +2,8 @@
 import { el, fmtGrouped, fmtDate, icon } from '../ui/index.js';
 import { MEALS } from '../core/food-diary.js';
 import { isValidDate } from '../core/dates.js';
+import { isEstimateFood, normalKcal, dishKcalFor } from '../core/dishes.js';
+import { badgeSource } from '../core/food-diary.js';
 import { t } from '../i18n/index.js';
 import { foodName, mealName } from './names.js';
 
@@ -67,12 +69,21 @@ export function mealDateRow(mealSel, dateIn, { dateLabel = t('food.date.label'),
 const SOURCE_LABEL = { off: 'food.source.off', usda: 'food.source.usda', custom: 'food.source.custom' };
 const SOURCE_SHORT = { off: 'food.source.offShort', usda: 'food.source.usdaShort', custom: 'food.source.customShort' };
 
-/** Badge naming where a food's values come from. */
+/**
+ * '≈' before an estimated kcal figure (read as 'About' by screen readers); `cls` adds classes (e.g. 't-title'
+ * on the portion sheet's big number).
+ */
+export function approxMark(cls = '') {
+  return [el('span', { class: ['approx', cls || null], 'aria-hidden': 'true' }, '≈'), el('span', { class: 'vh' }, `${t('food.estimate.about')} `)];
+}
+
+/** Badge naming where a food's values come from. A dish: the quiet '≈ Estimate' (own estimate, core/dishes.js). */
 export function sourceBadge(food, { long = false } = {}) {
   if (food.userEdited) return el('span', { class: 'badge badge-edited' }, t(long ? 'food.source.editedLong' : 'food.source.edited'));
-  const src = food.source || 'custom';
-  const key = (long ? SOURCE_LABEL : SOURCE_SHORT)[src];
-  return el('span', { class: ['badge', `badge-src-${src}`] }, key ? t(key) : src);
+  if (isEstimateFood(food)) return el('span', { class: 'badge badge-src-dish' }, el('span', { 'aria-hidden': 'true' }, '≈'), t('food.source.dish'));
+  const src = badgeSource(food); // an unknown source (e.g. from an imported backup) shows no badge
+  if (!src) return null;
+  return el('span', { class: ['badge', `badge-src-${src}`] }, t((long ? SOURCE_LABEL : SOURCE_SHORT)[src]));
 }
 
 /** Attribution required by Open Food Facts wherever its data is shown: 'Data: Open Food Facts · ODbL'. */
@@ -97,23 +108,40 @@ export function macroText(v) {
   return t('food.macros.short', { p: fmtGrouped(v.protein, 1), c: fmtGrouped(v.carbs, 1), f: fmtGrouped(v.fat, 1) });
 }
 
-/** One search/recent result row: name, source badge + brand, kcal per 100 on the right. */
+/**
+ * '≈ 1 012 kcal': kcal of a dish's normal portion (search, Your foods) or, with `amount`, of that amount (Recent:
+ * the last logged amount); null when not a dish or without sizes.
+ */
+export function dishTrail(food, amount) {
+  const k = amount ? dishKcalFor(food, amount) : isEstimateFood(food) ? normalKcal(food) : null;
+  return k === null ? null : [...approxMark(), `${fmtGrouped(k, 0)} kcal`]; // i18n-ignore (unit)
+}
+
+/**
+ * One search/recent result row: name, source badge + brand, on the right kcal per 100 (a dish: ≈ kcal of its
+ * normal portion).
+ */
 export function foodRow(food, { onClick, sub, trail } = {}) {
   const subParts = [food.brand, sub].filter(Boolean).join(' · ');
   return el('button', { type: 'button', class: 'list-item food-row', onClick },
     el('div', { class: 'li-main' },
       el('div', { class: 'li-title' }, foodName(food)),
       el('div', { class: 'li-sub' }, sourceBadge(food), subParts ? ` ${subParts}` : '')),
-    el('div', { class: 'li-trail t-sub muted' }, trail ?? per100Text(food)));
+    el('div', { class: 'li-trail t-sub muted' }, trail ?? dishTrail(food) ?? per100Text(food)));
 }
 
-/** Big kcal + protein / carbs / fat trio (portion and entry sheets); `extra`: optional node under it. */
-export function portionValues(v, extra) {
+/**
+ * Big kcal + protein / carbs / fat trio (portion and entry sheets); `extra`: optional node under it.
+ * `approx`: an estimate, led by '≈' (read as 'About').
+ */
+export function portionValues(v, extra, { approx = false } = {}) {
   const cell = (label, key, x) => el('div', { class: 'macro-cell' },
     el('span', { class: 't-cap muted macro-cap' }, el('i', { class: `swatch is-${key}`, 'aria-hidden': 'true' }), label),
     el('span', { class: 'num macro-val' }, fmtGrouped(x, 1), el('span', { class: 't-sub muted' }, ' g')));
   return [
-    el('div', { class: 'portion-kcal num' }, el('span', { class: 't-hero' }, fmtGrouped(v.kcal, 0)), el('span', { class: 't-sub muted' }, ' kcal')),
+    el('div', { class: 'portion-kcal num' },
+      approx ? approxMark('t-title') : null,
+      el('span', { class: 't-hero' },fmtGrouped(v.kcal, 0)), el('span', { class: 't-sub muted' }, ' kcal')),
     el('div', { class: 'portion-macros' }, cell(t('food.nutrient.protein'), 'protein', v.protein), cell(t('food.nutrient.carbs'), 'carbs', v.carbs), cell(t('food.nutrient.fat'), 'fat', v.fat)),
     extra || null,
   ];

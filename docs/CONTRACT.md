@@ -181,11 +181,14 @@ Unchanged names that are part of the new system: `--bg --surface --surface-2 --a
 ### Icons — `src/ui/icons.js`
 
 Lucide (ISC; Feather-derived ones MIT) and Tabler Icons (MIT, `barbell` only), each file fetched individually and inlined
-unmodified; the header comment of `icons.js` lists every icon and its licence. Licence texts: `vendor/icons/`. Names:
+unmodified; the header comment of `icons.js` lists every icon and its licence. Own drawings (2026-11-27, `docs/AUTHORSHIP.md`):
+hand-palm, hand-fist, hand-thumb, cook-steam, cook-pan, cook-fry (Estimate a meal), plate-s, plate-m, plate-l (dish sizes).
+Licence texts: `vendor/icons/`. Names:
 activity, arrow-down, arrow-left, arrow-right, arrow-up, barbell, book-open, bookmark, calendar, camera, chart-line, check,
 chevron-down, chevron-left, chevron-right, chevron-up, circle, circle-check, circle-play, circle-question-mark, clock,
 cloud-off, copy, download, droplet, ellipsis, ellipsis-vertical, external-link, eye, eye-off, file-chart-column, file-text,
-flame, funnel, grip-vertical, heart-pulse, image, info, key-round, link, list, lock, log-in, minus, pause, pencil, play, plus,
+flame, funnel, grip-vertical, heart-pulse, image, info, key-round, link, list, lock, log-in, minus, pause, pencil, plate-s,
+plate-m, plate-l, play, plus,
 refresh-cw, repeat, rotate-ccw, rotate-ccw-clock, ruler, save, scale, scan-barcode, search, settings, share, shield,
 skip-forward, sliders-horizontal, smartphone, star, target, timer, trash, trending-down, trending-up,
 triangle-exclamation-point, trophy, undo-2, upload, user, utensils, x. Aliases (older names): `trash-2` → trash,
@@ -278,7 +281,7 @@ Stores, keys and indexes exactly as SPEC §3 (`DB_NAME 'tracker'`, `DB_VERSION 1
 | `transaction(stores, 'readonly'\|'readwrite', async t => …)` | fn's result after commit. `t.get/getAll/put/delete/clear/byIndex(store, …)`. **Only await `t.*` inside** — awaiting anything else commits early. Throw to abort (nothing is written). |
 | `getSetting(key)` | stored value shallow-merged over `SETTINGS_DEFAULTS[key]` (fresh copy) |
 | `setSetting(key, value)` | replaces the whole value: `setSetting('goal', { ...await getSetting('goal'), rateKgPerWeek: -0.5 })` |
-| `exportAll()`, `validateImport(data)`, `importAll(data)`, `clearAll()` | used by Settings |
+| `exportAll()`, `validateImport(data)`, `importAll(data)`, `clearAll()` | used by Settings; records travel as stored, optional fields included (e.g. `foods.nameLang`, `foods.sizes`, `source: 'dish'`, SPEC §3) |
 | `storageStatus()`, `requestPersist()` | used by Settings; persistence is also requested automatically on first write |
 
 `SETTINGS_DEFAULTS`: `targets {kcal:2000, protein:120, carbs:220, fat:70, source:'manual'}`,
@@ -311,6 +314,11 @@ only while `meta.seedVersion < SEED_VERSION`, adding missing ids and never overw
 - `dateBox(input, { placeholder })` (`src/food/widgets.js`): a native `<input type=date>` shown as the app's date
   ('Thu 19 Nov'), the transparent native input on top keeps focus, keyboard and the system picker. Used by Food, Trends
   (weight) and Import (workouts); it loads `food.css` (its styles live there), so importing it from another feature pulls that file in.
+- Dishes (own estimates, `src/data/dishes.json`): pure logic in `src/core/dishes.js` (`decodeDishes`, `dishSearchNames`,
+  `localDishName`, `isEstimateFood`, `validSizes`, `DISH_TIERS`), loading / search / display in `src/food/dishes.js`
+  (`loadDishes`, `searchDishes`, `dishName`; `ensureDisplayNames(foods)` in `src/food/generic.js` also loads the dishes
+  when one is on screen). A food with `source: 'dish'` shows the "≈ Estimate" badge (`sourceBadge`) and "≈" before its
+  kcal (`approxMark()` in `src/food/widgets.js`; `portionValues(v, extra, { approx })`).
 - Body-weight display (`src/core/weight-format.js`): weights 1 decimal (`shownKg`); a change between two weights is the
   difference of the two *displayed* weights (`shownKgChange`, `shownKgChangePct`, `shownKgDiff`), so `83.1 → 83.4 · +0.3 kg`
   always adds up; rates in kg / week 2 decimals (`shownRate`), never derived from rounded weights.

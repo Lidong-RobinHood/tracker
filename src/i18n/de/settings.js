@@ -181,6 +181,8 @@ export default {
   'settings.lic.food': 'Lebensmitteldaten',
   'settings.lic.generic': 'Allgemeine Lebensmittel:',
   'settings.lic.packaged': 'Verpackte Produkte:',
+  'settings.lic.dishes': 'Gerichte:',
+  'settings.lic.dishesText': 'eigene Schätzungen der App, berechnet aus typischen Rezepten mit Zutatenwerten aus USDA FoodData Central.',
   'settings.lic.dataErrors': 'Die Daten können Fehler enthalten; prüfe das Etikett.',
   'settings.lic.barcode': 'Barcode-Scanner',
   'settings.lic.icons': 'Symbole',

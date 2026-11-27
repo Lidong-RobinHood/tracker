@@ -348,6 +348,10 @@ export function validateImport(data) {
     if (bad >= 0) return fail('missingKey', { store: s, n: bad + 1, key: keyPath });
     counts[s] = recs.length;
   }
+  // optional diary field `estimate` ("Estimate a meal"): only `true` is kept, any other value is dropped
+  for (const r of Array.isArray(d.stores.diary) ? d.stores.diary : []) {
+    if (Object.prototype.hasOwnProperty.call(r, 'estimate') && r.estimate !== true) delete r.estimate;
+  }
   const ignored = Object.keys(d.stores).filter((s) => !STORE_NAMES.includes(s));
   d.schemaVersion = DB_VERSION;
   return { ok: true, data: d, counts, ignored };

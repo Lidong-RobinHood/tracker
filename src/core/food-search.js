@@ -28,6 +28,16 @@ export function tokenize(text) {
 /** True when the text contains Han (Chinese) characters. */
 export const hasHan = (text) => HAN.test(String(text ?? ''));
 
+/**
+ * Is a typed query long enough to search the bundled dishes and generic foods? Two characters, or one Han
+ * character (粥, 面, 鱼 are whole words). A single Latin letter searches only the user's own foods.
+ * @param {string} query
+ */
+export function searchesBundled(query) {
+  const q = String(query ?? '').trim();
+  return q.length >= 2 || (q.length > 0 && HAN.test(q));
+}
+
 /** German spelling without umlauts: ä -> ae, ö -> oe, ü -> ue (so "haehnchen" finds "Hähnchen"). */
 const expandUmlauts = (text) => String(text).replace(/[äöüÄÖÜ]/g, (c) => ({ ä: 'ae', ö: 'oe', ü: 'ue', Ä: 'ae', Ö: 'oe', Ü: 'ue' })[c]);
 
@@ -58,10 +68,14 @@ function indexName(text) {
  * `text` may be several names (e.g. English, German, Chinese): the item is found by any of them, ranked by
  * the best-scoring one, and returned once. The first name is the primary one (entry.words / entry.len).
  *
- * A name may be given as `{ text, rank }`: rank 0 (default) = a name in the app language (or a user's own
+ * A name may be given as `{ text, rank, lang }`: rank 0 (default) = a name in the app language (or a user's own
  * name), 1 = English when it is not the app language, 2 = another language (see nameRank). A match found only
  * in a name of rank > 0 ranks below the app language's matches of comparable quality, and a prefix or
  * inside-word match on such a name below every app-language match (search(), bucketOf, FOREIGN_PENALTY).
+ * `lang` (optional) is the name's language code when it is NOT the app language (null / absent = the app
+ * language or a name of the user's): searchMatches() reports it as the language the query matched in. Ranking
+ * uses only `rank`. The same text given in several languages keeps the best rank, and counts as the app
+ * language when any of them is.
  *
  * `opts` (optional, e.g. one entry of commonFoodsFromFile()):
  * - `tier` 1 (everyday staple) or 2 (common food): search() ranks the item higher (TIER_BONUS) among
@@ -82,16 +96,19 @@ export function indexItem(item, text, opts) {
   const [first, ...rest] = texts.length ? texts : [{ text: '', rank: 0 }];
   const entry = { item, ...indexName(first.text) };
   if (first.rank) entry.rank = first.rank;
+  if (first.lang) entry.lang = first.lang;
   const seen = new Map([[first.text, entry]]);
   const alt = [];
   for (const n of rest) {
     const had = seen.get(n.text);
-    if (had) { // the same text in several languages counts in the best-ranked one
+    if (had) { // the same text in several languages counts in the best-ranked one (and as the app language's)
       if ((had.rank || 0) > n.rank) { if (n.rank) had.rank = n.rank; else delete had.rank; }
+      if (!n.lang) delete had.lang;
       continue;
     }
     const rec = indexName(n.text);
     if (n.rank) rec.rank = n.rank;
+    if (n.lang) rec.lang = n.lang;
     seen.set(n.text, rec);
     alt.push(rec);
   }
@@ -101,10 +118,12 @@ export function indexItem(item, text, opts) {
   return entry;
 }
 
-/** A name argument of indexItem as { text, rank }, or null when empty. */
+/** A name argument of indexItem as { text, rank, lang }, or null when empty. */
 function asName(t) {
-  if (typeof t === 'string') return t.trim() ? { text: t, rank: 0 } : null;
-  if (t && typeof t.text === 'string' && t.text.trim()) return { text: t.text, rank: Number.isInteger(t.rank) && t.rank > 0 ? Math.min(t.rank, 2) : 0 };
+  if (typeof t === 'string') return t.trim() ? { text: t, rank: 0, lang: null } : null;
+  if (t && typeof t.text === 'string' && t.text.trim()) {
+    return { text: t.text, rank: Number.isInteger(t.rank) && t.rank > 0 ? Math.min(t.rank, 2) : 0, lang: typeof t.lang === 'string' && t.lang ? t.lang : null };
+  }
   return null;
 }
 
@@ -419,6 +438,29 @@ const better = (a, b) => (a.b !== b.b ? a.b < b.b : a.s > b.s);
 export function search(query, index, { limit = 30 } = {}) {
   const parsed = parseQuery(query);
   if (!parsed.tokens.length && !parsed.runs.length) return [];
+  return rankHits(parsed, index, limit).map((h) => h.e.item);
+}
+
+/**
+ * search() with the language each result was found in: `lang` null = through an app-language name (or a
+ * name without language, e.g. the user's own), else the code of the other language whose name matched
+ * (indexItem's `lang`). Rule ("show the name as I typed it"): a query with Han characters means Chinese; any
+ * matching app-language name wins; otherwise the matching names' language in the order of MATCH_LANG_ORDER
+ * (English, the base data's language, first, as in nameRank). The ranking is exactly search()'s.
+ * @template T
+ * @param {string} query
+ * @param {Array<{item: T}>} index from indexItem()
+ * @param {{limit?: number}} [opts]
+ * @returns {Array<{item: T, lang: string|null}>}
+ */
+export function searchMatches(query, index, { limit = 30 } = {}) {
+  const parsed = parseQuery(query);
+  if (!parsed.tokens.length && !parsed.runs.length) return [];
+  return rankHits(parsed, index, limit).map((h) => ({ item: h.e.item, lang: matchLang(parsed, h.e) }));
+}
+
+/** The best `limit` matches of a parsed query, best first. */
+function rankHits(parsed, index, limit) {
   parsed.checks = prepareChecks(parsed.tokens);
   const hits = [];
   for (const e of index) {
@@ -428,7 +470,27 @@ export function search(query, index, { limit = 30 } = {}) {
     hits.push({ s, b: m.b, e });
   }
   hits.sort((a, b) => a.b - b.b || b.s - a.s || a.e.len - b.e.len);
-  return hits.slice(0, limit).map((h) => h.e.item);
+  return hits.slice(0, limit);
+}
+
+/** Order in which another language is chosen when several of them (and not the app language) matched. */
+export const MATCH_LANG_ORDER = Object.freeze(['en', 'de', 'zh']);
+
+/**
+ * Language a matched entry was found in (see searchMatches): null = the app language. Han queries look at the
+ * names matching their Han part (and mean Chinese), Latin queries at the names matching every word.
+ */
+function matchLang({ tokens, runs, checks }, entry) {
+  const names = entry.alt ? [entry, ...entry.alt] : [entry];
+  const langs = new Set();
+  for (const n of names) {
+    const hit = runs.length ? scoreHan(runs, n) !== null : mayMatch(checks, n) && scoreName(tokens, n) !== null;
+    if (!hit) continue;
+    if (!n.lang) return null; // the app language's name matches too: it wins
+    langs.add(n.lang);
+  }
+  if (runs.length && langs.has('zh')) return 'zh';
+  return [...MATCH_LANG_ORDER, ...langs].find((l) => langs.has(l)) || null;
 }
 
 /**
@@ -496,27 +558,34 @@ export function commonFoodsFromFile(doc) {
 
 /**
  * A common-foods entry (commonFoodsFromFile) as indexItem's third argument for app language `lang`: aliases
- * ranked by nameRank (a text listed in several languages keeps its best rank).
+ * ranked by nameRank and tagged with their language when it is not the app language (a text listed in several
+ * languages keeps its best rank; untagged aliases count as the app language).
  * @param {{tier?: number, aliases?: Array<{text: string, lang: string|null}>}|undefined} entry @param {string} lang
  */
 export function forLanguage(entry, lang) {
   if (!entry) return undefined;
   if (!entry.aliases) return entry;
-  return { ...entry, aliases: entry.aliases.map((a) => ({ text: a.text, rank: nameRank(a.lang, lang) })) };
+  return { ...entry, aliases: entry.aliases.map((a) => ({ text: a.text, rank: nameRank(a.lang, lang), lang: a.lang && a.lang !== lang ? a.lang : null })) };
 }
 
 /**
  * Searchable names of a generic food for app language `lang`: the shown name first (rank 0), then English,
- * German, Chinese with their rank (nameRank). `names`: { en, de?, zh? } (missing translations left out); a
- * missing app-language translation shows English, which then counts as the app language.
+ * German, Chinese with their rank (nameRank) and language (`lang`, null for the app language; see indexItem).
+ * `names`: { en, de?, zh? } (missing translations left out); a missing app-language translation shows
+ * English, which then counts as the app language.
  * @param {string} lang @param {{en: string, de?: string|null, zh?: string|null}} names
  * @param {string} [shown] the shown name (default: names[lang] or English)
- * @returns {Array<{text: string, rank: number}>}
+ * @param {string|null} [shownLang] language of `shown` when the food is shown in another language than the
+ *   app's (a stored food's nameLang); it still ranks as the app language (it is what the user sees)
+ * @returns {Array<{text: string, rank: number, lang: string|null}>}
  */
-export function langNames(lang, names, shown) {
+export function langNames(lang, names, shown, shownLang = null) {
   const own = shown || names[lang] || names.en;
-  const out = [{ text: own, rank: 0 }];
-  for (const l of ['en', 'de', 'zh']) if (names[l]) out.push({ text: names[l], rank: names[l] === own ? 0 : nameRank(l, lang) });
+  const ownLang = shownLang && shownLang !== lang ? shownLang : null;
+  const out = [{ text: own, rank: 0, lang: ownLang }];
+  for (const l of ['en', 'de', 'zh']) {
+    if (names[l]) out.push({ text: names[l], rank: names[l] === own ? 0 : nameRank(l, lang), lang: l === lang ? null : l });
+  }
   return out;
 }
 
